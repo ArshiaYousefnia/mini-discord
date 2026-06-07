@@ -5,14 +5,44 @@
 # Container Scanning customization: https://docs.gitlab.com/ee/user/application_security/container_scanning/#customizing-the-container-scanning-settings
 # Note that environment variables can be set in several places
 # See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
+# .gitlab-ci.yml
+# Pipeline triggers exclusively on the "deployment" branch
+# .gitlab-ci.yml
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "deployment"
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "deployment"
 stages:
-- test
-- secret-detection
-sast:
-  stage: test
-include:
-- template: Security/Secret-Detection.gitlab-ci.yml
+  - build
 variables:
-  SECRET_DETECTION_ENABLED: 'true'
-secret_detection:
-  stage: secret-detection
+  HARBOR_HOST: registry.hamdocker.ir
+  HARBOR_PROJECT: ayousefnia
+  MIRROR_HOST: hub.hamdocker.ir
+before_script:
+  - mkdir -p /kaniko/.docker
+  - echo "{\"auths\":{\"$HARBOR_HOST\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
+build-frontend:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - /kaniko/executor
+        --context="${CI_PROJECT_DIR}/frontend"
+        --destination="$HARBOR_HOST/$HARBOR_PROJECT/frontend:$CI_COMMIT_SHA"
+        --destination="$HARBOR_HOST/$HARBOR_PROJECT/frontend:latest"
+        --registry-mirror=$MIRROR_HOST
+        --cache=true
+build-backend:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - /kaniko/executor
+        --context="${CI_PROJECT_DIR}/backend"
+        --destination="$HARBOR_HOST/$HARBOR_PROJECT/backend:$CI_COMMIT_SHA"
+        --destination="$HARBOR_HOST/$HARBOR_PROJECT/backend:latest"
+        --registry-mirror=$MIRROR_HOST
+        --build-arg PIP_INDEX_URL=$PIP_INDEX_URL
+        --cache=true
