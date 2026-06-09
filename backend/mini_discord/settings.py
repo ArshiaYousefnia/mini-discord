@@ -13,25 +13,25 @@ import os
 
 from pathlib import Path
 
-from dotenv import load_dotenv
+import environ
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # environment variables
-load_dotenv()
+env = environ.Env()
+env.read_env(os.path.join(BASE_DIR, '.env'))
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-&c-t$i=3hz6p=#2b&rp+by17#w#ck1&0t_@1u3y#4*x8vlj2je'
+SECRET_KEY = env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env('DEBUG', default=False)
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = env('ALLOWED_HOSTS', default=[])
 
 # Application definition
 
@@ -78,22 +78,15 @@ WSGI_APPLICATION = 'mini_discord.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+   'default': {
+       'ENGINE': 'django.db.backends.postgresql',
+       'NAME': env('DB_NAME', default='django_db'),
+       'USER': env('DB_USER', default='django_user'),
+       'PASSWORD': env('DB_PASSWORD', default='django_password'),
+       'HOST': env('DB_HOST', default='localhost'),
+       'PORT': env('DB_PORT', default='5432'),
+   }
 }
-
-#DATABASES = {
-#    'default': {
-#        'ENGINE': 'django.db.backends.postgresql',
-#        'NAME': os.getenv('DB_NAME', 'django_db'),
-#        'USER': os.getenv('DB_USER', 'django_user'),
-#        'PASSWORD': os.getenv('DB_PASSWORD', 'django_password'),
-#        'HOST': os.getenv('DB_HOST', 'postgres'),
-#        'PORT': os.getenv('DB_PORT', '5432'),
-#    }
-#}
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
