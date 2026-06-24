@@ -24,7 +24,7 @@ before_script:
 build-frontend:
   stage: build
   image:
-    name: gcr.io/kaniko-project/executor:debug
+    name: gcr.hamdocker.ir/kaniko-project/executor:debug
     entrypoint: [""]
   script:
     - /kaniko/executor
@@ -32,11 +32,12 @@ build-frontend:
         --destination="$HARBOR_HOST/$HARBOR_PROJECT/frontend:$CI_COMMIT_SHA"
         --destination="$HARBOR_HOST/$HARBOR_PROJECT/frontend:latest"
         --registry-mirror=$MIRROR_HOST
+        --build-arg REACT_APP_API_URL=$REACT_APP_API_URL
         --cache=true
 build-backend:
   stage: build
   image:
-    name: gcr.io/kaniko-project/executor:debug
+    name: gcr.hamdocker.ir/kaniko-project/executor:debug
     entrypoint: [""]
   script:
     - /kaniko/executor
