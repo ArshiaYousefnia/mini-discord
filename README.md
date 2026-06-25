@@ -19,11 +19,22 @@ A modern web app with React (Vite) frontend, Django backend, PostgreSQL, Redis, 
 │   ├── package.json
 │   ├── .env                (optional, local only)
 │   └── .env.example
+├── production/
+│   ├── docker-compose.yml
+│   ├── .env                (local only, not commited)
+│   └── .env.example
 ├── docker-compose.yml
 └── README.md
 ```
 
 ---
+## Production ready run with docker
+### Prerequisites
+- Docker Engine + Compose v2
+
+In /production directory, set up a minimal .env and run ```docker compose up```.
+
+All Images will be fetched from registries.
 
 ## Quick Start with Docker (recommended)
 
@@ -55,7 +66,7 @@ To stop:
 docker compose down
 ```
 
-> **Note**: Frontend builds with `REACT_APP_API_URL=http://backend:8000`. Backend reads `backend/.env` at runtime.
+> **Note**: Frontend builds with `REACT_APP_API_URL=http://localhost:8000`. Backend reads `backend/.env` at runtime.
 
 ---
 
@@ -114,13 +125,14 @@ Volumes: `postgres_data`, `redis_data`, `minio_data` (persist data).
 
 Inside Docker network:
 - Backend reaches PostgreSQL at `postgres:5432`, Redis at `redis:6379`, MinIO at `minio:9000`.
-- Frontend (browser) calls backend API via `http://backend:8000` – works because both are on the same network.
+- Frontend (browser) calls backend API via `http://localhost:8000` – works because both are on the same network.
 
 ---
 
 ## Adding Python / Node Dependencies
 
-- Backend: add to `requirements.txt` and rebuild `backend` service.
+- Backend: add to `requirements.txt` and rebuild `backend` service. easy way:
+  - ```pip freeze > requirements.txt```
 - Frontend: `npm install --save <pkg>` and rebuild `frontend` service.
 
 ---
