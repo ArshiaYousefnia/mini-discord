@@ -24,15 +24,7 @@ test-backend:
   before_script: []
   script:
     - cd backend
-    - echo "PIP_INDEX_URL is: '$PIP_INDEX_URL'"
-    - |
-      if [ -z "$PIP_INDEX_URL" ]; then
-        echo "Using default PyPI"
-        pip install -r requirements.txt
-      else
-        echo "Using custom index: $PIP_INDEX_URL"
-        pip install --index-url "$PIP_INDEX_URL" -r requirements.txt
-      fi
+    - if [ -z "$PIP_INDEX_URL" ]; then pip install -r requirements.txt; else pip install --index-url "$PIP_INDEX_URL" -r requirements.txt; fi
     - python manage.py test
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
