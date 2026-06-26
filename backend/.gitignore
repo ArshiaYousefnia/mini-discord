@@ -6,6 +6,8 @@ __pycache__/
 *.sqlite3
 
 .env
+staticfiles
+avatars
 
 # IDE / OS
 .DS_Store
