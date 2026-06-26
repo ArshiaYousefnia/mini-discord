@@ -66,18 +66,21 @@ class User(AbstractUser):
             return str(JalaliDate.to_jalali(self.birthday))
         return None
 
-    display_name = models.CharField(max_length=100, blank=False)
-    bio = models.TextField(
+    display_name = models.CharField(max_length=32, blank=False)
+    
+    bio = models.CharField(
+        max_length=190,
         blank=True,
-        default="Hello, I\'m new here!"
+        default="Hello, I'm new here!"
     )
+    
     is_online = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    avatar = models.CharField(
-        max_length=255,
-        blank=True,
-        default=''
+    avatar = models.ImageField(
+        upload_to='avatars/',
+        blank=True, 
+        null=True
     )
 
     USERNAME_FIELD = 'username'  # Use username as login identifier

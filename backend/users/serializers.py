@@ -1,7 +1,10 @@
 from rest_framework import serializers
 from django.core.validators import EmailValidator, MinLengthValidator
 from django.core.exceptions import ValidationError
-
+from rest_framework import serializers
+from django.core.validators import FileExtensionValidator, EmailValidator
+from django.core.exceptions import ValidationError
+from .models import User
 from .fields import JalaliDateField
 from .models import User
 import re
@@ -85,3 +88,47 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             display_name=validated_data['display_name']
         )
         return user
+    
+class UserProfileSerializer(serializers.ModelSerializer):
+    avatar = serializers.ImageField(
+        required=False,
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png'])],
+        error_messages={
+            'invalid_extension': 'Only JPG, JPEG, and PNG files are allowed.'
+        }
+    )
+    
+    username = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = ('username', 'email', 'display_name', 'avatar', 'bio')
+
+    def validate_email(self, value):
+        user = self.context['request'].user
+        try:
+            EmailValidator(message='Please enter a valid email address.')(value)
+        except ValidationError:
+            raise serializers.ValidationError('Please enter a valid email address.')
+
+        if value != user.email and User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('This email is already registered.')
+        
+        return value
+
+    def validate_display_name(self, value):
+        if value and len(value) > 32:
+            raise serializers.ValidationError('Display name must not exceed 32 characters.')
+        return value
+
+    def validate_bio(self, value):
+        if value and len(value) > 190:
+            raise serializers.ValidationError('Bio must not exceed 190 characters.')
+        return value
+
+    def validate_avatar(self, value):
+        if value:
+            max_size = 2 * 1024 * 1024  
+            if value.size > max_size:
+                raise serializers.ValidationError('Image file size must not exceed 2MB.')
+        return value
