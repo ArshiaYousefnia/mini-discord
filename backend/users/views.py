@@ -1,10 +1,12 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
+from .serializers import UserProfileSerializer
 from django.contrib.auth import authenticate
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserRegistrationSerializer, LoginSerializer
 from rest_framework.permissions import IsAuthenticated
+from .models import User
 
 class UserRegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -23,9 +25,8 @@ class UserRegistrationView(generics.CreateAPIView):
             },
             status=status.HTTP_201_CREATED
 
-
         )
-
+    
 
 class LoginView(APIView):
     def post(self, request):
@@ -54,7 +55,7 @@ class LoginView(APIView):
             },
             status=status.HTTP_200_OK
         )
-
+    
 
 class LogoutView(APIView):
 
@@ -79,3 +80,10 @@ class LogoutView(APIView):
                 {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+class UserProfileView(generics.RetrieveAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserProfileSerializer
+    queryset = User.objects.all()
+    lookup_field = 'id'
+    lookup_url_kwarg = 'user_id'
