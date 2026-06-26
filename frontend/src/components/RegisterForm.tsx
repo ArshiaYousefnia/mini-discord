@@ -10,7 +10,6 @@ import type { RegisterFormData } from "../types/auth";
 const DatePicker = (DatePickerModule as any).default ?? DatePickerModule;
 
 export default function RegisterForm() {
-
   const [form, setForm] = useState<RegisterFormData>({
     email: "",
     birthday: "",
@@ -21,35 +20,48 @@ export default function RegisterForm() {
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!validateEmail(form.email))
+    if (!validateEmail(form.email)) {
       newErrors.email = "Invalid email format";
+    }
 
-    if (!validateUsername(form.username))
+    if (!form.birthday) {
+      newErrors.birthday = "Birthday is required";
+    }
+
+    if (!validateUsername(form.username)) {
       newErrors.username = "Username must be at least 4 characters";
+    }
 
-    if (!validatePassword(form.password))
+    if (!validatePassword(form.password)) {
       newErrors.password =
         "Password must include uppercase, lowercase, number, special character and be 8+ characters";
+    }
 
-    if (form.password !== form.confirmPassword)
+    if (form.password !== form.confirmPassword) {
       newErrors.confirmPassword = "Passwords do not match";
+    }
 
-    if (!form.displayName)
+    if (!form.displayName.trim()) {
       newErrors.displayName = "Display name is required";
+    }
 
     setErrors(newErrors);
-
     return Object.keys(newErrors).length === 0;
   };
 
@@ -57,6 +69,8 @@ export default function RegisterForm() {
     e.preventDefault();
 
     if (!validateForm()) return;
+
+    setLoading(true);
 
     try {
       const payload = {
@@ -68,64 +82,120 @@ export default function RegisterForm() {
       };
 
       await registerUser(payload);
-
       alert("Registration successful");
     } catch (err: any) {
       alert(err.response?.data?.message || "Registration failed");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form className="register-form" onSubmit={handleSubmit}>
+      <div className="form-field">
+        <label htmlFor="email">Email</label>
+        <input
+          id="email"
+          name="email"
+          placeholder="Enter your email"
+          value={form.email}
+          onChange={handleChange}
+        />
+        {errors.email && <p className="form-error">{errors.email}</p>}
+      </div>
 
-      <input
-        name="email"
-        placeholder="Email"
-        onChange={handleChange}
-      />
-      {errors.email && <p>{errors.email}</p>}
+      <div className="form-field">
+        <label htmlFor="birthday">Birthday</label>
+        <DatePicker
+          calendar={persian}
+          locale={persian_fa}
+          value={form.birthday}
+          placeholder="Select your birthday"
+          onChange={(date: any) =>
+            setForm((prev) => ({
+              ...prev,
+              birthday: date ? date.format("YYYY/MM/DD") : "",
+            }))
+          }
+        />
+        {errors.birthday && <p className="form-error">{errors.birthday}</p>}
+      </div>
 
-      <DatePicker
-        calendar={persian}
-        locale={persian_fa}
-        value={form.birthday}
-        onChange={(date: any) =>
-          setForm({ ...form, birthday: date.format("YYYY/MM/DD") })
-        }
-      />
+      <div className="form-field">
+        <label htmlFor="username">Username</label>
+        <input
+          id="username"
+          name="username"
+          placeholder="Choose a username"
+          value={form.username}
+          onChange={handleChange}
+        />
+        {errors.username && <p className="form-error">{errors.username}</p>}
+      </div>
 
-      <input
-        name="username"
-        placeholder="Username"
-        onChange={handleChange}
-      />
-      {errors.username && <p>{errors.username}</p>}
+      <div className="form-field">
+        <label htmlFor="password">Password</label>
+        <div className="password-field">
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            name="password"
+            placeholder="Enter your password"
+            value={form.password}
+            onChange={handleChange}
+          />
+          <button
+            type="button"
+            className="password-toggle"
+            onClick={() => setShowPassword((prev) => !prev)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ?  "👁️":"🙈"}
+          </button>
+        </div>
+        {errors.password && <p className="form-error">{errors.password}</p>}
+      </div>
 
-      <input
-        type="password"
-        name="password"
-        placeholder="Password"
-        onChange={handleChange}
-      />
-      {errors.password && <p>{errors.password}</p>}
+      <div className="form-field">
+        <label htmlFor="confirmPassword">Confirm Password</label>
+        <div className="password-field">
+          <input
+            id="confirmPassword"
+            type={showConfirmPassword ? "text" : "password"}
+            name="confirmPassword"
+            placeholder="Repeat your password"
+            value={form.confirmPassword}
+            onChange={handleChange}
+          />
+          <button
+            type="button"
+            className="password-toggle"
+            onClick={() => setShowConfirmPassword((prev) => !prev)}
+            aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+          >
+            {showConfirmPassword ? "👁️" : "🙈" }
+          </button>
+        </div>
+        {errors.confirmPassword && (
+          <p className="form-error">{errors.confirmPassword}</p>
+        )}
+      </div>
 
-      <input
-        type="password"
-        name="confirmPassword"
-        placeholder="Confirm Password"
-        onChange={handleChange}
-      />
-      {errors.confirmPassword && <p>{errors.confirmPassword}</p>}
+      <div className="form-field">
+        <label htmlFor="displayName">Display Name</label>
+        <input
+          id="displayName"
+          name="displayName"
+          placeholder="Enter your display name"
+          value={form.displayName}
+          onChange={handleChange}
+        />
+        {errors.displayName && <p className="form-error">{errors.displayName}</p>}
+      </div>
 
-      <input
-        name="displayName"
-        placeholder="Display Name"
-        onChange={handleChange}
-      />
-      {errors.displayName && <p>{errors.displayName}</p>}
-
-      <button type="submit">Register</button>
-
+      <button className="register-button" type="submit" disabled={loading}>
+        {loading ? "Registering..." : "Register"}
+      </button>
     </form>
   );
 }
