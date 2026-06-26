@@ -84,10 +84,23 @@ export default function RegisterForm() {
       await registerUser(payload);
       alert("Registration successful");
     } catch (err: any) {
-      alert(err.response?.data?.message || "Registration failed");
+        const backendErrors = err.response?.data;
+
+        if (backendErrors) {
+          const formatted: Record<string, string> = {};
+
+          Object.keys(backendErrors).forEach((key) => {
+            formatted[key] = backendErrors[key].join(" ");
+          });
+
+          setErrors(formatted);
+        } else {
+           alert("Registration failed");
+        }
     } finally {
       setLoading(false);
     }
+
   };
 
   return (
