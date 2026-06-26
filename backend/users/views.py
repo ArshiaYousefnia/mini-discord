@@ -57,7 +57,6 @@ class LoginView(APIView):
 
 
 class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         try:
@@ -73,7 +72,7 @@ class LogoutView(APIView):
 
             return Response(
                 {"message": "Successfully logged out."},
-                status=status.HTTP_200_OK
+                status=status.HTTP_205_RESET_CONTENT
             )
         except Exception as e:
             return Response(
