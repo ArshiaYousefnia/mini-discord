@@ -20,7 +20,7 @@ before_script:
 
 test-backend:
   stage: test
-  image: python:3.9-slim
+  image: python:3.14-slim
   before_script: []
   script:
     - cd backend
