@@ -96,3 +96,19 @@ class LoginSerializer(serializers.Serializer):
         required=True,
         style={"input_type": "password"}
     )
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = (
+            'id',
+            'username',
+            'display_name',
+            'bio',
+            'avatar_url',
+            'is_online',
+        )
+        read_only_fields = fields
