@@ -57,7 +57,6 @@ class LoginView(APIView):
     
 
 class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         try:
@@ -67,13 +66,13 @@ class LogoutView(APIView):
                     {"error": "Refresh token is required."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             token = RefreshToken(refresh_token)
             token.blacklist()
-            
+
             return Response(
                 {"message": "Successfully logged out."},
-                status=status.HTTP_200_OK
+                status=status.HTTP_205_RESET_CONTENT
             )
         except Exception as e:
             return Response(
