@@ -12,5 +12,5 @@ export interface RegisterPayload {
   birthday: string;
   username: string;
   password: string;
-  displayName: string;
+  display_name: string;
 }

@@ -78,7 +78,7 @@ export default function RegisterForm() {
         birthday: form.birthday,
         username: form.username,
         password: form.password,
-        displayName: form.displayName,
+        display_name: form.displayName,
       };
 
       await registerUser(payload);
