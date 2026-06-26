@@ -1,0 +1,181 @@
+.register-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f2f5;
+  padding: 24px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.register-card {
+  width: 100%;
+  max-width: 430px;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 32px 26px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+}
+
+.register-header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.register-header h1 {
+  margin: 0 0 8px;
+  color: #111b21;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.register-header p {
+  margin: 0;
+  color: #667781;
+  font-size: 14px;
+}
+
+.register-form {
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field label {
+  color: #111b21;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.form-field input,
+.register-form .rmdp-container input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border: 1px solid #d1d7db;
+  border-radius: 20px;
+  outline: none;
+  background: #ffffff;
+  color: #111b21;
+  font-size: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-field input::placeholder,
+.register-form .rmdp-container input::placeholder {
+  color: #8696a0;
+}
+
+.form-field input:focus,
+.register-form .rmdp-container input:focus {
+  border-color: #53bdeb;
+  box-shadow: 0 0 0 3px rgba(83, 189, 235, 0.18);
+}
+
+.register-form .rmdp-container {
+  width: 100%;
+}
+
+.form-error {
+  margin: 0;
+  color: #d93025;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.register-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 20px;
+  background: #25d366;
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.register-button:hover {
+  opacity: 0.95;
+}
+
+.register-button:active {
+  transform: scale(0.98);
+}
+
+.register-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.register-message {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.register-message.success {
+  background: #dcf8c6;
+  color: #1f7a1f;
+}
+
+.register-message.error {
+  background: #ffe5e5;
+  color: #b42318;
+}
+
+@media (max-width: 480px) {
+  .register-page {
+    padding: 16px;
+  }
+
+  .register-card {
+    padding: 26px 20px;
+    border-radius: 14px;
+  }
+
+  .register-header h1 {
+    font-size: 24px;
+  }
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 46px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: #667781;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.password-toggle:hover {
+  color: #111b21;
+}
+
