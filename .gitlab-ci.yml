@@ -1,30 +1,45 @@
-# You can override the included template(s) by including variable overrides
-# SAST customization: https://docs.gitlab.com/ee/user/application_security/sast/#customizing-the-sast-settings
-# Secret Detection customization: https://docs.gitlab.com/user/application_security/secret_detection/pipeline/configure
-# Dependency Scanning customization: https://docs.gitlab.com/ee/user/application_security/dependency_scanning/#customizing-the-dependency-scanning-settings
-# Container Scanning customization: https://docs.gitlab.com/ee/user/application_security/container_scanning/#customizing-the-container-scanning-settings
-# Note that environment variables can be set in several places
-# See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
-# .gitlab-ci.yml
-# Pipeline triggers exclusively on the "deployment" branch
-# .gitlab-ci.yml
 workflow:
   rules:
     - if: $CI_COMMIT_BRANCH == "deployment"
     - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "deployment"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+
 stages:
+  - test
   - build
+
 variables:
   HARBOR_HOST: registry.hamdocker.ir
   HARBOR_PROJECT: ayousefnia
   MIRROR_HOST: hub.hamdocker.ir
+
 before_script:
   - mkdir -p /kaniko/.docker
   - echo "{\"auths\":{\"$HARBOR_HOST\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
+
+test-backend:
+  stage: test
+  image: python:3.14-slim
+  before_script: []
+  script:
+    - cd backend
+    - pip install --upgrade pip
+    - |
+      if [ -z "$PIP_INDEX_URL" ]; then
+        pip install -r requirements.txt
+      else
+        pip install --index-url "$PIP_INDEX_URL" --extra-index-url https://pypi.org/simple -r requirements.txt
+      fi
+    - python manage.py test
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+
 build-frontend:
   stage: build
   image:
-    name: gcr.io/kaniko-project/executor:debug
+    name: gcr.hamdocker.ir/kaniko-project/executor:debug
     entrypoint: [""]
   script:
     - /kaniko/executor
@@ -32,11 +47,16 @@ build-frontend:
         --destination="$HARBOR_HOST/$HARBOR_PROJECT/frontend:$CI_COMMIT_SHA"
         --destination="$HARBOR_HOST/$HARBOR_PROJECT/frontend:latest"
         --registry-mirror=$MIRROR_HOST
+        --build-arg REACT_APP_API_URL=$REACT_APP_API_URL
         --cache=true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "deployment"
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "deployment"
+
 build-backend:
   stage: build
   image:
-    name: gcr.io/kaniko-project/executor:debug
+    name: gcr.hamdocker.ir/kaniko-project/executor:debug
     entrypoint: [""]
   script:
     - /kaniko/executor
@@ -46,3 +66,6 @@ build-backend:
         --registry-mirror=$MIRROR_HOST
         --build-arg PIP_INDEX_URL=$PIP_INDEX_URL
         --cache=true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "deployment"
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "deployment"

@@ -84,4 +84,33 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             birthday=validated_data.get('birthday'),
             display_name=validated_data['display_name']
         )
+
         return user
+    
+
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        style={"input_type": "password"}
+    )
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = (
+            'id',
+            'username',
+            'display_name',
+            'bio',
+            'avatar_url',
+            'is_online',
+        )
+        read_only_fields = fields
+
