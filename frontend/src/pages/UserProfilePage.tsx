@@ -54,26 +54,26 @@ export default function UserProfilePage() {
   }, [userId]);
 
 
-  const handleMessage = async () => {
-    if (!user) return;
+  // const handleMessage = async () => {
+  //   if (!user) return;
 
-    try {
-      const res = await fetch(`/api/direct-messages/start/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ user_id: user.id }),
-      });
+  //   try {
+  //     const res = await fetch(`/api/direct-messages/start/`, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify({ user_id: user.id }),
+  //     });
 
-      const data = await res.json();
+  //     const data = await res.json();
 
-      // redirect to DM thread
-      window.location.href = `/chat/${data.thread_id}`;
-    } catch (err) {
-      console.error("Failed to start chat", err);
-    }
-  };
+  //     // redirect to DM thread
+  //     window.location.href = `/chat/${data.thread_id}`;
+  //   } catch (err) {
+  //     console.error("Failed to start chat", err);
+  //   }
+  // };
 
   if (loading) {
     return <div className="user-profile-page">Loading...</div>;
