@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import "./userProfile.css";
+import "../styles/userProfile.css";
 
 import UserAvatar from "../components/UserAvatar";
 import StatusBadge from "../components/StatusBadge";
@@ -22,15 +22,29 @@ export default function UserProfilePage() {
 
   //const isOnline = Boolean(user?.is_online);
 
-
+  //for frontend demo
   useEffect(() => {
     async function fetchUser() {
       try {
         const res = await fetch(`/api/users/${userId}/`);
+
+        if (!res.ok) {
+          throw new Error("User not found");
+        }
+
         const data = await res.json();
         setUser(data);
       } catch (err) {
-        console.error("Failed to load profile", err);
+        console.warn("Using demo user instead", err);
+
+        // demo user
+        setUser({
+          id: "1",
+          display_name: "Demo User",
+          bio: "This is a demo profile used for frontend development.",
+          avatar: null,
+          is_online: true,
+        });
       } finally {
         setLoading(false);
       }
@@ -38,6 +52,7 @@ export default function UserProfilePage() {
 
     fetchUser();
   }, [userId]);
+
 
   const handleMessage = async () => {
     if (!user) return;
