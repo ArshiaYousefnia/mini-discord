@@ -6,6 +6,7 @@ import persian_fa from "react-date-object/locales/persian_fa";
 import { validateEmail, validatePassword, validateUsername } from "../utils/validators";
 import { registerUser } from "../services/authService";
 import type { RegisterFormData } from "../types/auth";
+import { normalizeDate } from "../utils/dateUtils";
 
 const DatePicker = (DatePickerModule as any).default ?? DatePickerModule;
 
@@ -75,7 +76,7 @@ export default function RegisterForm() {
     try {
       const payload = {
         email: form.email,
-        birthday: form.birthday,
+        birthday: normalizeDate(form.birthday),
         username: form.username,
         password: form.password,
         display_name: form.displayName,
