@@ -22,13 +22,12 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        REACT_APP_API_URL: http://backend:8000
     container_name: react-frontend
     ports:
       - "3000:80"
     depends_on:
       - backend
+
 
   postgres:
     image: postgres:alpine
