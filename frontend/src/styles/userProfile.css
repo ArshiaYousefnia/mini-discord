@@ -11,34 +11,42 @@
 .user-profile-card {
   width: 100%;
   max-width: 430px;
+  height: 700px;
   background: #ffffff;
   border-radius: 18px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
-  padding: 32px 26px;
+  padding: 36px 28px;
   color: #111b21;
 }
 
+
+
 .user-profile-header {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
+  text-align: center;
+  gap: 12px;
   margin-bottom: 20px;
 }
 
+
 .user-profile-avatar {
-  width: 84px;
-  height: 84px;
+  width: 96px;
+  height: 96px;
   border-radius: 50%;
   object-fit: cover;
   background: #d1d7db;
-  flex-shrink: 0;
 }
+
 
 .user-profile-info {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 8px;
 }
+
 
 .user-profile-name {
   margin: 0;
