@@ -4,8 +4,10 @@ export const validateEmail = (email: string): boolean => {
 };
 
 export const validateUsername = (username: string): boolean => {
-  return username.length >= 4;
+  const regex = /^[A-Za-z0-9]+$/;
+  return username.length >= 4 && regex.test(username);
 };
+
 
 export const validatePassword = (password: string): boolean => {
   const regex =
