@@ -46,12 +46,12 @@ export default function RegisterForm() {
     }
 
     if (!validateUsername(form.username)) {
-      newErrors.username = "Username must be at least 4 characters";
+      newErrors.username = "Username must be at least 4 characters and can only have english numbers and letters";
     }
 
     if (!validatePassword(form.password)) {
       newErrors.password =
-        "Password must include uppercase, lowercase, number, special character and be 8+ characters";
+        "Password must include uppercase, lowercase, number, special character and be 8+ characters. and it can only have english characters";
     }
 
     if (form.password !== form.confirmPassword) {
