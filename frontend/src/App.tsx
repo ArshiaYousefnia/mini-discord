@@ -6,6 +6,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<h1>Home Works!</h1>} />
       <Route path="/users/:userId" element={<UserProfilePage />} />
+      <Route path="/register" element={<Register />} />
       {/* Add your other routes here */}
     </Routes>
   );
