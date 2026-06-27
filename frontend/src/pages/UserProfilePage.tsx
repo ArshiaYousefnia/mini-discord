@@ -16,60 +16,60 @@ export default function UserProfilePage() {
   //const isOnline = Boolean(user?.is_online);
 
   //for frontend demo
-  useEffect(() => {
-    async function fetchUser() {
-      try {
-        const res = await fetch(`/api/users/${userId}/`);
-
-        if (!res.ok) {
-          throw new Error("User not found");
-        }
-
-        const data = await res.json();
-        setUser(data);
-      } catch (err) {
-        console.warn("Using demo user instead", err);
-
-        // demo user
-        setUser({
-          id: "1",
-          username: "Demo",
-          display_name: "Demo User",
-          bio: "This is a demo profile used for frontend development.",
-          avatar: "/default-avatar.png",
-          is_online: true,
-        });
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchUser();
-  }, [userId]);
-
-  //real backend version
   // useEffect(() => {
-  //   if (!userId) {
-  //     setLoading(false);
-  //     return;
-  //   }
-
-  //   async function fetchUser(userId: string) {
+  //   async function fetchUser() {
   //     try {
-  //       setLoading(true);
+  //       const res = await fetch(`/api/users/${userId}/`);
 
-  //       const data = await getUserProfile(userId);
+  //       if (!res.ok) {
+  //         throw new Error("User not found");
+  //       }
+
+  //       const data = await res.json();
   //       setUser(data);
   //     } catch (err) {
-  //       console.error("Failed to fetch user profile", err);
-  //       setUser(null);
+  //       console.warn("Using demo user instead", err);
+
+  //       // demo user
+  //       setUser({
+  //         id: "1",
+  //         username: "Demo",
+  //         display_name: "Demo User",
+  //         bio: "This is a demo profile used for frontend development.",
+  //         avatar: "/default-avatar.png",
+  //         is_online: true,
+  //       });
   //     } finally {
   //       setLoading(false);
   //     }
   //   }
 
-  //   fetchUser(userId);
+  //   fetchUser();
   // }, [userId]);
+
+  //real backend version
+  useEffect(() => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+
+    async function fetchUser(userId: string) {
+      try {
+        setLoading(true);
+
+        const data = await getUserProfile(userId);
+        setUser(data);
+      } catch (err) {
+        console.error("Failed to fetch user profile", err);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchUser(userId);
+  }, [userId]);
 
 
   // const handleMessage = async () => {
