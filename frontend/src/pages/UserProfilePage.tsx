@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import "./userProfile.css";
 
+import UserAvatar from "../components/UserAvatar";
+import StatusBadge from "../components/StatusBadge";
+import MessageButton from "../components/MessageButton";
+
+
 type UserProfile = {
   id: string;
   display_name: string;
@@ -67,19 +72,12 @@ export default function UserProfilePage() {
     <div className="user-profile-page">
       <div className="user-profile-card">
         <div className="user-profile-header">
-          <img
-            className="user-profile-avatar"
-            src={user.avatar || "/default-avatar.png"}
-            alt={user.display_name}
-          />
+            <UserAvatar src={user.avatar} alt={user.display_name} />
 
-          <div className="user-profile-info">
-            <h1 className="user-profile-name">{user.display_name}</h1>
-
-            <span className={`user-status ${user.is_online ? "online" : "offline"}`}>
-              {user.is_online ? "Online" : "Offline"}
-            </span>
-          </div>
+            <div className="user-profile-info">
+              <h1 className="user-profile-name">{user.display_name}</h1>
+              <StatusBadge isOnline={user.is_online} />
+            </div>
         </div>
 
         {user.bio && user.bio.trim() !== "" && (
@@ -89,9 +87,8 @@ export default function UserProfilePage() {
           </div>
         )}
 
-        <button className="message-button" onClick={handleMessage}>
-          Message
-        </button>
+      <MessageButton userId={user.id} />
+
       </div>
     </div>
   );
