@@ -39,6 +39,7 @@ ALLOWED_HOSTS = env('ALLOWED_HOSTS', default=[])
 AUTH_USER_MODEL = 'users.User'
 
 
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -51,7 +52,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-
     'users',
 ]
 

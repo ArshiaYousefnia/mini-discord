@@ -84,7 +84,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             birthday=validated_data.get('birthday'),
             display_name=validated_data['display_name']
         )
-
         return user
     
 
@@ -113,4 +112,3 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'is_online',
         )
         read_only_fields = fields
-

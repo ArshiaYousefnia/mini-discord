@@ -17,7 +17,6 @@ Including another URLconf
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
-from users.views import UserRegistrationView
 
 from mini_discord import settings
 from users.views import UserRegistrationView, LoginView, LogoutView, UserProfileView
@@ -25,7 +24,6 @@ from users.views import UserRegistrationView, LoginView, LogoutView, UserProfile
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/register/', UserRegistrationView.as_view(), name='register'),
-
     path("api/login/", LoginView.as_view(), name="login"),
     path("api/logout/", LogoutView.as_view(), name="logout"),
     path('api/users/<uuid:user_id>/profile/', UserProfileView.as_view(), name='user-profile'),

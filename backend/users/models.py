@@ -1,16 +1,12 @@
 import uuid
 
 from django.contrib.auth.models import AbstractUser, Group, Permission, BaseUserManager
-
 from django.core.files.storage import default_storage
-
 from django.core.validators import MinLengthValidator, EmailValidator
 from django.db import models
 from persiantools.jdatetime import JalaliDate
 
-
 from mini_discord import settings
-
 
 
 class UserManager(BaseUserManager):
@@ -81,7 +77,6 @@ class User(AbstractUser):
     is_online = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
-
     avatar = models.FileField(
         upload_to='avatars/',
         blank=True,
@@ -98,7 +93,6 @@ class User(AbstractUser):
         if self.avatar and self.avatar.name:
             return default_storage.url(self.avatar.name)
         return f"{settings.STATIC_URL}images/default_avatar.svg"
-
 
     USERNAME_FIELD = 'username'  # Use username as login identifier
     REQUIRED_FIELDS = ['email', 'display_name']  # Required for createsuperuser
