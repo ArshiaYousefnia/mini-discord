@@ -14,3 +14,13 @@ export interface RegisterPayload {
   password: string;
   display_name: string;
 }
+
+export type LoginFormData = {
+  username: string;
+  password: string;
+};
+
+export type LoginPayload = {
+  username: string;
+  password: string;
+};

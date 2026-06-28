@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import UserProfilePage from "./pages/UserProfilePage";
+import Register from "./pages/Register";
 
 export default function App() {
   return (
