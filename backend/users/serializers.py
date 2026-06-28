@@ -111,4 +111,51 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'avatar_url',
             'is_online',
         )
+
         read_only_fields = fields
+
+
+
+
+class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=False)
+    display_name = serializers.CharField(required=False, max_length=32)
+    bio = serializers.CharField(required=False, allow_blank=True, max_length=190)
+    avatar = serializers.FileField(required=False)
+
+    class Meta:
+        model = User
+        fields = ("email", "display_name", "bio", "avatar")
+
+    def validate_email(self, value):
+        EmailValidator()(value)
+
+        user = self.instance
+        if User.objects.exclude(id=user.id).filter(email=value).exists():
+            raise serializers.ValidationError("This email is already registered.")
+        return value
+
+    def validate_display_name(self, value):
+        if len(value) > 32:
+            raise serializers.ValidationError("Display name must be at most 32 characters.")
+        return value
+
+    def validate_bio(self, value):
+        if len(value) > 190:
+            raise serializers.ValidationError("Bio must be at most 190 characters.")
+        return value
+
+    def validate_avatar(self, value):
+        if value:
+            if value.size > 2 * 1024 * 1024:
+                raise serializers.ValidationError("Avatar must be smaller than 2MB.")
+
+            if not value.content_type in ["image/jpeg", "image/png"]:
+                raise serializers.ValidationError("Only JPG and PNG images are allowed.")
+
+        return value
+
+    def update(self, instance, validated_data):
+        validated_data.pop("username", None)
+
+        return super().update(instance, validated_data)
