@@ -4,9 +4,10 @@ from .serializers import UserProfileSerializer
 from django.contrib.auth import authenticate
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import UserRegistrationSerializer, LoginSerializer
+from .serializers import UserRegistrationSerializer, LoginSerializer,UserSearchSerializer
 from rest_framework.permissions import IsAuthenticated
 from .models import User
+
 
 class UserRegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -87,3 +88,34 @@ class UserProfileView(generics.RetrieveAPIView):
     queryset = User.objects.all()
     lookup_field = 'id'
     lookup_url_kwarg = 'user_id'
+
+
+
+
+
+
+class UserSearchView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        username = request.query_params.get("username")
+
+        if not username:
+            return Response(
+                {"error": "username query parameter is required"},
+                status=400
+            )
+
+        try:
+            user = User.objects.get(username__iexact=username)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found"},
+                status=404
+            )
+
+        data = UserSearchSerializer(user).data
+
+        data["is_self"] = (request.user.id == user.id)
+
+        return Response(data)

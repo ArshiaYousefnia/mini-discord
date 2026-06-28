@@ -19,7 +19,7 @@ from django.contrib import admin
 from django.urls import path
 
 from mini_discord import settings
-from users.views import UserRegistrationView, LoginView, LogoutView, UserProfileView
+from users.views import UserRegistrationView, LoginView, LogoutView, UserProfileView, UserSearchView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -27,7 +27,9 @@ urlpatterns = [
     path("api/login/", LoginView.as_view(), name="login"),
     path("api/logout/", LogoutView.as_view(), name="logout"),
     path('api/users/<uuid:user_id>/profile/', UserProfileView.as_view(), name='user-profile'),
+    path("api/users/search/", UserSearchView.as_view(), name="user-search")
 ]
+
 
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
