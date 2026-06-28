@@ -21,12 +21,21 @@ from django.urls import path
 from mini_discord import settings
 from users.views import UserRegistrationView, LoginView, LogoutView, UserProfileView
 
+from chat.views import DeleteMessageView  # یا messages.views
+
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/register/', UserRegistrationView.as_view(), name='register'),
     path("api/login/", LoginView.as_view(), name="login"),
     path("api/logout/", LogoutView.as_view(), name="logout"),
     path('api/users/<uuid:user_id>/profile/', UserProfileView.as_view(), name='user-profile'),
+    path(
+    "api/chat/<uuid:message_id>/delete/",
+    DeleteMessageView.as_view(),
+    name="delete-message"
+),
 ]
 
 if settings.DEBUG:

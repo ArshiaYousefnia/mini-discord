@@ -118,3 +118,8 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.username
+    
+
+class MessageQuerySet(models.QuerySet):
+    def active(self):
+        return self.filter(is_deleted=False)
