@@ -118,6 +118,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(read_only=True)  # added
     email = serializers.EmailField(required=False)
     display_name = serializers.CharField(required=False, max_length=32)
     bio = serializers.CharField(required=False, allow_blank=True, max_length=190)
@@ -125,7 +126,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("email", "display_name", "bio", "avatar")
+        fields = ("username", "email", "display_name", "bio", "avatar")  # added username because the username must also be displayed
 
     def validate_email(self, value):
         EmailValidator()(value)

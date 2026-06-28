@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { getUserProfile, type UserProfile } from "../services/users";
+import { getUserProfile} from "../services/users";
 import "../styles/userProfile.css";
+import type { UserProfile } from "../types/user";
 
 export default function UserProfilePage() {
   const { userId } = useParams<{ userId: string }>();
@@ -69,7 +70,7 @@ export default function UserProfilePage() {
       <div className="user-profile-card">
         <div className="user-profile-header">
           <img
-            src={user.avatar_url || ""}
+            src={user.avatar || ""}
             alt={user.display_name}
             className="user-profile-avatar"
           />

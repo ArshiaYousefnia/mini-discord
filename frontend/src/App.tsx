@@ -3,6 +3,8 @@ import Register from "./pages/Register";
 import Login from "./pages/Login";
 import UserProfilePage from "./pages/UserProfilePage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import EditProfilePage from "./pages/EditProfilePage";
+
 
 function Home() {
   return <div>Home page</div>;
@@ -23,6 +25,15 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/users/:userId/profile/update/"
+        element={
+          <ProtectedRoute>
+            <EditProfilePage />
+          </ProtectedRoute>
+        }
+      />
+
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

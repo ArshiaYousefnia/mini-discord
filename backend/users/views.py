@@ -90,8 +90,8 @@ class UserProfileView(generics.RetrieveAPIView):
     lookup_url_kwarg = 'user_id'
 
 
-class UserProfileUpdateView(generics.UpdateAPIView):
-    permission_classes = [IsAuthenticated]
+class UserProfileUpdateView(generics.RetrieveUpdateAPIView ): #changed from generics.UpdateAPIView to generics.RetrieveUpdateAPIView 
+    permission_classes = [IsAuthenticated]                    #this is required in order to retrieve data  
     queryset = User.objects.all()
     serializer_class = UserProfileUpdateSerializer
     lookup_field = "id"
@@ -100,3 +100,4 @@ class UserProfileUpdateView(generics.UpdateAPIView):
     def get_queryset(self):
         # ensure users can only update themselves
         return User.objects.filter(id=self.request.user.id)
+    
