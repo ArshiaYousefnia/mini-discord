@@ -4,7 +4,7 @@ type Props = {
 };
 
 export default function UserAvatar({ src, alt }: Props) {
-  const avatarSrc = src || "/default-avatar.svg";
+  const avatarSrc = src || "/default-avatar.png";
 
   return (
     <img
