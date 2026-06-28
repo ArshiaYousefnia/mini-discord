@@ -8,6 +8,7 @@ from .serializers import UserRegistrationSerializer, LoginSerializer
 from rest_framework.permissions import IsAuthenticated
 from .models import User
 
+
 class UserRegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
 
@@ -87,3 +88,6 @@ class UserProfileView(generics.RetrieveAPIView):
     queryset = User.objects.all()
     lookup_field = 'id'
     lookup_url_kwarg = 'user_id'
+
+
+

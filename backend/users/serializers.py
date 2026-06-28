@@ -3,7 +3,7 @@ from django.core.validators import EmailValidator, MinLengthValidator
 from django.core.exceptions import ValidationError
 
 from .fields import JalaliDateField
-from .models import User
+from .models import User, Message
 import re
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -112,3 +112,22 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'is_online',
         )
         read_only_fields = fields
+
+
+
+
+class MessageEditSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Message
+        fields = ("text",)
+
+    def validate_text(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError("Message cannot be empty.")
+
+        if len(value) > 2000:
+            raise serializers.ValidationError("Message is too long.")
+
+        return value
