@@ -129,8 +129,13 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = ("username", "email", "display_name", "bio", "avatar", "avatar_url")   #added username because the profile page must show it
 
-    def get_avatar_url(self, obj):                              #needed to show image in frontend
-        return obj.avatar_url
+    def get_avatar_url(self, obj):
+        if obj.avatar and hasattr(obj.avatar, "url"):
+            # Return the MinIO URL directly (already includes http://localhost:9000/...)
+            return obj.avatar.url  
+        # Keep localhost:8000 here because this is a static file served by Django, not MinIO
+        return "http://localhost:8000/static/images/default_avatar.svg"
+
 
     def validate_email(self, value):
         EmailValidator()(value)
