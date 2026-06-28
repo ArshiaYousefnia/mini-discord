@@ -22,6 +22,15 @@ export default function EditProfilePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    // 1. Client-side check: If no token is in localStorage, redirect immediately
+    // Inside EditProfilePage.tsx useEffect
+    const token = localStorage.getItem("accessToken"); 
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+
     if (!userId) {
       setError("Invalid user ID.");
       setLoading(false);
@@ -37,8 +46,9 @@ export default function EditProfilePage() {
         setDisplayName(data.display_name);
         setBio(data.bio || "");
       } catch (err: any) {
+        // 2. API check: If the backend says unauthorized, redirect immediately
         if (err.response?.status === 401) {
-          setError("You must be logged in.");
+          navigate("/login", { replace: true });
         } else {
           setError("Failed to load profile.");
         }
@@ -48,7 +58,8 @@ export default function EditProfilePage() {
     };
 
     fetchProfile();
-  }, [userId]);
+  }, [userId, navigate]); // Added navigate to dependency array
+
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -115,25 +126,24 @@ export default function EditProfilePage() {
   };
 
   const handleLogout = async () => {
-    const refreshToken = localStorage.getItem('refresh');
-
     try {
-      // 1. Invalidate session on the Backend (AC 2)
+      const refreshToken = localStorage.getItem("refreshToken");
       if (refreshToken) {
-        await logoutUser(refreshToken); 
+        await logoutUser(refreshToken);
       }
     } catch (error) {
-      console.error('Backend logout failed, but proceeding to clear local session:', error);
+      console.error("Logout failed", error);
     } finally {
-      // 2. Client Cleanup (AC 3)
-      localStorage.removeItem('access');
-      localStorage.removeItem('refresh');
-      // Add any other user state cleanup here if using Context/Redux
+      // Make sure these match exactly what you set in LoginForm
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("username");
+      localStorage.removeItem("email");
       
-      // 3. Redirection (AC 4)
-      navigate('/login');
+      navigate("/login", { replace: true });
     }
   };
+
 
   if (loading) {
     return (
