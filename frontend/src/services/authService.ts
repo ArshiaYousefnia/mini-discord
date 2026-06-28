@@ -17,16 +17,13 @@ export const loginUser = async (
   return response.data;
 };
 
-export const logoutUser = async () => {
-  const refresh = localStorage.getItem("refreshToken");
 
-  if (!refresh) {
-    throw new Error("No refresh token found");
-  }
 
-  const response = await api.post("/api/logout/", {
-    refresh,
+export const logoutUser = async (refreshToken: string) => {
+  // Updated to match path("api/logout/", LogoutView.as_view(), name="logout")
+  const response = await api.post('/api/logout/', { 
+    refresh: refreshToken 
   });
-
   return response.data;
 };
+

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import type { UserEditProfile } from "../types/user";
 import { getUserEditProfile, updateUserProfile } from "../services/users";
 import "../styles/editProfile.css";
+import { logoutUser } from "../services/authService";
 
 export default function EditProfilePage() {
   const { userId } = useParams<{ userId: string }>();
+  const navigate = useNavigate();
 
   const [user, setUser] = useState<UserEditProfile | null>(null);
   const [email, setEmail] = useState("");
@@ -112,6 +114,27 @@ export default function EditProfilePage() {
     }
   };
 
+  const handleLogout = async () => {
+    const refreshToken = localStorage.getItem('refresh');
+
+    try {
+      // 1. Invalidate session on the Backend (AC 2)
+      if (refreshToken) {
+        await logoutUser(refreshToken); 
+      }
+    } catch (error) {
+      console.error('Backend logout failed, but proceeding to clear local session:', error);
+    } finally {
+      // 2. Client Cleanup (AC 3)
+      localStorage.removeItem('access');
+      localStorage.removeItem('refresh');
+      // Add any other user state cleanup here if using Context/Redux
+      
+      // 3. Redirection (AC 4)
+      navigate('/login');
+    }
+  };
+
   if (loading) {
     return (
       <div className="edit-profile-page">
@@ -181,9 +204,14 @@ export default function EditProfilePage() {
 
           {error && <div className="edit-error">{error}</div>}
 
-          <button className="save-button" disabled={saving}>
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
+          <div className="button-group">
+            <button type="submit" className="save-button" disabled={saving}>
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+            <button type="button" className="logout-button" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </form>
       </div>
     </div>

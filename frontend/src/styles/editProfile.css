@@ -77,6 +77,25 @@
   cursor: pointer;
 }
 
+.logout-button {
+  width: 100%;
+  border: none;
+  border-radius: 20px;
+  background: #25d366;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* Adjust this value to increase or decrease the distance */
+}
+
+
 .save-button:hover {
   opacity: 0.95;
 }
