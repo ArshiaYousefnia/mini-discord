@@ -1,14 +1,30 @@
-import { Routes, Route } from "react-router-dom";
-import UserProfilePage from "./pages/UserProfilePage";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Register from "./pages/Register";
+import Login from "./pages/Login";
+import UserProfilePage from "./pages/UserProfilePage";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+function Home() {
+  return <div>Home page</div>;
+}
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<h1>Home Works!</h1>} />
-      <Route path="/users/:userId" element={<UserProfilePage />} />
+      <Route path="/" element={<Home />} />
       <Route path="/register" element={<Register />} />
-      {/* Add your other routes here */}
+      <Route path="/login" element={<Login />} />
+
+      <Route
+        path="/users/:userId"
+        element={
+          <ProtectedRoute>
+            <UserProfilePage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

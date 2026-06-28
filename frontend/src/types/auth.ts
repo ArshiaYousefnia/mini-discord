@@ -24,3 +24,10 @@ export type LoginPayload = {
   username: string;
   password: string;
 };
+
+export type LoginResponse = {
+  refresh: string;
+  access: string;
+  username: string;
+  email: string;
+};

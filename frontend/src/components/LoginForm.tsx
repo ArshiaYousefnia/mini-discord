@@ -1,12 +1,11 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { loginUser } from "../services/authService";
-
-type LoginFormData = {
-  username: string;
-  password: string;
-};
+import type { LoginFormData } from "../types/auth";
 
 export default function LoginForm() {
+  const navigate = useNavigate();
+
   const [form, setForm] = useState<LoginFormData>({
     username: "",
     password: "",
@@ -24,9 +23,9 @@ export default function LoginForm() {
       [name]: value,
     }));
 
-    // optional: clear generic error while typing
     setErrors((prev) => ({
       ...prev,
+      [name]: "",
       general: "",
     }));
   };
@@ -46,7 +45,7 @@ export default function LoginForm() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!validateForm()) return;
@@ -60,24 +59,21 @@ export default function LoginForm() {
         password: form.password,
       });
 
-      console.log("Login successful:", data);
+      localStorage.setItem("accessToken", data.access);
+      localStorage.setItem("refreshToken", data.refresh);
+      localStorage.setItem("username", data.username);
+      localStorage.setItem("email", data.email);
 
-      // Example frontend-only behavior:
-      alert("Login successful");
-
-      // later you can:
-      // localStorage.setItem("token", data.access)
-      // navigate("/channels")
-    } catch (err: any) {
-      const status = err.response?.status;
-      const message = err.response?.data?.detail;
-
-      if (status === 401) {
-        setErrors({ general: "Invalid username or password" });
-      } else if (message) {
-        setErrors({ general: message });
+      navigate("/");
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        setErrors({
+          general: "Invalid username or password",
+        });
       } else {
-        setErrors({ general: "Something went wrong. Please try again." });
+        setErrors({
+          general: "Something went wrong. Please try again.",
+        });
       }
     } finally {
       setLoading(false);
@@ -91,6 +87,7 @@ export default function LoginForm() {
         <input
           id="username"
           name="username"
+          type="text"
           placeholder="Enter your username"
           value={form.username}
           onChange={handleChange}
@@ -103,8 +100,8 @@ export default function LoginForm() {
         <div className="password-field">
           <input
             id="password"
-            type={showPassword ? "text" : "password"}
             name="password"
+            type={showPassword ? "text" : "password"}
             placeholder="Enter your password"
             value={form.password}
             onChange={handleChange}
@@ -115,7 +112,7 @@ export default function LoginForm() {
             onClick={() => setShowPassword((prev) => !prev)}
             aria-label={showPassword ? "Hide password" : "Show password"}
           >
-            {showPassword ? "👁️" : "🙈"}
+            {showPassword ? "Hide" : "Show"}
           </button>
         </div>
         {errors.password && <p className="form-error">{errors.password}</p>}

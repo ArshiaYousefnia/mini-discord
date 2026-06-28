@@ -1,18 +1,15 @@
-import { apiRequest } from "./api";
-import type { UserProfile } from "../types/user";
-import type { BackendUserProfile } from "../types/user";
+import api from "./api";
 
-export async function getUserProfile(userId: string): Promise<UserProfile> {
-  const data = await apiRequest<BackendUserProfile>(
-    `/api/users/${userId}/profile/`
-  );
+export type UserProfile = {
+  id: string;
+  username: string;
+  display_name: string;
+  bio: string;
+  avatar_url: string | null;
+  is_online: boolean;
+};
 
-  return {
-    id: data.id,
-    username: data.username,
-    display_name: data.display_name,
-    bio: data.bio,
-    avatar: data.avatar_url,
-    is_online: data.is_online,
-  };
-}
+export const getUserProfile = async (userId: string): Promise<UserProfile> => {
+  const response = await api.get(`/api/users/${userId}/profile/`);
+  return response.data;
+};
