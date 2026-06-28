@@ -1,6 +1,6 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
-from .serializers import UserProfileSerializer
+from .serializers import UserProfileSerializer, UserProfileUpdateSerializer
 from django.contrib.auth import authenticate
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -87,3 +87,15 @@ class UserProfileView(generics.RetrieveAPIView):
     queryset = User.objects.all()
     lookup_field = 'id'
     lookup_url_kwarg = 'user_id'
+
+
+class UserProfileUpdateView(generics.UpdateAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = User.objects.all()
+    serializer_class = UserProfileUpdateSerializer
+    lookup_field = "id"
+    lookup_url_kwarg = "user_id"
+
+    def get_queryset(self):
+        # ensure users can only update themselves
+        return User.objects.filter(id=self.request.user.id)
