@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from django.core.validators import EmailValidator, MinLengthValidator
+from django.core.validators import EmailValidator, MinLengthValidator, FileExtensionValidator
 from django.core.exceptions import ValidationError
 
 from .fields import JalaliDateField
@@ -100,15 +100,50 @@ class LoginSerializer(serializers.Serializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     avatar_url = serializers.CharField(read_only=True)
+    
+    # فیلد جدید برای دریافت فایل از کاربر با اعتبارسنجی فرمت
+    avatar = serializers.FileField(
+        write_only=True,
+        required=False,
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png'])],
+        error_messages={
+            'invalid_extension': 'Only JPG, JPEG, and PNG files are allowed.'
+        }
+    )
+    
+    # اعمال محدودیت‌های طول دقیقاً طبق تسک (چون در مدل ۱۰۰ بود، اینجا محدودش می‌کنیم)
+    display_name = serializers.CharField(max_length=32, required=False)
+    bio = serializers.CharField(max_length=190, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False)
 
     class Meta:
         model = User
         fields = (
             'id',
             'username',
+            'email',
             'display_name',
             'bio',
+            'avatar',
             'avatar_url',
             'is_online',
         )
-        read_only_fields = fields
+        read_only_fields = ('id', 'username', 'is_online', 'avatar_url')
+
+    def validate_email(self, value):
+        try:
+            EmailValidator(message='Please enter a valid email address.')(value)
+        except ValidationError:
+            raise serializers.ValidationError('Please enter a valid email address.')
+
+        user = self.context['request'].user
+        if value != user.email and User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('This email is already registered.')
+        return value
+
+    def validate_avatar(self, value):
+        if value:
+            max_size = 2 * 1024 * 1024  
+            if value.size > max_size:
+                raise serializers.ValidationError('Image file size must not exceed 2MB.')
+        return value

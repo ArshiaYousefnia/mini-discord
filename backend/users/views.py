@@ -7,6 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserRegistrationSerializer, LoginSerializer
 from rest_framework.permissions import IsAuthenticated
 from .models import User
+from rest_framework.exceptions import PermissionDenied
 
 class UserRegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -81,9 +82,17 @@ class LogoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-class UserProfileView(generics.RetrieveAPIView):
+class UserProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = UserProfileSerializer
     queryset = User.objects.all()
     lookup_field = 'id'
     lookup_url_kwarg = 'user_id'
+
+    def get_object(self):
+        obj = super().get_object()
+        
+        if self.request.method in ['PUT', 'PATCH'] and obj != self.request.user:
+            raise PermissionDenied("You do not have permission to edit this profile.")
+            
+        return obj
