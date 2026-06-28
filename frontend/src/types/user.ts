@@ -21,5 +21,5 @@ export type UserEditProfile = {
   email: string;
   display_name: string;
   bio?: string | null;
-  avatar?: string | null;
+  avatar_url?: string | null;
 };

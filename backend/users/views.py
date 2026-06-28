@@ -7,7 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserRegistrationSerializer, LoginSerializer
 from rest_framework.permissions import IsAuthenticated
 from .models import User
-
+from rest_framework.parsers import MultiPartParser, FormParser
 
 class UserRegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -90,14 +90,16 @@ class UserProfileView(generics.RetrieveAPIView):
     lookup_url_kwarg = 'user_id'
 
 
-class UserProfileUpdateView(generics.RetrieveUpdateAPIView ): #changed from generics.UpdateAPIView to generics.RetrieveUpdateAPIView 
-    permission_classes = [IsAuthenticated]                    #this is required in order to retrieve data  
-    queryset = User.objects.all()
+
+class UserProfileUpdateView(generics.RetrieveUpdateAPIView): #changed from generics.UpdateAPIView to generics.RetrieveUpdateAPIView 
+    permission_classes = [IsAuthenticated]                   #this is required in order to retrieve data  
     serializer_class = UserProfileUpdateSerializer
+    parser_classes = [MultiPartParser, FormParser]           #added this line so it can show image
     lookup_field = "id"
     lookup_url_kwarg = "user_id"
 
     def get_queryset(self):
-        # ensure users can only update themselves
+        # ensure users can only retrieve/update themselves
         return User.objects.filter(id=self.request.user.id)
+
     

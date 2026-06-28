@@ -118,15 +118,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(read_only=True)  # added
+    username = serializers.CharField(read_only=True)
     email = serializers.EmailField(required=False)
     display_name = serializers.CharField(required=False, max_length=32)
     bio = serializers.CharField(required=False, allow_blank=True, max_length=190)
     avatar = serializers.FileField(required=False)
+    avatar_url = serializers.SerializerMethodField()            #nedded to show image in frontend
 
     class Meta:
         model = User
-        fields = ("username", "email", "display_name", "bio", "avatar")  # added username because the username must also be displayed
+        fields = ("username", "email", "display_name", "bio", "avatar", "avatar_url")   #added username because the profile page must show it
+
+    def get_avatar_url(self, obj):                              #needed to show image in frontend
+        return obj.avatar_url
 
     def validate_email(self, value):
         EmailValidator()(value)
@@ -151,12 +155,12 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             if value.size > 2 * 1024 * 1024:
                 raise serializers.ValidationError("Avatar must be smaller than 2MB.")
 
-            if not value.content_type in ["image/jpeg", "image/png"]:
+            if value.content_type not in ["image/jpeg", "image/png"]:
                 raise serializers.ValidationError("Only JPG and PNG images are allowed.")
 
         return value
 
     def update(self, instance, validated_data):
         validated_data.pop("username", None)
-
         return super().update(instance, validated_data)
+

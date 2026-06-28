@@ -5,6 +5,7 @@ from django.core.files.storage import default_storage
 from django.core.validators import MinLengthValidator, EmailValidator
 from django.db import models
 from persiantools.jdatetime import JalaliDate
+from django.templatetags.static import static
 
 from mini_discord import settings
 
@@ -90,9 +91,12 @@ class User(AbstractUser):
         Returns the full URL of the avatar if it exists,
         otherwise a default static avatar URL.
         """
-        if self.avatar and self.avatar.name:
-            return default_storage.url(self.avatar.name)
-        return f"{settings.STATIC_URL}images/default_avatar.svg"
+        if self.avatar and hasattr(self.avatar, "url"):
+            if "default_profile.png" not in self.avatar.name:
+                return self.avatar.url
+        return static("images/default_avatar.svg")
+
+        
 
     USERNAME_FIELD = 'username'  # Use username as login identifier
     REQUIRED_FIELDS = ['email', 'display_name']  # Required for createsuperuser

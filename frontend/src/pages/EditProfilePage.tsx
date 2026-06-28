@@ -4,8 +4,6 @@ import type { UserEditProfile } from "../types/user";
 import { getUserEditProfile, updateUserProfile } from "../services/users";
 import "../styles/editProfile.css";
 
-
-
 export default function EditProfilePage() {
   const { userId } = useParams<{ userId: string }>();
 
@@ -13,7 +11,9 @@ export default function EditProfilePage() {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
-  const [avatar, setAvatar] = useState<File | null>(null);
+
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -48,9 +48,20 @@ export default function EditProfilePage() {
     fetchProfile();
   }, [userId]);
 
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (avatarPreview) {
+      URL.revokeObjectURL(avatarPreview);
+    }
+
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!userId) return;
 
     if (displayName.length > 32) {
@@ -63,7 +74,7 @@ export default function EditProfilePage() {
       return;
     }
 
-    if (avatar && avatar.size > 2 * 1024 * 1024) {
+    if (avatarFile && avatarFile.size > 2 * 1024 * 1024) {
       setError("Avatar must be smaller than 2MB.");
       return;
     }
@@ -77,12 +88,18 @@ export default function EditProfilePage() {
       formData.append("display_name", displayName);
       formData.append("bio", bio);
 
-      if (avatar) {
-        formData.append("avatar", avatar);
+      if (avatarFile) {
+        formData.append("avatar", avatarFile);
       }
 
       const updated = await updateUserProfile(userId, formData);
+
       setUser(updated);
+
+      // clear preview so UI switches to backend avatar_url
+      setAvatarPreview(null);
+      setAvatarFile(null);
+
       alert("Profile updated successfully.");
     } catch (err: any) {
       if (err.response?.data) {
@@ -119,7 +136,7 @@ export default function EditProfilePage() {
         <form onSubmit={handleSubmit}>
           <div className="edit-profile-header">
             <img
-              src={user.avatar || ""}
+              src={avatarPreview || user.avatar_url || ""}
               alt={user.display_name}
               className="edit-profile-avatar"
             />
@@ -127,9 +144,7 @@ export default function EditProfilePage() {
             <input
               type="file"
               accept="image/png, image/jpeg"
-              onChange={(e) =>
-                setAvatar(e.target.files ? e.target.files[0] : null)
-              }
+              onChange={handleAvatarChange}
             />
           </div>
 
