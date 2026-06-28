@@ -1,23 +1,22 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+import axios from "axios";
 
-export async function apiRequest<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
+const api = axios.create({
+  baseURL: "/",
+});
+
+api.interceptors.request.use((config) => {
   const token = localStorage.getItem("accessToken");
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
-
-  if (!res.ok) {
-    throw new Error(`API error ${res.status}: ${res.statusText}`);
+  // do NOT attach token to login/register
+  if (
+    token &&
+    !config.url?.includes("/api/login/") &&
+    !config.url?.includes("/api/register/")
+  ) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
 
-  return res.json();
-}
+  return config;
+});
+
+export default api;
