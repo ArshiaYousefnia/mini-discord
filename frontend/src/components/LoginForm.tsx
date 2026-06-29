@@ -62,12 +62,9 @@ export default function LoginForm() {
       localStorage.setItem("accessToken", data.access);
       localStorage.setItem("refreshToken", data.refresh);
       localStorage.setItem("username", data.username);
-      localStorage.setItem("Id", data.id);
       localStorage.setItem("email", data.email);
-      localStorage.setItem("display_name", data.display_name);
-      localStorage.setItem("avatar_url", data.avatar_url);
 
-      navigate("/HomePage/");
+      navigate("/");
     } catch (error: any) {
       if (error.response?.status === 401) {
         setErrors({
