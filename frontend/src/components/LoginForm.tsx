@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom"; // Imported Link here
+import { useNavigate } from "react-router-dom";
 import { loginUser } from "../services/authService";
 import type { LoginFormData } from "../types/auth";
 
@@ -62,12 +62,9 @@ export default function LoginForm() {
       localStorage.setItem("accessToken", data.access);
       localStorage.setItem("refreshToken", data.refresh);
       localStorage.setItem("username", data.username);
-      localStorage.setItem("Id", data.id);
       localStorage.setItem("email", data.email);
-      localStorage.setItem("display_name", data.display_name);
-      localStorage.setItem("avatar_url", data.avatar_url);
 
-      navigate("/HomePage/");
+      navigate("/");
     } catch (error: any) {
       if (error.response?.status === 401) {
         setErrors({
@@ -128,13 +125,6 @@ export default function LoginForm() {
       <button className="login-button" type="submit" disabled={loading}>
         {loading ? "Logging in..." : "Login"}
       </button>
-
-      {/* Added the registration link below the login button */}
-      <div style={{ marginTop: "15px", textAlign: "center" }}>
-        <p style={{ margin: 0, fontSize: "14px" }}>
-          Don't have an account? <Link to="/register" style={{ color: "#007bff", textDecoration: "none" }}>Register here</Link>
-        </p>
-      </div>
     </form>
   );
 }

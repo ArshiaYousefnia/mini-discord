@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import type { UserEditProfile } from "../types/user";
-import { getUserEditProfile, updateUserProfile} from "../services/users";
+import { getUserEditProfile} from "../services/users";
 import "../styles/editProfile.css";
 import { logoutUser } from "../services/authService";
-import { clear } from 'idb-keyval';
 
 export default function EditProfilePage() {
-  const userId = localStorage.getItem("Id");
-  console.log(userId);
-  
+  const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
 
   const [user, setUser] = useState<UserEditProfile | null>(null);
@@ -108,25 +105,10 @@ export default function EditProfilePage() {
         formData.append("avatar", avatarFile);
       }
 
-      const updated = await updateUserProfile(userId, formData);
+      //const updated = await updateUserProfile(userId, formData);
 
-      setUser(updated);
+      //setUser(updated);
 
-      localStorage.setItem("display_name", updated.display_name);
-      if (updated.avatar) { 
-        localStorage.setItem("avatar_url", updated.avatar); 
-      }
-
-      localStorage.setItem("display_name", updated.display_name);
-      if (updated.avatar) { 
-        localStorage.setItem("avatar_url", updated.avatar); 
-      }
-
-      // --- ADD THIS LINE ---
-      window.dispatchEvent(new Event("profileUpdated"));
-      // ---------------------
-
-      setAvatarPreview(null);
       // clear preview so UI switches to backend avatar_url
       setAvatarPreview(null);
       setAvatarFile(null);
@@ -143,57 +125,24 @@ export default function EditProfilePage() {
     }
   };
 
-
-
-// ... inside your component
-
-const handleLogout = async () => {
-  try {
-    const refreshToken = localStorage.getItem("refreshToken");
-    if (refreshToken) {
-      await logoutUser(refreshToken);
-    }
-  } catch (error) {
-    console.error("Logout failed", error);
-  } finally {
-    // --- ADD THIS LINE FIRST ---
-    window.dispatchEvent(new Event("userLoggedOut"));
-    // ----------------------------
-
-    // 1. Clear Local Storage
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("username");
-    localStorage.removeItem("email");
-    localStorage.removeItem("id");
-    localStorage.removeItem("display_name");
-    localStorage.removeItem("avatar_url");
-
-    // 2. Clear Browser Cache API
-    if ('caches' in window) {
-      try {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map(name => caches.delete(name)));
-      } catch (cacheError) {
-        console.error("Failed to clear browser cache", cacheError);
-      }
-    }
-
-    // 3. Clear IndexedDB
+  const handleLogout = async () => {
     try {
-      await clear(); 
-      console.log("IndexedDB media cache wiped successfully.");
-    } catch (idbError) {
-      console.error("Failed to clear IndexedDB", idbError);
+      const refreshToken = localStorage.getItem("refreshToken");
+      if (refreshToken) {
+        await logoutUser(refreshToken);
+      }
+    } catch (error) {
+      console.error("Logout failed", error);
+    } finally {
+      // Make sure these match exactly what you set in LoginForm
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("username");
+      localStorage.removeItem("email");
+      
+      navigate("/login", { replace: true });
     }
-
-    // 4. Redirect
-    navigate("/login", { replace: true });
-  }
-};
-
-
-
+  };
 
 
   if (loading) {
@@ -220,7 +169,7 @@ const handleLogout = async () => {
         <form onSubmit={handleSubmit}>
           <div className="edit-profile-header">
             <img
-              src={avatarPreview || user.avatar || ""}
+              src={avatarPreview || user.avatar_url || ""}
               alt={user.display_name}
               className="edit-profile-avatar"
             />
