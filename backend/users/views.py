@@ -89,7 +89,7 @@ class UserProfileView(generics.RetrieveAPIView):
     lookup_url_kwarg = 'user_id'
 
 
-class UserProfileUpdateView(generics.UpdateAPIView):
+class UserProfileUpdateView(generics.RetrieveUpdateAPIView):        #needed in order to retrieve data
     permission_classes = [IsAuthenticated]
     queryset = User.objects.all()
     serializer_class = UserProfileUpdateSerializer
