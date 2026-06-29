@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { UserEditProfile } from "../types/user";
-import { getUserEditProfile, updateUserProfile } from "../services/users";
+import { getUserEditProfile} from "../services/users";
 import "../styles/editProfile.css";
 import { logoutUser } from "../services/authService";
 
@@ -105,9 +105,9 @@ export default function EditProfilePage() {
         formData.append("avatar", avatarFile);
       }
 
-      const updated = await updateUserProfile(userId, formData);
+      //const updated = await updateUserProfile(userId, formData);
 
-      setUser(updated);
+      //setUser(updated);
 
       // clear preview so UI switches to backend avatar_url
       setAvatarPreview(null);

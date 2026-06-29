@@ -118,24 +118,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(read_only=True)
     email = serializers.EmailField(required=False)
     display_name = serializers.CharField(required=False, max_length=32)
     bio = serializers.CharField(required=False, allow_blank=True, max_length=190)
     avatar = serializers.FileField(required=False)
-    avatar_url = serializers.SerializerMethodField()            #nedded to show image in frontend
 
     class Meta:
         model = User
-        fields = ("username", "email", "display_name", "bio", "avatar", "avatar_url")   #added username because the profile page must show it
-
-    def get_avatar_url(self, obj):
-        if obj.avatar and hasattr(obj.avatar, "url"):
-            # Return the MinIO URL directly (already includes http://localhost:9000/...)
-            return obj.avatar.url  
-        # Keep localhost:8000 here because this is a static file served by Django, not MinIO
-        return "http://localhost:8000/static/images/default_avatar.svg"
-
+        fields = ("email", "display_name", "bio", "avatar")
 
     def validate_email(self, value):
         EmailValidator()(value)
@@ -160,12 +150,12 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             if value.size > 2 * 1024 * 1024:
                 raise serializers.ValidationError("Avatar must be smaller than 2MB.")
 
-            if value.content_type not in ["image/jpeg", "image/png"]:
+            if not value.content_type in ["image/jpeg", "image/png"]:
                 raise serializers.ValidationError("Only JPG and PNG images are allowed.")
 
         return value
 
     def update(self, instance, validated_data):
         validated_data.pop("username", None)
-        return super().update(instance, validated_data)
 
+        return super().update(instance, validated_data)
