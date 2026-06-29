@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import type { UserEditProfile } from "../types/user";
-import { getUserEditProfile, updateUserProfile} from "../services/users";
+import { getUserEditProfile} from "../services/users";
 import "../styles/editProfile.css";
 import { logoutUser } from "../services/authService";
 
 export default function EditProfilePage() {
-  const userId = localStorage.getItem("Id");
-  console.log(userId);
-  
+  const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
 
   const [user, setUser] = useState<UserEditProfile | null>(null);
@@ -107,25 +105,10 @@ export default function EditProfilePage() {
         formData.append("avatar", avatarFile);
       }
 
-      const updated = await updateUserProfile(userId, formData);
+      //const updated = await updateUserProfile(userId, formData);
 
-      setUser(updated);
+      //setUser(updated);
 
-      localStorage.setItem("display_name", updated.display_name);
-      if (updated.avatar) { 
-        localStorage.setItem("avatar_url", updated.avatar); 
-      }
-
-      localStorage.setItem("display_name", updated.display_name);
-      if (updated.avatar) { 
-        localStorage.setItem("avatar_url", updated.avatar); 
-      }
-
-      // --- ADD THIS LINE ---
-      window.dispatchEvent(new Event("profileUpdated"));
-      // ---------------------
-
-      setAvatarPreview(null);
       // clear preview so UI switches to backend avatar_url
       setAvatarPreview(null);
       setAvatarFile(null);
@@ -156,9 +139,7 @@ export default function EditProfilePage() {
       localStorage.removeItem("refreshToken");
       localStorage.removeItem("username");
       localStorage.removeItem("email");
-      localStorage.removeItem("id");
-      localStorage.removeItem("display_name");
-      localStorage.removeItem("avatar_url");
+      
       navigate("/login", { replace: true });
     }
   };
@@ -188,7 +169,7 @@ export default function EditProfilePage() {
         <form onSubmit={handleSubmit}>
           <div className="edit-profile-header">
             <img
-              src={avatarPreview || user.avatar || ""}
+              src={avatarPreview || user.avatar_url || ""}
               alt={user.display_name}
               className="edit-profile-avatar"
             />
