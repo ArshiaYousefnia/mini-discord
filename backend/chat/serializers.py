@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from django.core.validators import MaxLengthValidator
 from .models import Conversation, ConversationMember, Message
 
 

@@ -1,7 +1,6 @@
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
-from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember, Message
@@ -69,11 +68,11 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         # Save with sender = request.user
         message = serializer.save(sender=request.user)
 
-        # Optionally update last_read_message for sender (so they mark own message as read)
+        # update last_read_message for sender (so they mark own message as read)
         # Not required for the story, but useful later
-        # member = ConversationMember.objects.get(conversation=conversation, user=request.user)
-        # member.last_read_message = message
-        # member.save()
+        member = ConversationMember.objects.get(conversation=conversation, user=request.user)
+        member.last_read_message = message
+        member.save()
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
