@@ -64,7 +64,7 @@ export default function LoginForm() {
       localStorage.setItem("username", data.username);
       localStorage.setItem("email", data.email);
 
-      navigate("/");
+      navigate("/HomePage/");
     } catch (error: any) {
       if (error.response?.status === 401) {
         setErrors({
