@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import UserProfilePage from "./pages/UserProfilePage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import EditProfilePage from "./pages/EditProfilePage";
+import ChatPage from "./pages/ChatPage";
 
 
 function Home() {
@@ -33,6 +34,17 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
+      <Route
+        path="/chat/:userId"
+        element={
+          <ProtectedRoute>
+            <ChatPage />
+          </ProtectedRoute>
+        }
+      />
+      {/* <Route path="/chat/:userId" element={<ChatPage />} /> */}
+
 
 
       <Route path="*" element={<Navigate to="/" replace />} />
