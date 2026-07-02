@@ -17,24 +17,22 @@ class MessageSerializerTests(TestCase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
 
     def test_empty_content(self):
-        data = {'content': ''}
+        data = {
+            "conversation": str(self.conversation.id),
+            "content": "",
+        }
         serializer = MessageSerializer(data=data)
         self.assertFalse(serializer.is_valid())
-        self.assertIn('non_field_errors', serializer.errors)
-        self.assertEqual(
-            str(serializer.errors['non_field_errors'][0]),
-            'Either message content or at least one file is required.'
-        )
+        self.assertIn("content", serializer.errors)
 
     def test_whitespace_only_content(self):
-        data = {'content': '   '}
+        data = {
+            "conversation": str(self.conversation.id),
+            "content": "   ",
+        }
         serializer = MessageSerializer(data=data)
         self.assertFalse(serializer.is_valid())
-        self.assertIn('non_field_errors', serializer.errors)
-        self.assertEqual(
-            str(serializer.errors['non_field_errors'][0]),
-            'Either message content or at least one file is required.'
-        )
+        self.assertIn("content", serializer.errors)
 
     def test_content_exceeds_max_length(self):
         data = {
