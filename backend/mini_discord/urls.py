@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from users.views import UserProfileUpdateView
 from mini_discord import settings
 from users.views import UserRegistrationView, LoginView, LogoutView, UserProfileView
@@ -32,6 +32,7 @@ urlpatterns = [
     UserProfileUpdateView.as_view(),
     name='user-profile-update'
     ),
+    path('api/chat/', include('chat.urls')),
 ]
 
 
