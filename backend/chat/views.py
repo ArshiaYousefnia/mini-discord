@@ -89,14 +89,58 @@ class ConversationViewSet(mixins.ListModelMixin,
         ).distinct()
 
 
-class MessageViewSet(mixins.ListModelMixin,
-                     viewsets.GenericViewSet):
+class MessageViewSet(
+    mixins.ListModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet
+):
     permission_classes = [IsAuthenticated]
     serializer_class = MessageSerializer
 
     def get_queryset(self):
-        conversation_id = self.kwargs.get('conversation_pk')
+        conversation_id = self.kwargs.get("conversation_pk")
+
         return Message.objects.filter(
             conversation_id=conversation_id,
             conversation__members__user=self.request.user,
-        ).order_by('created_at')
+            is_deleted=False
+        ).order_by("created_at")
+    
+
+
+    def partial_update(self, request, *args, **kwargs):
+        message = self.get_object()
+
+        # ownership check
+        if message.sender != request.user:
+            return Response(
+                {"detail": "You can only edit your own messages."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = self.get_serializer(
+            message,
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(is_edited=True)
+        return Response(serializer.data)
+    
+
+    def destroy(self, request, *args, **kwargs):
+
+        message = self.get_object()
+
+        if message.sender != request.user:
+            return Response(
+                {"detail": "You can only delete your own messages."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        message.is_deleted = True
+        message.content = ""
+        message.save(update_fields=["is_deleted", "content", "updated_at"])
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
