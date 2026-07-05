@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     "drf_spectacular",
+    'storages',
     'users',
     'chat',
 ]
@@ -164,10 +165,10 @@ AWS_S3_USE_SSL = False
 AWS_S3_VERIFY = False
 AWS_DEFAULT_ACL = 'public-read'
 AWS_QUERYSTRING_AUTH = False
-AWS_S3_CUSTOM_DOMAIN = 'localhost:9000/avatars'
 AWS_AUTO_CREATE_BUCKET = True
 
-AWS_S3_URL_PROTOCOL = 'http'
+AWS_S3_CUSTOM_DOMAIN = 'localhost:9000/avatars'
+AWS_S3_URL_PROTOCOL = 'http:'
 
 
 STATIC_URL = 'static/'
