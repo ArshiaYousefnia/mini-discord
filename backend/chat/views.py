@@ -3,10 +3,20 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+
 from .models import Conversation, ConversationMember, Message
-from .serializers import MessageSerializer, ConversationSerializer
+from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer
 
 from django.contrib.auth import get_user_model
+
+from django.db.models import OuterRef, Subquery, Count, Q, Value, Prefetch
+from django.db.models.functions import Coalesce
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
+from .models import Conversation, ConversationMember, Message
+from .serializers import ConversationListSerializer
+
 User = get_user_model()
 
 
@@ -144,3 +154,85 @@ class MessageViewSet(
         message.save(update_fields=["is_deleted", "content", "updated_at"])
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ConversationListView(ListAPIView):
+    serializer_class = ConversationListSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # Subquery to get the timestamp of the user's last_read_message (or NULL)
+        last_read_created = Subquery(
+            ConversationMember.objects.filter(
+                conversation=OuterRef('id'),
+                user=user
+            ).values('last_read_message__created_at')[:1]
+        )
+
+        # Annotate unread count: messages newer than last_read_created
+        queryset = Conversation.objects.filter(
+            members__user=user
+        ).annotate(
+            unread_count=Count(
+                'messages',
+                filter=Q(
+                    messages__created_at__gt=Coalesce(last_read_created, Value('1970-01-01'))
+                )
+            )
+        ).distinct()
+
+        # Prefetch the latest message for each conversation
+        latest_msg_subquery = Message.objects.filter(
+            conversation=OuterRef('id')
+        ).order_by('-created_at')[:1]
+
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                'messages',
+                queryset=Message.objects.filter(
+                    id__in=Subquery(latest_msg_subquery.values('id'))
+                ),
+                to_attr='_last_message_prefetched'   # this becomes a list (0 or 1 item)
+            )
+        )
+
+        # Prefetch members with user details to avoid extra queries for DM name/avatar
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                'members',
+                queryset=ConversationMember.objects.select_related('user')
+            )
+        )
+
+        return queryset
+
+class ConversationMarkReadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, conversation_id):
+        try:
+            conversation = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return Response({"detail": "Conversation not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Ensure user is a member
+        try:
+            member = ConversationMember.objects.get(conversation=conversation, user=request.user)
+        except ConversationMember.DoesNotExist:
+            return Response({"detail": "You are not a member of this conversation."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = ConversationMarkReadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        message_id = serializer.validated_data['last_read_message_id']
+        try:
+            message = Message.objects.get(id=message_id, conversation=conversation)
+        except Message.DoesNotExist:
+            return Response({"detail": "Message not found in this conversation."}, status=status.HTTP_404_NOT_FOUND)
+
+        member.last_read_message = message
+        member.save(update_fields=['last_read_message'])
+        return Response({"detail": "Read status updated."}, status=status.HTTP_200_OK)
