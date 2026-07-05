@@ -40,6 +40,8 @@ AUTH_USER_MODEL = 'users.User'
 
 
 
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -52,7 +54,9 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    "drf_spectacular",
     'users',
+    'chat',
 ]
 
 SIMPLE_JWT = {
@@ -155,12 +159,16 @@ DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 AWS_ACCESS_KEY_ID = os.getenv('MINIO_ACCESS_KEY', 'minioadmin')
 AWS_SECRET_ACCESS_KEY = os.getenv('MINIO_SECRET_KEY', 'minioadmin')
 AWS_STORAGE_BUCKET_NAME = os.getenv('MINIO_BUCKET', 'avatars')
-AWS_S3_ENDPOINT_URL = os.getenv('MINIO_ENDPOINT', 'http://localhost:9000')
+AWS_S3_ENDPOINT_URL = 'http://minio:9000'
 AWS_S3_USE_SSL = False
 AWS_S3_VERIFY = False
 AWS_DEFAULT_ACL = 'public-read'
 AWS_QUERYSTRING_AUTH = False
-AWS_S3_CUSTOM_DOMAIN = f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}'
+AWS_S3_CUSTOM_DOMAIN = 'localhost:9000/avatars'
+AWS_AUTO_CREATE_BUCKET = True
+
+AWS_S3_URL_PROTOCOL = 'http'
+
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
@@ -175,4 +183,12 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "My API",
+    "DESCRIPTION": "Backend API",
+    "VERSION": "1.0.0",
 }
