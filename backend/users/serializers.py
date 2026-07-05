@@ -159,3 +159,16 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         validated_data.pop("username", None)
 
         return super().update(instance, validated_data)
+    
+
+class UserSearchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "username",
+            "display_name",
+            "bio",
+            "avatar_url",
+            "is_online",
+        )
