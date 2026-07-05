@@ -173,6 +173,7 @@ else:
     AWS_QUERYSTRING_AUTH = False
     AWS_AUTO_CREATE_BUCKET = True
 
+
     AWS_S3_CUSTOM_DOMAIN = 'localhost:9000/avatars'
     AWS_S3_URL_PROTOCOL = 'http:'
 
