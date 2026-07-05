@@ -27,7 +27,7 @@ export default function App() {
         }
       />
       <Route
-        path="/users/:userId/profile/update/"
+        path="/profile/"
         element={
           <ProtectedRoute>
             <EditProfilePage />
