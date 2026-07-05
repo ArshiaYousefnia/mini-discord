@@ -4,6 +4,8 @@ import type { Conversation, Message } from "../types/chat";
 
 export async function getConversations(): Promise<Conversation[]> {
   const response = await api.get<Conversation[]>("/api/chat/conversations/");
+  console.log(response.data);
+  
   return response.data;
 }
 
