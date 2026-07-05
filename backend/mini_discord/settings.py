@@ -156,6 +156,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
+
 if 'test' in sys.argv:
     # Use filesystem or in-memory storage for tests
     DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
@@ -174,6 +175,7 @@ else:
 
     AWS_S3_CUSTOM_DOMAIN = 'localhost:9000/avatars'
     AWS_S3_URL_PROTOCOL = 'http:'
+
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

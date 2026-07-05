@@ -1,12 +1,15 @@
 from rest_framework import serializers
 from .models import Conversation, ConversationMember, Message
 
+<<<<<<< HEAD
 class MinimalMessageSerializer(serializers.ModelSerializer):
     sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
 
     class Meta:
         model = Message
         fields = ['id', 'content', 'sender_display_name', 'created_at']
+=======
+>>>>>>> 6c55967 (getting the backend code)
 
 class MessageSerializer(serializers.ModelSerializer):
     sender_username = serializers.CharField(source='sender.username', read_only=True)
@@ -36,12 +39,15 @@ class MessageSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
 
+<<<<<<< HEAD
     def validate(self, data):
         if data.get('reply_to'):
             if data['reply_to'].conversation_id != data['conversation'].id:
                 raise serializers.ValidationError("Reply message does not belong to this conversation.")
         return data
 
+=======
+>>>>>>> 6c55967 (getting the backend code)
     def validate_content(self, value):
         # Strip whitespace and check it's not empty
         if not value or not value.strip():
@@ -63,7 +69,7 @@ class ConversationMemberSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField()  # or use a user serializer
     class Meta:
         model = ConversationMember
-        fields = ['user', 'joined_at']
+
 
 class ConversationListSerializer(serializers.ModelSerializer):
     type = serializers.CharField(source='type')   # the choice is already a string
@@ -100,5 +106,6 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
 class ConversationMarkReadSerializer(serializers.Serializer):
     last_read_message_id = serializers.UUIDField(required=True)
+
 
 

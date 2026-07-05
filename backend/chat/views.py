@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+
 from rest_framework.views import APIView
 
 from .models import Conversation, ConversationMember, Message
@@ -16,6 +17,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember, Message
 from .serializers import ConversationListSerializer
+
 
 User = get_user_model()
 
@@ -73,6 +75,7 @@ class SendDirectMessageView(viewsets.GenericViewSet):
             'conversation': str(conversation.id),  # Need to pass UUID as string
             'content': content,
             'reply_to': reply_to,
+
         })
         serializer.is_valid(raise_exception=True)
 
@@ -153,6 +156,7 @@ class MessageViewSet(
         message.is_deleted = True
         message.content = ""
         message.save(update_fields=["is_deleted", "content", "updated_at"])
+
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -237,3 +241,4 @@ class ConversationMarkReadView(APIView):
         member.last_read_message = message
         member.save(update_fields=['last_read_message'])
         return Response({"detail": "Read status updated."}, status=status.HTTP_200_OK)
+
