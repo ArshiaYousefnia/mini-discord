@@ -78,7 +78,7 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
 
     avatar = models.FileField(
-        upload_to='avatars/',
+        upload_to='',
         blank=True,
         null=True,
         default=None
@@ -118,3 +118,4 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.username
+    
