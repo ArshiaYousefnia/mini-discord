@@ -19,7 +19,7 @@ from django.contrib import admin
 from django.urls import path, include
 from users.views import UserProfileUpdateView
 from mini_discord import settings
-from users.views import UserRegistrationView, LoginView, LogoutView, UserProfileView
+from users.views import UserRegistrationView, LoginView, LogoutView, UserProfileView, UserSearchView
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -48,6 +48,11 @@ urlpatterns = [
         "api/redoc/",
         SpectacularRedocView.as_view(url_name="schema"),
         name="redoc",
+    ),
+    path(
+    "api/users/search/",
+    UserSearchView.as_view(),
+    name="user-search",
     ),
 ]
 
