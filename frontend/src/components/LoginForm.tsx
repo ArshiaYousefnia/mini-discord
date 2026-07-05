@@ -62,7 +62,9 @@ export default function LoginForm() {
       localStorage.setItem("accessToken", data.access);
       localStorage.setItem("refreshToken", data.refresh);
       localStorage.setItem("username", data.username);
+      localStorage.setItem("Id", data.id);
       localStorage.setItem("email", data.email);
+      localStorage.setItem("display_name", data.display_name);
 
       navigate("/HomePage/");
     } catch (error: any) {
