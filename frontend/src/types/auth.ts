@@ -32,4 +32,5 @@ export type LoginResponse = {
   email: string;
   id: string;
   display_name: string;
+  avatar_url: string;
 };

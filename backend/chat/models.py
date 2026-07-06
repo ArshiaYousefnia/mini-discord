@@ -26,7 +26,6 @@ class Conversation(models.Model):
         default=None
     )
 
-
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

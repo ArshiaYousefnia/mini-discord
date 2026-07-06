@@ -65,6 +65,7 @@ export default function LoginForm() {
       localStorage.setItem("Id", data.id);
       localStorage.setItem("email", data.email);
       localStorage.setItem("display_name", data.display_name);
+      localStorage.setItem("avatar_url", data.avatar_url);
 
       navigate("/HomePage/");
     } catch (error: any) {

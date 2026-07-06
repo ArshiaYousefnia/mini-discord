@@ -1,12 +1,17 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
+<<<<<<< HEAD
 
 from .views import SendDirectMessageView, ConversationViewSet, MessageViewSet, ConversationListView, \
     ConversationMarkReadView
 
 
 
+=======
+from .views import SendDirectMessageView, ConversationViewSet, MessageViewSet, ConversationListView, \
+    ConversationMarkReadView
+>>>>>>> c20b185 (added new backend)
 
 router = DefaultRouter()
 router.register(r'dm', SendDirectMessageView, basename='direct-message')
@@ -22,6 +27,7 @@ conversation_message_detail = MessageViewSet.as_view({
 })
 
 urlpatterns = [
+<<<<<<< HEAD
 
     path('conversations/', ConversationListView.as_view(), name='conversation-list'),
 path('conversations/<uuid:conversation_id>/mark_read/', ConversationMarkReadView.as_view(), name='conversation-mark-read'),
@@ -29,6 +35,11 @@ path('conversations/<uuid:conversation_id>/mark_read/', ConversationMarkReadView
 
 
 
+=======
+    path('conversations/', ConversationListView.as_view(), name='conversation-list'),
+path('conversations/<uuid:conversation_id>/mark_read/', ConversationMarkReadView.as_view(), name='conversation-mark-read'),
+    path('', include(router.urls)),
+>>>>>>> c20b185 (added new backend)
     path(
         'conversations/<uuid:conversation_pk>/messages/',
         conversation_messages_list,
