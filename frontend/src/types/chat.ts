@@ -62,4 +62,5 @@ export type SendConversationMessagePayload = {
   conversation_id: string;
   content: string;
   reply_to?: string | null;
+  recipient_id?: string | null;
 };

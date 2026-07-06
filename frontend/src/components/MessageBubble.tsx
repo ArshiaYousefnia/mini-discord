@@ -79,6 +79,7 @@ export default function MessageBubble({
 
   return (
     <div
+      id={`msg-${message.id}`}
       className={`message-bubble-wrapper ${isMe ? "outgoing" : "incoming"} ${
         message.is_deleted ? "deleted" : ""
       }`}
@@ -104,7 +105,14 @@ export default function MessageBubble({
 
       <div className="message-bubble">
         {replyMessage && (
-          <div className="message-reply-preview">
+          <div 
+            className="message-reply-preview"
+            onClick={() => {
+              const target = document.getElementById(`msg-${replyMessage.id}`);
+              target?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+            style={{ cursor: "pointer" }}
+          >
             <div className="reply-sender">
               {replyMessage.sender_display_name || replyMessage.sender_username}
             </div>

@@ -154,11 +154,12 @@ export const chatService = {
       return localMessage;
     }
   },
-
+  
   sendConversationMessage: async ({
     conversation_id,
     content,
     reply_to = null,
+    recipient_id,
   }: SendConversationMessagePayload): Promise<Message> => {
     if (!content.trim()) {
       throw new Error("Message cannot be empty.");
@@ -169,26 +170,33 @@ export const chatService = {
     }
 
     try {
+      // اگر چت از نوع DM باشد و شناسه مخاطب را داشته باشیم، از Endpoint سالم استفاده می‌کنیم
+      if (recipient_id) {
+        const response = await api.post<Message>("/api/chat/dm/", {
+          recipient_id,
+          content,
+          reply_to,
+        });
+        const message = response.data;
+        upsertLocalMessage(message);
+        return message;
+      }
+      
+      // در غیر این صورت (مانند چت‌های گروهی یا کانال‌ها در آینده) به آدرس قبلی می‌فرستیم
       const response = await api.post<Message>(
         `/api/chat/conversations/${conversation_id}/messages/`,
         { content, reply_to }
       );
       const message = response.data;
-
       upsertLocalMessage(message);
       return message;
     } catch (error) {
-      console.warn("Failed to send message to API, storing locally", error);
-      const localMessage = createLocalMessage({
-        conversationId: conversation_id,
-        content,
-        replyTo: reply_to,
-      });
-
-      upsertLocalMessage(localMessage);
-      return localMessage;
+      console.error("Failed to send message to API", error);
+      throw error; // خطا را پرتاب می‌کنیم تا UI متوجه شکست ارسال شود
     }
   },
+
+
 
   editMessage: async (
     conversationId: string,

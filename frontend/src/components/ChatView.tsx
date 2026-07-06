@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef , useState } from "react";
 import { 
   getConversationMessages,
-  markConversationRead
+  markConversationRead,
+  sendConversationMessage,
+  editMessage,
+  deleteMessage
 } from "../services/chatService";
 import type { ChatListItem, Message } from "../types/chat";
+import MessageBubble from "./MessageBubble";
+import MessageInput from "./MessageInput";
 
 interface Props {
   chat: ChatListItem | null;
@@ -12,15 +17,30 @@ interface Props {
 }
 
 export default function ChatView({ chat, isMobile, onBack }: Props) {
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [activeReplyTo, setActiveReplyTo] = useState<Message | null>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // گرفتن اطلاعات کاربر فعلی از LocalStorage برای نسبت دادن پیام‌های ارسالی
+  const currentUserId = localStorage.getItem("userId") || localStorage.getItem("user_id");
+  const currentUsername = localStorage.getItem("username");
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
 
   useEffect(() => {
     if (!chat) {
       setMessages([]);
       return;
     }
+
+
 
     let isMounted = true;
 
@@ -41,12 +61,11 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
         setMessages(sortedMessages);
 
-        // --- NEW: mark conversation as read ---
+        // --- mark conversation as read ---
         const latest = sortedMessages[sortedMessages.length - 1];
         if (latest) {
           await markConversationRead(chat.id);
         }
-        // --------------------------------------
 
       } catch (err) {
         if (isMounted) {
@@ -62,11 +81,54 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     };
 
     loadMessages();
+    setActiveReplyTo(null); // ریست کردن ریپلای با تغییر چت
 
     return () => {
       isMounted = false;
     };
   }, [chat]);
+
+  // هندل کردن ارسال پیام جدید
+  const handleSendMessage = async (text: string) => {
+    if (!chat) return;
+    try {
+      const newMessage = await sendConversationMessage({
+        conversation_id: chat.id,
+        content: text,
+        reply_to: activeReplyTo ? activeReplyTo.id : null,
+        recipient_id: chat.otherUserId, // <-- ارسال شناسه مخاطب
+      });
+      
+      setMessages((prev) => [...prev, newMessage]);
+      setActiveReplyTo(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to send message");
+    }
+  };
+
+
+
+  // هندل کردن ویرایش پیام
+  const handleEditMessage = async (messageId: string, newText: string) => {
+    if (!chat) return;
+    const updatedMessage = await editMessage(chat.id, messageId, newText);
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === messageId ? updatedMessage : msg))
+    );
+  };
+
+  // هندل کردن حذف پیام
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!chat) return;
+    await deleteMessage(chat.id, messageId);
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId
+          ? { ...msg, content: "", is_deleted: true, updated_at: new Date().toISOString() }
+          : msg
+      )
+    );
+  };
 
   if (!chat) {
     return (
@@ -78,6 +140,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
   return (
     <div className="chat-view">
+      {/* Header */}
       <div className="chat-view-header">
         {isMobile && (
           <button className="back-button" onClick={onBack} type="button">
@@ -94,6 +157,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         <div className="chat-view-name">{chat.name}</div>
       </div>
 
+      {/* Body / Message History */}
       <div className="chat-view-body">
         {loading && (
           <div className="chat-placeholder">Loading messages...</div>
@@ -109,20 +173,37 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
         {!loading && !error && messages.length > 0 && (
           <div className="message-history">
-            {messages.map((msg) => (
-              <div key={msg.id} className="message-item">
-                <div className="message-sender">
-                  {msg.sender_display_name}
-                </div>
+            {messages.map((msg) => {
+              // پیدا کردن پیامی که به آن ریپلای شده (در صورت وجود)
+              const replyMsg = msg.reply_to
+                ? messages.find((m) => m.id === msg.reply_to)
+                : null;
 
-                <div className="message-content">
-                  {msg.is_deleted ? "Message deleted" : msg.content}
-                </div>
-              </div>
-            ))}
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  currentUserId={currentUserId}
+                  currentUsername={currentUsername}
+                  replyMessage={replyMsg}
+                  onReply={(targetMsg) => setActiveReplyTo(targetMsg)}
+                  onEdit={handleEditMessage}
+                  onDelete={handleDeleteMessage}
+                />
+              );
+            })}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
+
+      {/* Input Area (اضافه شده) */}
+      <MessageInput
+        activeReplyTo={activeReplyTo}
+        onCancelReply={() => setActiveReplyTo(null)}
+        onSendMessage={handleSendMessage}
+        disabled={loading}
+      />
     </div>
   );
 }
