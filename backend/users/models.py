@@ -1,4 +1,4 @@
-import uuid
+from datetime import datetime
 
 from django.contrib.auth.models import AbstractUser, Group, Permission, BaseUserManager
 from django.core.files.storage import default_storage
@@ -6,7 +6,17 @@ from django.core.validators import MinLengthValidator, EmailValidator
 from django.db import models
 from persiantools.jdatetime import JalaliDate
 
-from mini_discord import settings
+DEFAULT_AVATAR_PATH = 'default_avatar.svg'
+
+import os
+import uuid
+
+def avatar_upload_path(instance, filename):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    ext = os.path.splitext(filename)[1]   # get extension
+    new_filename = f"{uuid.uuid4()}_{timestamp}{ext}"  # e.g., "550e8400-e29b-41d4-a716-446655440000.jpg"
+    return f"users/{new_filename}"       # store in a subfolder
 
 
 class UserManager(BaseUserManager):
@@ -78,7 +88,7 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
 
     avatar = models.FileField(
-        upload_to='avatars/',
+        upload_to=avatar_upload_path,
         blank=True,
         null=True,
         default=None
@@ -86,13 +96,11 @@ class User(AbstractUser):
 
     @property
     def avatar_url(self):
-        """
-        Returns the full URL of the avatar if it exists,
-        otherwise a default static avatar URL.
-        """
+        # If the user has an avatar, return its MinIO URL
         if self.avatar and self.avatar.name:
             return default_storage.url(self.avatar.name)
-        return f"{settings.STATIC_URL}images/default_avatar.svg"
+        # Otherwise, return the MinIO URL of the default avatar
+        return default_storage.url(DEFAULT_AVATAR_PATH)
 
     USERNAME_FIELD = 'username'  # Use username as login identifier
     REQUIRED_FIELDS = ['email', 'display_name']  # Required for createsuperuser
@@ -118,3 +126,4 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.username
+    

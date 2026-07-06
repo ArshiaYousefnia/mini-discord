@@ -4,9 +4,11 @@ from .serializers import UserProfileSerializer, UserProfileUpdateSerializer
 from django.contrib.auth import authenticate
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import UserRegistrationSerializer, LoginSerializer
+from .serializers import UserRegistrationSerializer, LoginSerializer, UserSearchSerializer
 from rest_framework.permissions import IsAuthenticated
 from .models import User
+from django.shortcuts import get_object_or_404
+from rest_framework.exceptions import NotFound
 
 class UserRegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -51,7 +53,8 @@ class LoginView(APIView):
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
                 "username": user.username,
-                "email": user.email
+                "email": user.email,
+                "avatar_url": user.avatar_url,
             },
             status=status.HTTP_200_OK
         )
@@ -99,3 +102,23 @@ class UserProfileUpdateView(generics.RetrieveUpdateAPIView):        #needed in o
     def get_queryset(self):
         # ensure users can only update themselves
         return User.objects.filter(id=self.request.user.id)
+    
+
+
+
+
+class UserSearchView(generics.RetrieveAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserSearchSerializer
+
+    def get_object(self):
+        username = self.request.query_params.get("username")
+
+        user = User.objects.filter(
+            username__iexact=username
+        ).first()
+
+        if user is None:
+            raise NotFound("User not found.")
+
+        return user

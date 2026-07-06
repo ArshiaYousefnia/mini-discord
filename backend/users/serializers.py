@@ -125,7 +125,10 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("email", "display_name", "bio", "avatar")
+        fields = ("email", "display_name", "bio", "avatar", "username")
+        extra_kwargs = {
+            'username': {'read_only': True}
+        }
 
     def validate_email(self, value):
         EmailValidator()(value)
@@ -156,6 +159,17 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def update(self, instance, validated_data):
-        validated_data.pop("username", None)
-
         return super().update(instance, validated_data)
+    
+
+class UserSearchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "username",
+            "display_name",
+            "bio",
+            "avatar_url",
+            "is_online",
+        )
