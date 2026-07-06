@@ -64,7 +64,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         // --- mark conversation as read ---
         const latest = sortedMessages[sortedMessages.length - 1];
         if (latest) {
-          await markConversationRead(chat.id);
+          await markConversationRead(chat.id, latest.id);
         }
 
       } catch (err) {
