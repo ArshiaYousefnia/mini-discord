@@ -1,31 +1,56 @@
-export interface User {
+export type ConversationType = "DM" | "GROUP" | "CHANNEL" | "SAVED";
+
+export type Conversation = {
+  id: string;
+  type: ConversationType;
+  name: string | null;
+  display_name?: string; // اضافه شد
+  avatar?: string | null; // اضافه شد
+  other_user_id?: string | null; // فیلد کلیدی جدید
+  created_at: string;
+};
+
+export type Message = {
+  id: string;
+  conversation: string;
+  sender: string;
+  sender_username: string;
+  sender_display_name: string;
+  content: string | null;
+  reply_to: string | null;
+  is_edited: boolean;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChatListItem = {
+  id: string;
+  type: ConversationType;
+  name: string;
+  avatar: string;
+  lastMessage: string;
+  lastMessageAt: string | null;
+  unreadCount: number;
+};
+
+export type UserProfile = {
   id: string;
   username: string;
-  displayName: string;
-  avatarUrl?: string;
-}
+  display_name?: string | null;
+  displayName?: string | null;
+  avatar?: string | null;
+  avatar_url?: string | null;
+};
 
-export interface Message {
-  id: string;
-  senderId: string;
-  receiverId: string;
-  text: string;
-  createdAt: string; // ایزو استرینگ یا زمان فرستاده شده از بک‌اَند
-  updatedAt?: string;
-  isEdited: boolean;
-  status: 'sending' | 'sent' | 'error'; // برای نمایش وضعیت ارسال (ساعت یا تیک)
-  
-  // فیلدهای مربوط به ریپلای (تسک #51)
-  replyToId?: string; 
-  replyToMessage?: {
-    id: string;
-    senderName: string;
-    text: string;
-  };
-}
+export type SendDirectMessagePayload = {
+  recipient_id: string;
+  content: string;
+  reply_to?: string | null;
+};
 
-export interface Conversation {
-  id: string;
-  participant: User;
-  messages: Message[];
-}
+export type SendConversationMessagePayload = {
+  conversation_id: string;
+  content: string;
+  reply_to?: string | null;
+};

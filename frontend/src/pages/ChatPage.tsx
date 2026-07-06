@@ -1,150 +1,339 @@
-import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { chatService, mockUsers } from '../services/chatService';
-import type { Message, User } from '../types/chat';
-import MessageBubble from '../components/MessageBubble';
-import MessageInput from '../components/MessageInput';
-import '../styles/chat.css';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import MessageBubble from "../components/MessageBubble";
+import MessageInput from "../components/MessageInput";
+import { chatService } from "../services/chatService";
+import type { Conversation, Message, UserProfile } from "../types/chat";
+import "../styles/chat.css";
+
+type ChatRouteParams = {
+  conversationId?: string;
+  recipientId?: string;
+};
+
+function getCurrentUserId() {
+  return (
+    localStorage.getItem("Id") || // بررسی کلید جدیدی که دوستت اضافه کرده
+    localStorage.getItem("user_id") ||
+    localStorage.getItem("current_user_id") ||
+    null
+  );
+}
+
+function getCurrentUsername() {
+  return (
+    localStorage.getItem("username") ||
+    localStorage.getItem("current_username") ||
+    null
+  );
+}
+
+function getProfileDisplayName(profile: UserProfile | null, fallback: string) {
+  if (!profile) return fallback;
+
+  return (
+    profile.display_name ||
+    profile.displayName ||
+    profile.username ||
+    fallback
+  );
+}
+
+function getProfileAvatar(profile: UserProfile | null) {
+  return (
+    profile?.avatar ||
+    profile?.avatar_url ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      profile?.username || "Chat"
+    )}&background=d1d7db&color=111b21`
+  );
+}
 
 export default function ChatPage() {
-  const { userId: targetUserId } = useParams<{ userId: string }>();
+  const { conversationId, recipientId } = useParams<ChatRouteParams>();
   const navigate = useNavigate();
 
-  // در سناریوی واقعی، این شناسه از سشن کاربر لاگین‌شده خوانده می‌شود.
-  // در اینجا فرض می‌کنیم کاربر جاری Arashia با شناسه '1' است.
-  const currentUserId = '1'; 
+  const currentUserId = getCurrentUserId();
+  const currentUsername = getCurrentUsername();
 
-  const [targetUser, setTargetUser] = useState<User | null>(null);
+  const isNewChat = Boolean(recipientId);
+  const activeConversationId = isNewChat
+    ? `new-${recipientId}`
+    : conversationId ?? "";
+
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [recipientProfile, setRecipientProfile] = useState<UserProfile | null>(
+    null
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeReplyTo, setActiveReplyTo] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [sendingError, setSendingError] = useState("");
+  const [pageError, setPageError] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // اسکرول خودکار به انتهای لیست پیام‌ها
+  const messagesById = useMemo(() => {
+    return messages.reduce<Record<string, Message>>((acc, message) => {
+      acc[message.id] = message;
+      return acc;
+    }, {});
+  }, [messages]);
+
+  const headerTitle = useMemo(() => {
+    if (recipientProfile) {
+      return getProfileDisplayName(recipientProfile, "New chat");
+    }
+
+    if (conversation?.display_name) {
+      return conversation.display_name;
+    }
+
+    if (conversation?.name) {
+      return conversation.name;
+    }
+
+    if (isNewChat) {
+      return "New direct message";
+    }
+
+    return "Conversation";
+  }, [conversation?.display_name, conversation?.name, isNewChat, recipientProfile]);
+
+  const headerSubtitle = useMemo(() => {
+    if (recipientProfile?.username) {
+      return `@${recipientProfile.username}`;
+    }
+
+    if (conversation?.type) {
+      return conversation.type;
+    }
+
+    return isNewChat ? "Direct message" : activeConversationId;
+  }, [activeConversationId, conversation?.type, isNewChat, recipientProfile]);
+
+  const headerAvatar = conversation?.avatar || getProfileAvatar(recipientProfile);
+
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // دریافت اطلاعات کاربر مخاطب و لیست پیام‌ها
+  const reloadMessages = async () => {
+    if (!activeConversationId) return;
+
+    const data = await chatService.getConversationMessages(activeConversationId);
+    setMessages(data);
+  };
+
   useEffect(() => {
-    if (!targetUserId) {
-      setError('Invalid user ID.');
-      setLoading(false);
-      return;
-    }
+    let ignore = false;
 
-    const user = mockUsers.find((u) => u.id === targetUserId);
-    if (!user) {
-      setError('User not found.');
-      setLoading(false);
-      return;
-    }
-    setTargetUser(user);
-
-    const loadMessages = async () => {
-      try {
-        setLoading(true);
-        const data = await chatService.getMessagesBetweenUsers(currentUserId, targetUserId);
-        setMessages(data);
-      } catch (err: any) {
-        setError('Failed to load messages.');
-      } finally {
+    const loadChat = async () => {
+      if (!activeConversationId) {
+        setPageError("Invalid chat route.");
         setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setPageError("");
+      setSendingError("");
+
+      try {
+        let currentRecipientId = recipientId;
+
+        // اگر از طریق لینک مستقیم کانورزیشن وارد شدیم، تلاش کنیم اطلاعات گفتگو را بگیریم
+        if (!isNewChat) {
+          const conversations = await chatService.getConversations();
+          const matchedConversation =
+            conversations.find((item) => item.id === activeConversationId) ??
+            null;
+
+          if (!ignore) {
+            setConversation(matchedConversation);
+          }
+
+          // اگر گفتگو از نوع DM است و آیدی طرف مقابل را داریم، پروفایل او را لود کنیم
+          if (matchedConversation && matchedConversation.type === "DM" && matchedConversation.other_user_id) {
+            currentRecipientId = matchedConversation.other_user_id;
+          }
+        }
+
+        if (currentRecipientId) {
+          const profile = await chatService.getUserProfile(currentRecipientId);
+          if (!ignore) {
+            setRecipientProfile(profile);
+          }
+        }
+
+        const data = await chatService.getConversationMessages(
+          activeConversationId
+        );
+
+        if (!ignore) {
+          setMessages(data);
+          await chatService.markConversationAsRead(activeConversationId);
+        }
+      } catch {
+        if (!ignore) {
+          setPageError("Failed to load chat.");
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
       }
     };
 
-    loadMessages();
-  }, [targetUserId]);
+    loadChat();
 
-  // اسکرول به پایین به محض لود شدن پیام‌ها
+    return () => {
+      ignore = true;
+    };
+  }, [activeConversationId, isNewChat, recipientId]);
+
   useEffect(() => {
     if (!loading) {
       scrollToBottom();
     }
-  }, [messages, loading]);
+  }, [loading, messages]);
 
-  // هندلر ارسال پیام جدید
   const handleSendMessage = async (text: string) => {
-    if (!targetUserId) return;
+    setSendingError("");
 
-    // ۱. ارسال پیام و گرفتن پیام موقت در حالت sending
-    const tempMessage = await chatService.sendMessage(
-      currentUserId,
-      targetUserId,
-      text,
-      activeReplyTo?.id
-    );
+    const replyTo = activeReplyTo?.id ?? null;
 
-    // اضافه کردن پیام موقت به استیت برای بازخورد سریع به کاربر
-    setMessages((prev) => [...prev, tempMessage]);
-    setActiveReplyTo(null); // ریپلای فعال را ریست می‌کنیم
+    try {
+      let sentMessage: Message;
 
-    // ۲. شبیه‌سازی دریافت تاییدیه نهایی از سرور و به‌روزرسانی وضعیت پیام به sent
-    setTimeout(async () => {
-      const updatedList = await chatService.getMessagesBetweenUsers(currentUserId, targetUserId);
-      setMessages(updatedList);
-    }, 1100);
+      // بررسی وضعیت ارسال پیام:
+      // ۱. اگر چت جدید با recipientId مشخص باشد
+      // ۲. یا اگر چت از نوع DM باشد و شناسه مخاطب (other_user_id) را در کانورزیشن داشته باشیم
+      const targetRecipientId = recipientId || (conversation?.type === "DM" ? conversation.other_user_id : null);
+
+      if (targetRecipientId) {
+        sentMessage = await chatService.sendDirectMessage({
+          recipient_id: targetRecipientId,
+          content: text,
+          reply_to: replyTo,
+        });
+      } else {
+        // برای سناریوهای گروه یا کانال (اگر وجود داشته باشد)
+        sentMessage = await chatService.sendConversationMessage({
+          conversation_id: activeConversationId,
+          content: text,
+          reply_to: replyTo,
+        });
+      }
+
+      setMessages((prev) => {
+        const exists = prev.some((message) => message.id === sentMessage.id);
+        return exists
+          ? prev.map((message) =>
+              message.id === sentMessage.id ? sentMessage : message
+            )
+          : [...prev, sentMessage];
+      });
+
+      setActiveReplyTo(null);
+
+      if (!sentMessage.id.startsWith("local-")) {
+        await reloadMessages();
+      }
+    } catch (err) {
+      setSendingError(
+        err instanceof Error ? err.message : "Failed to send message."
+      );
+      throw err;
+    }
   };
 
-  // هندلر ویرایش پیام
   const handleEditMessage = async (messageId: string, newText: string) => {
-    const updatedMessage = await chatService.editMessage(messageId, currentUserId, newText);
+    const updatedMessage = await chatService.editMessage(
+      activeConversationId,
+      messageId,
+      newText
+    );
+
     setMessages((prev) =>
-      prev.map((msg) => (msg.id === messageId ? updatedMessage : msg))
+      prev.map((message) =>
+        message.id === messageId ? updatedMessage : message
+      )
     );
   };
 
-  // هندلر حذف پیام
   const handleDeleteMessage = async (messageId: string) => {
-    await chatService.deleteMessage(messageId, currentUserId);
-    setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+    await chatService.deleteMessage(activeConversationId, messageId);
+
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              content: null,
+              is_deleted: true,
+              updated_at: new Date().toISOString(),
+            }
+          : message
+      )
+    );
   };
 
-  if (loading) return <div className="chat-loading">Loading chat...</div>;
-  if (error || !targetUser) return <div className="chat-error">{error || 'User not found.'}</div>;
+  if (loading) {
+    return <div className="chat-loading">Loading chat...</div>;
+  }
+
+  if (pageError) {
+    return (
+      <div className="chat-error">
+        <p>{pageError}</p>
+        <button onClick={() => navigate(-1)}>Go back</button>
+      </div>
+    );
+  }
 
   return (
     <div className="chat-container">
-      {/* سربرگ چت */}
       <header className="chat-header">
         <button className="chat-header-back-btn" onClick={() => navigate(-1)}>
           ←
         </button>
-        <img
-          src={targetUser.avatarUrl || 'https://via.placeholder.com/40'}
-          alt={targetUser.displayName}
-          className="chat-header-avatar"
-        />
+
+        <img src={headerAvatar} alt={headerTitle} className="chat-header-avatar" />
+
         <div className="chat-header-info">
-          <span className="chat-header-name">{targetUser.displayName}</span>
-          <span className="chat-header-status">@{targetUser.username}</span>
+          <span className="chat-header-name">{headerTitle}</span>
+          <span className="chat-header-status">{headerSubtitle}</span>
         </div>
       </header>
 
-      {/* لیست پیام‌ها */}
+      {sendingError && <div className="chat-warning">{sendingError}</div>}
+
       <div className="chat-messages-list">
         {messages.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#667781', marginTop: '20px', fontSize: '13px' }}>
-            No messages yet. Send a message to start the conversation!
+          <div className="chat-empty-state">
+            No messages yet. Send a message to start the conversation.
           </div>
         ) : (
-          messages.map((msg) => (
+          messages.map((message) => (
             <MessageBubble
-              key={msg.id}
-              message={msg}
+              key={message.id}
+              message={message}
               currentUserId={currentUserId}
+              currentUsername={currentUsername}
+              replyMessage={
+                message.reply_to ? messagesById[message.reply_to] ?? null : null
+              }
               onReply={setActiveReplyTo}
               onEdit={handleEditMessage}
               onDelete={handleDeleteMessage}
             />
           ))
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* فیلد ورودی پیام */}
       <MessageInput
         activeReplyTo={activeReplyTo}
         onCancelReply={() => setActiveReplyTo(null)}

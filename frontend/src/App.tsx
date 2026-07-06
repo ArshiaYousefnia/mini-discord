@@ -34,17 +34,25 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-
       <Route
-        path="/chat/:userId"
+        path="/chat/new/:recipientId"
         element={
           <ProtectedRoute>
             <ChatPage />
           </ProtectedRoute>
         }
       />
-      {/* <Route path="/chat/:userId" element={<ChatPage />} /> */}
 
+      <Route
+        path="/chat/:conversationId"
+        element={
+          <ProtectedRoute>
+            <ChatPage />
+          </ProtectedRoute>
+        }
+      />
+
+        
 
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,66 +1,94 @@
-import { useState } from 'react';
-import type { Message } from '../types/chat';
-import '../styles/chat.css';
+import { useMemo, useState } from "react";
+import type { Message } from "../types/chat";
+import "../styles/chat.css";
 
 type Props = {
   message: Message;
-  currentUserId: string;
+  currentUserId?: string | null;
+  currentUsername?: string | null;
+  replyMessage?: Message | null;
   onReply: (message: Message) => void;
   onEdit: (messageId: string, newText: string) => Promise<void>;
   onDelete: (messageId: string) => Promise<void>;
 };
 
-export default function MessageBubble({ message, currentUserId, onReply, onEdit, onDelete }: Props) {
-  const isMe = message.senderId === currentUserId;
+export default function MessageBubble({
+  message,
+  currentUserId,
+  currentUsername,
+  replyMessage,
+  onReply,
+  onEdit,
+  onDelete,
+}: Props) {
+  const messageText = message.is_deleted
+    ? "This message was deleted."
+    : message.content ?? "";
+
+  const isMe =
+    Boolean(currentUserId && message.sender === currentUserId) ||
+    Boolean(currentUsername && message.sender_username === currentUsername);
+
   const [isEditing, setIsEditing] = useState(false);
-  const [editText, setEditText] = useState(message.text);
+  const [editText, setEditText] = useState(message.content ?? "");
   const [loading, setLoading] = useState(false);
 
-  // قالب‌بندی نمایش زمان ساده (ساعت و دقیقه)
-  const formatTime = (isoString: string) => {
+  const formattedTime = useMemo(() => {
     try {
-      const date = new Date(isoString);
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return new Date(message.created_at).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     } catch {
-      return '';
+      return "";
     }
-  };
+  }, [message.created_at]);
 
   const handleSaveEdit = async () => {
-    if (!editText.trim() || editText === message.text) {
+    const trimmedText = editText.trim();
+
+    if (!trimmedText || trimmedText === message.content) {
       setIsEditing(false);
+      setEditText(message.content ?? "");
       return;
     }
+
     setLoading(true);
+
     try {
-      await onEdit(message.id, editText);
+      await onEdit(message.id, trimmedText);
       setIsEditing(false);
-    } catch (err: any) {
-      alert(err.message || 'Failed to edit message');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to edit message");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async () => {
-    if (window.confirm('Are you sure you want to delete this message?')) {
-      try {
-        await onDelete(message.id);
-      } catch (err: any) {
-        alert(err.message || 'Failed to delete message');
-      }
+    if (!window.confirm("Are you sure you want to delete this message?")) {
+      return;
+    }
+
+    try {
+      await onDelete(message.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete message");
     }
   };
 
   return (
-    <div className={`message-bubble-wrapper ${isMe ? 'outgoing' : 'incoming'}`}>
-      
-      {/* دکمه‌های اکشن بالاپیام (در حالت هاور) */}
-      {!isEditing && (
+    <div
+      className={`message-bubble-wrapper ${isMe ? "outgoing" : "incoming"} ${
+        message.is_deleted ? "deleted" : ""
+      }`}
+    >
+      {!isEditing && !message.is_deleted && (
         <div className="message-actions">
           <button className="action-btn" onClick={() => onReply(message)}>
             Reply
           </button>
+
           {isMe && (
             <>
               <button className="action-btn" onClick={() => setIsEditing(true)}>
@@ -74,65 +102,64 @@ export default function MessageBubble({ message, currentUserId, onReply, onEdit,
         </div>
       )}
 
-      {/* بدنه اصلی حباب */}
       <div className="message-bubble">
-        
-        {/* پیش‌نمایش ریپلای (اگر پیام ریپلای شده باشد) */}
-        {message.replyToMessage && (
+        {replyMessage && (
           <div className="message-reply-preview">
-            <div className="reply-sender">{message.replyToMessage.senderName}</div>
+            <div className="reply-sender">
+              {replyMessage.sender_display_name || replyMessage.sender_username}
+            </div>
             <div className="reply-text-preview">
-              {message.replyToMessage.text.substring(0, 50)}
-              {message.replyToMessage.text.length > 50 ? '...' : ''}
+              {(replyMessage.content ?? "Deleted message").slice(0, 70)}
             </div>
           </div>
         )}
 
-        {/* بخش متن پیام یا فیلد ویرایش */}
         {isEditing ? (
           <div className="edit-input-container">
             <textarea
               className="edit-textarea"
               value={editText}
-              onChange={(e) => setEditText(e.target.value)}
+              onChange={(event) => setEditText(event.target.value)}
               disabled={loading}
               maxLength={2000}
+              autoFocus
             />
+
             <div className="edit-actions-row">
-              <button 
-                className="edit-action-btn cancel" 
-                onClick={() => { setIsEditing(false); setEditText(message.text); }}
+              <button
+                className="edit-action-btn cancel"
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditText(message.content ?? "");
+                }}
                 disabled={loading}
+                type="button"
               >
                 Cancel
               </button>
-              <button 
-                className="edit-action-btn save" 
+
+              <button
+                className="edit-action-btn save"
                 onClick={handleSaveEdit}
-                disabled={loading}
+                disabled={loading || !editText.trim()}
+                type="button"
               >
-                {loading ? 'Saving...' : 'Save'}
+                {loading ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
         ) : (
-          <div className="message-text">{message.text}</div>
+          <div className="message-text">{messageText}</div>
         )}
 
-        {/* زمان ارسال، وضعیت خوانده شدن و برچسب ویرایش */}
         {!isEditing && (
           <div className="message-meta">
-            {message.isEdited && <span className="message-edited-label">(edited)</span>}
-            <span>{formatTime(message.createdAt)}</span>
-            
-            {isMe && (
-              <span className="message-status-icon">
-                {message.status === 'sending' ? (
-                  '🕒' // آیکون ساعت برای نشان دادن در حال ارسال
-                ) : (
-                  '✓' // علامت تیک برای ارسال شده
-                )}
-              </span>
+            {message.is_edited && !message.is_deleted && (
+              <span className="message-edited-label">(edited)</span>
+            )}
+            <span>{formattedTime}</span>
+            {isMe && !message.is_deleted && (
+              <span className="message-status-icon">✓</span>
             )}
           </div>
         )}

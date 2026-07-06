@@ -1,11 +1,66 @@
-/* chat.css */
-
 .chat-container {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #efeae2; /* رنگ پس‌زمینه چت */
+  background: #efeae2;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.chat-header {
+  background: #f0f2f5;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #e9edef;
+}
+
+.chat-header-back-btn {
+  background: none;
+  border: none;
+  font-size: 22px;
+  color: #667781;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.chat-header-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #d1d7db;
+}
+
+.chat-header-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chat-header-name {
+  font-weight: 600;
+  color: #111b21;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-header-status {
+  font-size: 12px;
+  color: #667781;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-warning {
+  background: #fff4d6;
+  color: #8a5a00;
+  padding: 8px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid #f3d27a;
 }
 
 .chat-messages-list {
@@ -17,16 +72,20 @@
   gap: 12px;
 }
 
-/* حباب پیام کلی */
+.chat-empty-state {
+  text-align: center;
+  color: #667781;
+  margin-top: 20px;
+  font-size: 13px;
+}
+
 .message-bubble-wrapper {
   display: flex;
   flex-direction: column;
-  max-width: 65%;
+  max-width: min(65%, 720px);
   position: relative;
-  group: hover; /* برای شبیه‌سازی هاور اکشن‌ها */
 }
 
-/* جهت پیام فرستنده و گیرنده */
 .message-bubble-wrapper.outgoing {
   align-self: flex-end;
 }
@@ -35,28 +94,30 @@
   align-self: flex-start;
 }
 
-/* ساختار بدنه حباب پیام */
+.message-bubble-wrapper.deleted {
+  opacity: 0.75;
+}
+
 .message-bubble {
   padding: 8px 12px;
   border-radius: 12px;
   font-size: 14px;
   line-height: 1.5;
   position: relative;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
   color: #111b21;
 }
 
 .message-bubble-wrapper.outgoing .message-bubble {
-  background: #dcf8c6; /* رنگ سبز چت‌های ارسال شده */
+  background: #dcf8c6;
   border-top-right-radius: 0;
 }
 
 .message-bubble-wrapper.incoming .message-bubble {
-  background: #ffffff; /* سفید برای دریافت شده‌ها */
+  background: #ffffff;
   border-top-left-radius: 0;
 }
 
-/* بخش هدر پیام برای نمایش ریپلای‌ها در حباب */
 .message-reply-preview {
   background: rgba(0, 0, 0, 0.05);
   border-left: 3px solid #25d366;
@@ -65,7 +126,6 @@
   margin-bottom: 6px;
   font-size: 12px;
   color: #555;
-  cursor: pointer;
 }
 
 .message-reply-preview .reply-sender {
@@ -74,10 +134,20 @@
   margin-bottom: 2px;
 }
 
-/* متن و متا دیتای انتهای پیام */
+.reply-text-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .message-text {
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+.message-bubble-wrapper.deleted .message-text {
+  color: #667781;
+  font-style: italic;
 }
 
 .message-meta {
@@ -101,15 +171,14 @@
   align-items: center;
 }
 
-/* اکشن‌های روی پیام (ریپلای، ادیت، حذف) که با هاور نمایش داده می‌شوند */
 .message-actions {
   display: none;
   position: absolute;
-  top: -20px;
+  top: -24px;
   background: #ffffff;
   border: 1px solid #e9edef;
   border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
   z-index: 10;
   padding: 2px;
 }
@@ -135,7 +204,7 @@
   cursor: pointer;
   border-radius: 4px;
   color: #667781;
-  transition: background 0.2s;
+  transition: background 0.2s, color 0.2s;
 }
 
 .action-btn:hover {
@@ -148,22 +217,23 @@
   color: #b42318;
 }
 
-/* استایل حالت ویرایش در خود حباب */
 .edit-input-container {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 200px;
+  min-width: 220px;
 }
 
 .edit-textarea {
   width: 100%;
   border: 1px solid #d1d7db;
   border-radius: 8px;
-  padding: 6px;
+  padding: 8px;
   font-size: 14px;
   resize: vertical;
   outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
 }
 
 .edit-actions-row {
@@ -180,6 +250,11 @@
   cursor: pointer;
 }
 
+.edit-action-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .edit-action-btn.save {
   background: #25d366;
   color: white;
@@ -190,18 +265,14 @@
   color: #111b21;
 }
 
-/* ادامه‌ی فایل chat.css */
-
 .chat-input-area {
   background: #f0f2f5;
   padding: 10px 16px;
   display: flex;
   flex-direction: column;
   border-top: 1px solid #e9edef;
-  position: relative;
 }
 
-/* نوار پیش‌نمایش ریپلای فعال بالای فیلد ورودی */
 .active-reply-bar {
   display: flex;
   justify-content: space-between;
@@ -212,12 +283,13 @@
   border-radius: 8px;
   margin-bottom: 8px;
   font-size: 13px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .active-reply-bar .reply-details {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .active-reply-bar .reply-title {
@@ -231,13 +303,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 300px;
+  max-width: min(520px, 70vw);
 }
 
 .close-reply-btn {
   background: none;
   border: none;
-  font-size: 18px;
+  font-size: 20px;
   color: #8696a0;
   cursor: pointer;
   padding: 0 4px;
@@ -247,10 +319,9 @@
   color: #111b21;
 }
 
-/* فرم ورودی پیام */
 .chat-input-form {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 12px;
 }
 
@@ -265,7 +336,7 @@
   color: #111b21;
   resize: none;
   max-height: 120px;
-  min-height: 20px;
+  min-height: 42px;
   box-sizing: border-box;
   font-family: inherit;
 }
@@ -274,14 +345,19 @@
   color: #8696a0;
 }
 
+.chat-textarea:disabled {
+  background: #f7f8f8;
+  cursor: not-allowed;
+}
+
 .chat-send-btn {
   border: none;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   background: #25d366;
   color: white;
-  font-size: 16px;
+  font-size: 17px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -303,58 +379,38 @@
   cursor: not-allowed;
 }
 
-
-/* ادامه‌ی فایل chat.css */
-
-.chat-header {
-  background: #f0f2f5;
-  padding: 10px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid #e9edef;
-  font-family: inherit;
-}
-
-.chat-header-back-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  color: #667781;
-  cursor: pointer;
-  padding: 4px;
-}
-
-.chat-header-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: #d1d7db;
-}
-
-.chat-header-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.chat-header-name {
-  font-weight: 600;
-  color: #111b21;
-  font-size: 15px;
-}
-
-.chat-header-status {
-  font-size: 12px;
-  color: #667781;
-}
-
-.chat-loading, .chat-error {
+.chat-loading,
+.chat-error {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  min-height: 100vh;
   background: #efeae2;
   color: #111b21;
   font-size: 16px;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-error button {
+  border: none;
+  background: #25d366;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .message-bubble-wrapper {
+    max-width: 82%;
+  }
+
+  .chat-messages-list {
+    padding: 14px;
+  }
+
+  .chat-input-area {
+    padding: 8px 10px;
+  }
 }

@@ -1,152 +1,298 @@
-import type { Message, User } from '../types/chat';
+import type {
+  Conversation,
+  Message,
+  SendConversationMessagePayload,
+  SendDirectMessagePayload,
+  UserProfile,
+} from "../types/chat";
 
-// دیتای تستی کاربران برای شبیه‌سازی مخاطبین
-export const mockUsers: User[] = [
-  { id: '1', username: 'arashia', displayName: 'Arshia Yousefnia', avatarUrl: '' },
-  { id: '2', username: 'nasim', displayName: 'Nasim Javdani', avatarUrl: '' },
-  { id: '3', username: 'ali', displayName: 'Ali Alsheikh', avatarUrl: '' },
-];
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
-// کلید ذخیره‌سازی پیام‌ها در LocalStorage
-const STORAGE_KEY = 'mini_discord_messages';
+const LOCAL_MESSAGES_KEY = "mini_discord_demo_messages";
 
-// تابع کمکی برای گرفتن پیام‌ها از استوریج
-const getStoredMessages = (): Message[] => {
-  const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : [];
+type RequestOptions = RequestInit & {
+  body?: BodyInit | null;
 };
 
-// تابع کمکی برای ذخیره پیام‌ها در استوریج
-const saveMessages = (messages: Message[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-};
+function getCsrfToken() {
+  const match = document.cookie.match(/csrftoken=([^;]+)/);
+  return match?.[1] ?? "";
+}
+
+async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const isFormData = options.body instanceof FormData;
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
+    ...options,
+    headers: {
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...(getCsrfToken() ? { "X-CSRFToken": getCsrfToken() } : {}),
+      ...(options.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    let message = "Request failed";
+
+    try {
+      const data = await response.json();
+      message = data.detail || data.error || data.message || message;
+    } catch {
+      message = response.statusText || message;
+    }
+
+    throw new Error(message);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json();
+}
+
+function getLocalMessages(): Message[] {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_MESSAGES_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalMessages(messages: Message[]) {
+  localStorage.setItem(LOCAL_MESSAGES_KEY, JSON.stringify(messages));
+}
+
+function getCurrentUsernameFallback() {
+  return (
+    localStorage.getItem("username") ||
+    localStorage.getItem("current_username") ||
+    "me"
+  );
+}
+
+function createLocalMessage(params: {
+  conversationId: string;
+  content: string;
+  senderId?: string;
+  senderUsername?: string;
+  senderDisplayName?: string;
+  replyTo?: string | null;
+}): Message {
+  const now = new Date().toISOString();
+  const username = params.senderUsername ?? getCurrentUsernameFallback();
+
+  return {
+    id: `local-${crypto.randomUUID()}`,
+    conversation: params.conversationId,
+    sender: params.senderId ?? username,
+    sender_username: username,
+    sender_display_name: params.senderDisplayName ?? username,
+    content: params.content,
+    reply_to: params.replyTo ?? null,
+    is_edited: false,
+    is_deleted: false,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+function upsertLocalMessage(message: Message) {
+  const messages = getLocalMessages();
+  const index = messages.findIndex((item) => item.id === message.id);
+
+  if (index >= 0) {
+    messages[index] = message;
+  } else {
+    messages.push(message);
+  }
+
+  saveLocalMessages(messages);
+}
+
+function getLocalConversationMessages(conversationId: string) {
+  return getLocalMessages().filter(
+    (message) => message.conversation === conversationId && !message.is_deleted
+  );
+}
 
 export const chatService = {
-  // ۱. دریافت تمام پیام‌های چت بین دو کاربر خاص
-  getMessagesBetweenUsers: async (currentUserId: string, targetUserId: string): Promise<Message[]> => {
-    // شبیه‌سازی تاخیر شبکه برای طبیعی‌تر شدن لودینگ
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const allMessages = getStoredMessages();
-    
-    // فیلتر کردن پیام‌هایی که فرستنده و گیرنده آن‌ها این دو کاربر هستند
-    return allMessages.filter(
-      (msg) =>
-        (msg.senderId === currentUserId && msg.receiverId === targetUserId) ||
-        (msg.senderId === targetUserId && msg.receiverId === currentUserId)
-    );
+  getConversations: async (): Promise<Conversation[]> => {
+    try {
+      return await apiRequest<Conversation[]>("/api/chat/conversations/");
+    } catch {
+      return [];
+    }
   },
 
-  // ۲. ارسال پیام جدید (تسک #11 و #51)
-  sendMessage: async (
-    senderId: string,
-    receiverId: string,
-    text: string,
-    replyToId?: string
-  ): Promise<Message> => {
-    // بررسی محدودیت‌های متنی (Acceptance Criteria)
-    if (!text.trim()) {
-      throw new Error('Message cannot be empty.');
-    }
-    if (text.length > 2000) {
-      throw new Error('Message exceeds the 2000 character limit.');
-    }
+  getConversationMessages: async (conversationId: string): Promise<Message[]> => {
+    try {
+      const messages = await apiRequest<Message[]>(
+        `/api/chat/conversations/${conversationId}/messages/`
+      );
 
-    const allMessages = getStoredMessages();
-    let replyToMessageData = undefined;
+      messages.forEach(upsertLocalMessage);
+      return messages.filter((message) => !message.is_deleted);
+    } catch {
+      return getLocalConversationMessages(conversationId);
+    }
+  },
 
-    // اگر ریپلای روی پیام دیگری بود، اطلاعات آن را برای پیش‌نمایش استخراج می‌کنیم
-    if (replyToId) {
-      const originalMsg = allMessages.find((m) => m.id === replyToId);
-      if (originalMsg) {
-        // پیدا کردن نام فرستنده پیام اصلی
-        const sender = mockUsers.find((u) => u.id === originalMsg.senderId);
-        replyToMessageData = {
-          id: originalMsg.id,
-          senderName: sender ? sender.displayName : 'Unknown User',
-          text: originalMsg.text,
-        };
-      }
+  getUserProfile: async (userId: string): Promise<UserProfile | null> => {
+    try {
+      return await apiRequest<UserProfile>(`/api/users/${userId}/profile/`);
+    } catch {
+      return null;
+    }
+  },
+
+  sendDirectMessage: async ({
+    recipient_id,
+    content,
+    reply_to = null,
+  }: SendDirectMessagePayload): Promise<Message> => {
+    if (!content.trim()) {
+      throw new Error("Message cannot be empty.");
     }
 
-    // ساخت پیام جدید با وضعیت موقت sending
-    const newMessage: Message = {
-      id: Math.random().toString(36).substr(2, 9),
-      senderId,
-      receiverId,
-      text,
-      createdAt: new Date().toISOString(),
-      isEdited: false,
-      status: 'sending', // ابتدا در وضعیت در حال ارسال قرار می‌گیرد
-      replyToId,
-      replyToMessage: replyToMessageData,
-    };
+    if (content.length > 2000) {
+      throw new Error("Message exceeds the 2000 character limit.");
+    }
 
-    // اضافه کردن به لیست و ذخیره محلی
-    allMessages.push(newMessage);
-    saveMessages(allMessages);
+    try {
+      const message = await apiRequest<Message>("/api/chat/dm/", {
+        method: "POST",
+        body: JSON.stringify({ recipient_id, content, reply_to }),
+      });
 
-    // شبیه‌سازی پاسخ بک‌اند بعد از ۱ ثانیه برای تغییر وضعیت به sent
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const currentMessages = getStoredMessages();
-        const msgIndex = currentMessages.findIndex((m) => m.id === newMessage.id);
-        if (msgIndex !== -1) {
-          currentMessages[msgIndex].status = 'sent';
-          saveMessages(currentMessages);
-          resolve(currentMessages[msgIndex]);
-        } else {
-          resolve({ ...newMessage, status: 'sent' });
+      upsertLocalMessage(message);
+      return message;
+    } catch {
+      const localMessage = createLocalMessage({
+        conversationId: `new-${recipient_id}`,
+        content,
+        replyTo: reply_to,
+      });
+
+      upsertLocalMessage(localMessage);
+      return localMessage;
+    }
+  },
+
+  sendConversationMessage: async ({
+    conversation_id,
+    content,
+    reply_to = null,
+  }: SendConversationMessagePayload): Promise<Message> => {
+    if (!content.trim()) {
+      throw new Error("Message cannot be empty.");
+    }
+
+    if (content.length > 2000) {
+      throw new Error("Message exceeds the 2000 character limit.");
+    }
+
+    try {
+      const message = await apiRequest<Message>(
+        `/api/chat/conversations/${conversation_id}/messages/`,
+        {
+          method: "POST",
+          body: JSON.stringify({ content, reply_to }),
         }
-      }, 1000);
-    });
+      );
+
+      upsertLocalMessage(message);
+      return message;
+    } catch {
+      const localMessage = createLocalMessage({
+        conversationId: conversation_id,
+        content,
+        replyTo: reply_to,
+      });
+
+      upsertLocalMessage(localMessage);
+      return localMessage;
+    }
   },
 
-  // ۳. ویرایش پیام (تسک #27)
-  editMessage: async (messageId: string, currentUserId: string, newText: string): Promise<Message> => {
-    if (!newText.trim()) {
-      throw new Error('Message cannot be empty.');
-    }
-    if (newText.length > 2000) {
-      throw new Error('Message exceeds the 2000 character limit.');
-    }
-
-    const allMessages = getStoredMessages();
-    const msgIndex = allMessages.findIndex((m) => m.id === messageId);
-
-    if (msgIndex === -1) {
-      throw new Error('Message not found.');
+  editMessage: async (
+    conversationId: string,
+    messageId: string,
+    content: string
+  ): Promise<Message> => {
+    if (!content.trim()) {
+      throw new Error("Message cannot be empty.");
     }
 
-    // بررسی مالکیت پیام (Security Check)
-    if (allMessages[msgIndex].senderId !== currentUserId) {
-      throw new Error('You can only edit your own messages.');
+    if (content.length > 2000) {
+      throw new Error("Message exceeds the 2000 character limit.");
     }
 
-    // به‌روزرسانی پیام
-    allMessages[msgIndex].text = newText;
-    allMessages[msgIndex].isEdited = true;
-    allMessages[msgIndex].updatedAt = new Date().toISOString();
+    try {
+      const message = await apiRequest<Message>(
+        `/api/chat/conversations/${conversationId}/messages/${messageId}/`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ content }),
+        }
+      );
 
-    saveMessages(allMessages);
-    return allMessages[msgIndex];
+      upsertLocalMessage(message);
+      return message;
+    } catch {
+      const messages = getLocalMessages();
+      const target = messages.find((message) => message.id === messageId);
+
+      if (!target) {
+        throw new Error("Message not found.");
+      }
+
+      const updatedMessage: Message = {
+        ...target,
+        content,
+        is_edited: true,
+        updated_at: new Date().toISOString(),
+      };
+
+      upsertLocalMessage(updatedMessage);
+      return updatedMessage;
+    }
   },
 
-  // ۴. حذف پیام (تسک #28)
-  deleteMessage: async (messageId: string, currentUserId: string): Promise<void> => {
-    const allMessages = getStoredMessages();
-    const msgIndex = allMessages.findIndex((m) => m.id === messageId);
+  deleteMessage: async (
+    conversationId: string,
+    messageId: string
+  ): Promise<void> => {
+    try {
+      await apiRequest<void>(
+        `/api/chat/conversations/${conversationId}/messages/${messageId}/`,
+        { method: "DELETE" }
+      );
+    } catch {
+      const messages = getLocalMessages();
+      const updatedMessages = messages.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              content: null,
+              is_deleted: true,
+              updated_at: new Date().toISOString(),
+            }
+          : message
+      );
 
-    if (msgIndex === -1) {
-      throw new Error('Message not found.');
+      saveLocalMessages(updatedMessages);
     }
+  },
 
-    // بررسی مالکیت پیام
-    if (allMessages[msgIndex].senderId !== currentUserId) {
-      throw new Error('You can only delete your own messages.');
+  markConversationAsRead: async (conversationId: string): Promise<void> => {
+    try {
+      await apiRequest<void>(
+        `/api/chat/conversations/${conversationId}/mark_read/`,
+        { method: "POST" }
+      );
+    } catch {
     }
-
-    // حذف پیام از آرایه
-    const updatedMessages = allMessages.filter((m) => m.id !== messageId);
-    saveMessages(updatedMessages);
   },
 };
