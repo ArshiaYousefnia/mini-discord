@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { getConversationMessages } from "../services/chatService";
+import { 
+  getConversationMessages,
+  markConversationRead
+} from "../services/chatService";
 import type { ChatListItem, Message } from "../types/chat";
 
 interface Props {
@@ -28,18 +31,28 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
         const data = await getConversationMessages(chat.id);
 
-        if (isMounted) {
-          const sortedMessages = [...data].sort(
-            (a, b) =>
-              new Date(a.created_at).getTime() -
-              new Date(b.created_at).getTime()
-          );
+        if (!isMounted) return;
 
-          setMessages(sortedMessages);
+        const sortedMessages = [...data].sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime()
+        );
+
+        setMessages(sortedMessages);
+
+        // --- NEW: mark conversation as read ---
+        const latest = sortedMessages[sortedMessages.length - 1];
+        if (latest) {
+          await markConversationRead(chat.id, latest.id);
         }
+        // --------------------------------------
+
       } catch (err) {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : "Failed to load messages");
+          setError(
+            err instanceof Error ? err.message : "Failed to load messages"
+          );
         }
       } finally {
         if (isMounted) {

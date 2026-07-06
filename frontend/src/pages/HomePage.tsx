@@ -3,17 +3,15 @@ import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
 import {
   createDirectMessage,
-  getConversationMessages,
   getConversations,
 } from "../services/chatService";
 import {
   mapConversationToChatListItem,
-  sortChatsByRecent, // Updated to use the correct function name from your chatMappers
+  sortChatsByRecent,
 } from "../services/chatMapper";
 import type { ChatListItem, Conversation } from "../types/chat";
 import type { BackendUserProfile } from "../types/user";
 import "../styles/home.css";
-
 
 // Retrieve current logged in user config
 function getCurrentUsername(): string {
@@ -37,33 +35,37 @@ export default function HomePage() {
 
   useEffect(() => {
     setCurrentUsername(getCurrentUsername());
+
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
+
     window.addEventListener("resize", handleResize);
+
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   const loadChats = async () => {
     try {
       setLoading(true);
+      setPageError("");
+
       const conversations: Conversation[] = await getConversations();
 
       const mappedChats = await Promise.all(
         conversations.map(async (conversation) => {
           try {
-            const messages = await getConversationMessages(conversation.id);
-            return mapConversationToChatListItem(conversation, messages);
+            return mapConversationToChatListItem(conversation);
           } catch {
-            return mapConversationToChatListItem(conversation, []);
+            return mapConversationToChatListItem(conversation);
           }
         })
       );
 
       const sorted = sortChatsByRecent(mappedChats);
+
       setChatItems(sorted);
 
-      if (sorted.length > 0 && !selectedChat) {
-        setSelectedChat(sorted[0]);
-      }
+      // Do NOT auto-select first chat.
+      // selectedChat remains null until the user explicitly chooses one.
     } catch (err) {
       setPageError("Failed to fetch conversations.");
     } finally {
@@ -75,10 +77,32 @@ export default function HomePage() {
     loadChats();
   }, []);
 
+  // New function: select chat and immediately clear unread badge locally
+  const handleSelectChat = (chat: ChatListItem) => {
+    const readChat: ChatListItem = {
+      ...chat,
+      unreadCount: 0,
+    };
+
+    setSelectedChat(readChat);
+
+    setChatItems((prevChats) =>
+      prevChats.map((item) =>
+        item.id === chat.id
+          ? {
+              ...item,
+              unreadCount: 0,
+            }
+          : item
+      )
+    );
+  };
+
   const handleStartDirectMessage = async (user: BackendUserProfile) => {
     try {
-      // Send a system welcome message to initiate the DM conversation flow
+      // This currently sends "Hello!" to initialize the DM.
       await createDirectMessage(user.id, "Hello!");
+
       await loadChats();
     } catch (err) {
       alert("Failed to initialize conversation.");
@@ -91,7 +115,7 @@ export default function HomePage() {
         <Sidebar
           chats={chatItems}
           selectedChatId={selectedChat?.id ?? null}
-          onSelectChat={setSelectedChat}
+          onSelectChat={handleSelectChat}
           currentUsername={currentUsername}
           onStartDirectMessage={handleStartDirectMessage}
         />

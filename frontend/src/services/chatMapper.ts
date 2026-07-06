@@ -1,41 +1,41 @@
-import type { ChatListItem, Conversation, Message } from "../types/chat";
-
-const fallbackAvatarByType: Record<string, string> = {
-  DM: "https://i.pravatar.cc/150?img=1",
-  GROUP: "https://ui-avatars.com/api/?name=Group&background=6b7280&color=fff",
-  CHANNEL: "https://ui-avatars.com/api/?name=Channel&background=2563eb&color=fff",
-  SAVED: "https://ui-avatars.com/api/?name=Saved&background=16a34a&color=fff",
-};
+import type { ChatListItem, Conversation} from "../types/chat";
 
 export function mapConversationToChatListItem(
-  conversation: Conversation,
-  messages: Message[]
+  conversation: Conversation
 ): ChatListItem {
-  const sortedMessages = [...messages].sort(
-    (a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
+  // Use backend-provided DM name/avatar (best & correct)
+  const name =
+    conversation.display_name ||
+    (conversation.type === "DM" ? "Direct Message" : "Unnamed Chat");
 
-  const latest = sortedMessages[0];
+  const avatar =
+    conversation.avatar ||
+    (conversation.type === "DM"
+      ? "/avatars/default-user.png"
+      : "/avatars/default-group.png");
+
+  const lastMessage = conversation.last_message;
+
+  const lastMessageText = lastMessage
+    ? lastMessage.is_deleted
+      ? "Message deleted"
+      : lastMessage.content || "No content"
+    : "No messages yet";
+
+  const lastMessageAt = lastMessage ? lastMessage.created_at : null;
 
   return {
     id: conversation.id,
     type: conversation.type,
-    name:
-      conversation.name ||
-      (conversation.type === "DM"
-        ? "Direct Message"
-        : conversation.type === "SAVED"
-        ? "Saved Messages"
-        : "Unnamed Conversation"),
-    avatar: fallbackAvatarByType[conversation.type],
-    lastMessage: latest?.is_deleted
-      ? "Message deleted"
-      : latest?.content || "No messages yet",
-    lastMessageAt: latest?.created_at || conversation.created_at,
-    unreadCount: 0, // backend doesn't currently provide unread_count
+    name,
+    avatar,
+    lastMessage: lastMessageText,
+    lastMessageAt,
+    unreadCount: conversation.unread_count || 0,
+    otherUserId: conversation.other_user_id, // <-- now accessible to UI
   };
 }
+
 
 export function sortChatsByRecent(chats: ChatListItem[]) {
   return [...chats].sort((a, b) => {
