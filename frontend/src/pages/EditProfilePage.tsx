@@ -143,6 +143,7 @@ export default function EditProfilePage() {
       localStorage.removeItem("email");
       localStorage.removeItem("id");
       localStorage.removeItem("display_name");
+      localStorage.removeItem("avatar_url");
       navigate("/login", { replace: true });
     }
   };
