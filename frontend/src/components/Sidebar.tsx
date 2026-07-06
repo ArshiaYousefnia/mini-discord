@@ -13,6 +13,35 @@ type Props = {
   onStartDirectMessage: (user: BackendUserProfile) => Promise<void>;
 };
 
+function getLoggedInUsername(): string {
+  try {
+    const raw = localStorage.getItem("username");
+    if (!raw) return "";
+
+    // case 1: stored as plain string, e.g. aa
+    try {
+      const parsed = JSON.parse(raw);
+
+      // case 2: stored as object, e.g. {"username":"aa"}
+      if (typeof parsed === "object" && parsed?.username) {
+        return String(parsed.username).trim().toLowerCase();
+      }
+
+      // case 3: stored as JSON string, e.g. "aa"
+      if (typeof parsed === "string") {
+        return parsed.trim().toLowerCase();
+      }
+    } catch {
+      // case 4: raw plain string not JSON
+      return raw.trim().toLowerCase();
+    }
+
+    return raw.trim().toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
 export default function Sidebar({
   chats,
   selectedChatId,
@@ -21,10 +50,12 @@ export default function Sidebar({
   onStartDirectMessage,
 }: Props) {
   const navigate = useNavigate();
-  
+
   // --- State for Profile ---
   const [displayName, setDisplayName] = useState<string>("My Profile");
-  const [avatarUrl, setAvatarUrl] = useState<string>("https://i.pravatar.cc/150?img=12");
+  const [avatarUrl, setAvatarUrl] = useState<string>(
+    "https://i.pravatar.cc/150?img=12"
+  );
 
   // --- State for Search ---
   const [search, setSearch] = useState("");
@@ -32,25 +63,30 @@ export default function Sidebar({
   const [globalUser, setGlobalUser] = useState<BackendUserProfile | null>(null);
   const [searchError, setSearchError] = useState("");
 
-  // Load profile data from localStorage on mount
+  // --- Logged in username ---
+  const [loggedInUsername, setLoggedInUsername] = useState("");
+
   useEffect(() => {
     const savedName = localStorage.getItem("display_name");
-    const savedAvatar = localStorage.getItem("avatar_url"); // Assuming you store this too
-    
+    const savedAvatar = localStorage.getItem("avatar_url");
+
     if (savedName) setDisplayName(savedName);
     if (savedAvatar) setAvatarUrl(savedAvatar);
-  }, []);
+
+    const fromStorage = getLoggedInUsername();
+    const fromProp = (currentUsername || "").trim().toLowerCase();
+
+    setLoggedInUsername(fromStorage || fromProp);
+  }, [currentUsername]);
 
   const goToEditProfile = () => {
     navigate("/profile/");
   };
 
-  // Check if user is typing a username query (e.g. starting with @)
   const isGlobalSearchQuery = search.trim().startsWith("@");
 
-  // Local filter for standard chat list
   const filteredChats = useMemo(() => {
-    if (isGlobalSearchQuery) return chats; 
+    if (isGlobalSearchQuery) return chats;
     return chats.filter((chat) =>
       chat.name.toLowerCase().includes(search.toLowerCase())
     );
@@ -66,31 +102,42 @@ export default function Sidebar({
       setGlobalUser(null);
 
       const user = await searchUserByUsername(queryVal);
+
       if (!user) {
         setSearchError("User not found");
       } else {
         setGlobalUser(user);
       }
-    } catch (err) {
+    } catch {
       setSearchError("User not found");
     } finally {
       setSearchingGlobal(false);
     }
   };
 
-  const handleStartChat = async (user: BackendUserProfile) => {
-    await onStartDirectMessage(user);
+  const handleStartChat = async (user: BackendUserProfile | null) => {
+    if (!user) return;
+
     setSearch("");
     setGlobalUser(null);
+
+    await onStartDirectMessage(user);
   };
 
-  const isSelf = globalUser?.username.toLowerCase() === currentUsername.toLowerCase();
+  const searchedUsername = (globalUser?.username || "").trim().toLowerCase();
+  const isSelf =
+    searchedUsername !== "" &&
+    loggedInUsername !== "" &&
+    searchedUsername === loggedInUsername;
 
   return (
     <div className="sidebar">
       <div className="sidebar-top">
-        {/* Profile Section */}
-        <div className="my-profile" onClick={goToEditProfile} style={{ cursor: 'pointer' }}>
+        <div
+          className="my-profile"
+          onClick={goToEditProfile}
+          style={{ cursor: "pointer" }}
+        >
           <img
             src={avatarUrl}
             className="profile-avatar"
@@ -99,7 +146,6 @@ export default function Sidebar({
           <span className="profile-name">{displayName}</span>
         </div>
 
-        {/* Search Section */}
         <div className="search-container">
           <input
             className="chat-search"
@@ -108,6 +154,7 @@ export default function Sidebar({
             onChange={(e) => {
               setSearch(e.target.value);
               if (searchError) setSearchError("");
+              if (globalUser) setGlobalUser(null);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && isGlobalSearchQuery) {
@@ -116,8 +163,8 @@ export default function Sidebar({
             }}
           />
           {isGlobalSearchQuery && (
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="global-search-btn"
               onClick={handleGlobalSearch}
               disabled={searchingGlobal}
@@ -129,14 +176,13 @@ export default function Sidebar({
       </div>
 
       <div className="chat-list">
-        {/* Global User Search Results Overlay */}
         {(globalUser || searchError) && isGlobalSearchQuery && (
           <div className="global-search-overlay">
             <div className="overlay-header">
               <span>Global Search Result</span>
-              <button 
-                type="button" 
-                className="close-overlay-btn" 
+              <button
+                type="button"
+                className="close-overlay-btn"
                 onClick={() => {
                   setGlobalUser(null);
                   setSearchError("");
@@ -146,7 +192,7 @@ export default function Sidebar({
                 ✕
               </button>
             </div>
-            
+
             {searchError && (
               <div className="search-error-message">{searchError}</div>
             )}
@@ -165,11 +211,14 @@ export default function Sidebar({
                   <div className="search-profile-username">
                     @{globalUser.username}
                   </div>
+
                   {globalUser.bio && (
                     <div className="search-profile-bio">{globalUser.bio}</div>
                   )}
-                  
-                  {!isSelf ? (
+
+                  {isSelf ? (
+                    <span className="self-label">This is you</span>
+                  ) : (
                     <button
                       type="button"
                       className="message-action-btn"
@@ -177,8 +226,6 @@ export default function Sidebar({
                     >
                       Message
                     </button>
-                  ) : (
-                    <span className="self-label">This is you</span>
                   )}
                 </div>
               </div>
@@ -186,12 +233,9 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Normal Chat List */}
         {!searchError && !globalUser && (
           filteredChats.length === 0 ? (
-            <div className="empty-chat-list">
-              No conversations found.
-            </div>
+            <div className="empty-chat-list">No conversations found.</div>
           ) : (
             filteredChats.map((chat) => (
               <ChatItem

@@ -168,7 +168,7 @@ class ConversationListView(ListAPIView):
     def get_queryset(self):
         user = self.request.user
 
-        # Subquery to get the timestamp of the user's last_read_message (or NULL)
+        # Subquery to get the timestamp of the user's last_read_message
         last_read_created = Subquery(
             ConversationMember.objects.filter(
                 conversation=OuterRef('id'),
@@ -176,7 +176,6 @@ class ConversationListView(ListAPIView):
             ).values('last_read_message__created_at')[:1]
         )
 
-        # Annotate unread count: messages newer than last_read_created
         queryset = Conversation.objects.filter(
             members__user=user
         ).annotate(
@@ -188,22 +187,18 @@ class ConversationListView(ListAPIView):
             )
         ).distinct()
 
-        # Prefetch the latest message for each conversation
-        latest_msg_subquery = Message.objects.filter(
-            conversation=OuterRef('id')
-        ).order_by('-created_at')[:1]
-
+        # Prefetch the latest message
         queryset = queryset.prefetch_related(
             Prefetch(
                 'messages',
-                queryset=Message.objects.filter(
-                    id__in=Subquery(latest_msg_subquery.values('id'))
-                ),
-                to_attr='_last_message_prefetched'   # this becomes a list (0 or 1 item)
+                queryset=Message.objects
+                    .filter(is_deleted=False)
+                    .order_by('-created_at')[:1],  # <--- correct place to slice
+                to_attr='_last_message_prefetched'
             )
         )
 
-        # Prefetch members with user details to avoid extra queries for DM name/avatar
+        # Prefetch members with user details for DM name/avatar
         queryset = queryset.prefetch_related(
             Prefetch(
                 'members',
@@ -212,6 +207,7 @@ class ConversationListView(ListAPIView):
         )
 
         return queryset
+
 
 class ConversationMarkReadView(APIView):
     permission_classes = [IsAuthenticated]

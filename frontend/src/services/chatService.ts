@@ -33,3 +33,18 @@ export async function createDirectMessage(
   });
   return response.data;
 }
+
+/**
+ * Marks a conversation as read by setting the user's last_read_message.
+ * POST /api/chat/conversations/<conversation_id>/mark_read/
+ * Payload: { last_read_message_id: string }
+ */
+export async function markConversationRead(
+  conversationId: string,
+  lastReadMessageId: string
+): Promise<void> {
+  await api.post(`/api/chat/conversations/${conversationId}/mark_read/`, {
+    last_read_message_id: lastReadMessageId,
+  });
+}
+
