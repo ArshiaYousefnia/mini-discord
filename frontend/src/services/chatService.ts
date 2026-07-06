@@ -1,3 +1,5 @@
+// src/services/chatService.ts
+import api from "./api"; // Uses your Axios instance with interceptors
 import type {
   Conversation,
   Message,
@@ -6,51 +8,11 @@ import type {
   UserProfile,
 } from "../types/chat";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
-
 const LOCAL_MESSAGES_KEY = "mini_discord_demo_messages";
 
-type RequestOptions = RequestInit & {
-  body?: BodyInit | null;
-};
-
-function getCsrfToken() {
-  const match = document.cookie.match(/csrftoken=([^;]+)/);
-  return match?.[1] ?? "";
-}
-
-async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const isFormData = options.body instanceof FormData;
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    credentials: "include",
-    ...options,
-    headers: {
-      ...(isFormData ? {} : { "Content-Type": "application/json" }),
-      ...(getCsrfToken() ? { "X-CSRFToken": getCsrfToken() } : {}),
-      ...(options.headers ?? {}),
-    },
-  });
-
-  if (!response.ok) {
-    let message = "Request failed";
-
-    try {
-      const data = await response.json();
-      message = data.detail || data.error || data.message || message;
-    } catch {
-      message = response.statusText || message;
-    }
-
-    throw new Error(message);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json();
-}
+// ==========================================
+// Local Storage Fallback Helpers
+// ==========================================
 
 function getLocalMessages(): Message[] {
   try {
@@ -64,7 +26,7 @@ function saveLocalMessages(messages: Message[]) {
   localStorage.setItem(LOCAL_MESSAGES_KEY, JSON.stringify(messages));
 }
 
-function getCurrentUsernameFallback() {
+function getCurrentUsernameFallback(): string {
   return (
     localStorage.getItem("username") ||
     localStorage.getItem("current_username") ||
@@ -117,32 +79,42 @@ function getLocalConversationMessages(conversationId: string) {
   );
 }
 
+// ==========================================
+// Service Implementation
+// ==========================================
+
 export const chatService = {
   getConversations: async (): Promise<Conversation[]> => {
     try {
-      return await apiRequest<Conversation[]>("/api/chat/conversations/");
-    } catch {
+      const response = await api.get<Conversation[]>("/api/chat/conversations/");
+      return response.data;
+    } catch (error) {
+      console.warn("Failed to fetch conversations from API, returning empty list", error);
       return [];
     }
   },
 
   getConversationMessages: async (conversationId: string): Promise<Message[]> => {
     try {
-      const messages = await apiRequest<Message[]>(
+      const response = await api.get<Message[]>(
         `/api/chat/conversations/${conversationId}/messages/`
       );
+      const messages = response.data;
 
       messages.forEach(upsertLocalMessage);
       return messages.filter((message) => !message.is_deleted);
-    } catch {
+    } catch (error) {
+      console.warn(`Failed to fetch messages for conversation ${conversationId}, loading local cache`, error);
       return getLocalConversationMessages(conversationId);
     }
   },
 
   getUserProfile: async (userId: string): Promise<UserProfile | null> => {
     try {
-      return await apiRequest<UserProfile>(`/api/users/${userId}/profile/`);
-    } catch {
+      const response = await api.get<UserProfile>(`/api/users/${userId}/profile/`);
+      return response.data;
+    } catch (error) {
+      console.warn(`Failed to fetch user profile for ${userId}`, error);
       return null;
     }
   },
@@ -161,14 +133,17 @@ export const chatService = {
     }
 
     try {
-      const message = await apiRequest<Message>("/api/chat/dm/", {
-        method: "POST",
-        body: JSON.stringify({ recipient_id, content, reply_to }),
+      const response = await api.post<Message>("/api/chat/dm/", {
+        recipient_id,
+        content,
+        reply_to,
       });
+      const message = response.data;
 
       upsertLocalMessage(message);
       return message;
-    } catch {
+    } catch (error) {
+      console.warn("Failed to send direct message to API, storing locally", error);
       const localMessage = createLocalMessage({
         conversationId: `new-${recipient_id}`,
         content,
@@ -194,17 +169,16 @@ export const chatService = {
     }
 
     try {
-      const message = await apiRequest<Message>(
+      const response = await api.post<Message>(
         `/api/chat/conversations/${conversation_id}/messages/`,
-        {
-          method: "POST",
-          body: JSON.stringify({ content, reply_to }),
-        }
+        { content, reply_to }
       );
+      const message = response.data;
 
       upsertLocalMessage(message);
       return message;
-    } catch {
+    } catch (error) {
+      console.warn("Failed to send message to API, storing locally", error);
       const localMessage = createLocalMessage({
         conversationId: conversation_id,
         content,
@@ -230,17 +204,16 @@ export const chatService = {
     }
 
     try {
-      const message = await apiRequest<Message>(
+      const response = await api.patch<Message>(
         `/api/chat/conversations/${conversationId}/messages/${messageId}/`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ content }),
-        }
+        { content }
       );
+      const message = response.data;
 
       upsertLocalMessage(message);
       return message;
-    } catch {
+    } catch (error) {
+      console.warn("Failed to edit message on server, updating local storage", error);
       const messages = getLocalMessages();
       const target = messages.find((message) => message.id === messageId);
 
@@ -265,17 +238,31 @@ export const chatService = {
     messageId: string
   ): Promise<void> => {
     try {
-      await apiRequest<void>(
-        `/api/chat/conversations/${conversationId}/messages/${messageId}/`,
-        { method: "DELETE" }
+      await api.delete(
+        `/api/chat/conversations/${conversationId}/messages/${messageId}/`
       );
-    } catch {
+      
+      // Update local cache state reflecting deletion
       const messages = getLocalMessages();
       const updatedMessages = messages.map((message) =>
         message.id === messageId
           ? {
               ...message,
-              content: null,
+              content: "",
+              is_deleted: true,
+              updated_at: new Date().toISOString(),
+            }
+          : message
+      );
+      saveLocalMessages(updatedMessages);
+    } catch (error) {
+      console.warn("Failed to delete message on server, deleting locally", error);
+      const messages = getLocalMessages();
+      const updatedMessages = messages.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              content: "",
               is_deleted: true,
               updated_at: new Date().toISOString(),
             }
@@ -286,17 +273,23 @@ export const chatService = {
     }
   },
 
-  markConversationAsRead: async (conversationId: string): Promise<void> => {
+  markConversationAsRead: async (
+    conversationId: string,
+    lastReadMessageId?: string
+  ): Promise<void> => {
     try {
-      await apiRequest<void>(
-        `/api/chat/conversations/${conversationId}/mark_read/`,
-        { method: "POST" }
-      );
-    } catch {
+      await api.post(`/api/chat/conversations/${conversationId}/mark_read/`, {
+        last_read_message_id: lastReadMessageId,
+      });
+    } catch (error) {
+      console.warn(`Failed to mark conversation ${conversationId} as read`, error);
     }
   },
 };
 
+// ==========================================
+// Exports for compatibility with both versions
+// ==========================================
 
 export const {
   getConversations,
@@ -306,9 +299,22 @@ export const {
   sendConversationMessage,
   editMessage,
   deleteMessage,
-  markConversationAsRead
+  markConversationAsRead,
 } = chatService;
 
-export const markConversationRead = markConversationAsRead;
-export const createDirectMessage = sendDirectMessage;
+// Backward-compatible named exports & aliases
+// Replace: export const createDirectMessage = sendDirectMessage;
+// With this wrapper:
+export async function createDirectMessage(
+  recipientId: string,
+  content: string,
+  replyTo: string | null = null
+): Promise<Message> {
+  return sendDirectMessage({
+    recipient_id: recipientId,
+    content: content,
+    reply_to: replyTo,
+  });
+}
 
+export const markConversationRead = markConversationAsRead;

@@ -89,8 +89,8 @@ export default function ChatPage() {
       return conversation.display_name;
     }
 
-    if (conversation?.name) {
-      return conversation.name;
+    if (conversation?.display_name) {
+      return conversation.display_name;
     }
 
     if (isNewChat) {
@@ -98,7 +98,7 @@ export default function ChatPage() {
     }
 
     return "Conversation";
-  }, [conversation?.display_name, conversation?.name, isNewChat, recipientProfile]);
+  }, [conversation?.display_name, conversation?.display_name, isNewChat, recipientProfile]);
 
   const headerSubtitle = useMemo(() => {
     if (recipientProfile?.username) {

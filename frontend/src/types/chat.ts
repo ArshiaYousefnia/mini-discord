@@ -1,12 +1,20 @@
 export type ConversationType = "DM" | "GROUP" | "CHANNEL" | "SAVED";
 
+export type BackendLastMessage = {
+  id: string;
+  content: string | null;
+  is_deleted: boolean;
+  created_at: string;
+};
+
 export type Conversation = {
   id: string;
   type: ConversationType;
-  name: string | null;
-  display_name?: string; // اضافه شد
-  avatar?: string | null; // اضافه شد
-  other_user_id?: string | null; // فیلد کلیدی جدید
+  display_name: string | null;
+  avatar: string | null;
+  last_message: BackendLastMessage | null;
+  unread_count: number;
+  other_user_id: string | null; // <-- important!
   created_at: string;
 };
 
@@ -32,6 +40,7 @@ export type ChatListItem = {
   lastMessage: string;
   lastMessageAt: string | null;
   unreadCount: number;
+  otherUserId?: string | null; // <-- include it for DM use
 };
 
 export type UserProfile = {
