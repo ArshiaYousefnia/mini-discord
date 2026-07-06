@@ -28,10 +28,10 @@ class SendDirectMessageView(viewsets.GenericViewSet):
     def create(self, request):
         """
         Send a direct message to another user.
-        Expects: { "recipient_id": "<user_uuid>", "content": "Hello" }
         """
         recipient_id = request.data.get('recipient_id')
         content = request.data.get('content')
+        reply_to = request.data.get('reply_to')
 
         if not recipient_id:
             return Response(
@@ -72,6 +72,7 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         serializer = self.get_serializer(data={
             'conversation': str(conversation.id),  # Need to pass UUID as string
             'content': content,
+            'reply_to': reply_to,
         })
         serializer.is_valid(raise_exception=True)
 
