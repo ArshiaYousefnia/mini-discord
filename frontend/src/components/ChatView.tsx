@@ -24,14 +24,26 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const [activeReplyTo, setActiveReplyTo] = useState<Message | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldScrollToBottomRef = useRef(false);
+  const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
 
   // گرفتن اطلاعات کاربر فعلی از LocalStorage برای نسبت دادن پیام‌های ارسالی
   const currentUserId = localStorage.getItem("userId") || localStorage.getItem("user_id");
   const currentUsername = localStorage.getItem("username");
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (loading) return;
+    if (!shouldScrollToBottomRef.current) return;
+
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: scrollBehaviorRef.current,
+      });
+
+      shouldScrollToBottomRef.current = false;
+    });
+  }, [messages.length, loading, chat?.id]);
+
 
 
   useEffect(() => {
@@ -53,11 +65,16 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
         if (!isMounted) return;
 
-        const sortedMessages = [...data].sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() -
-            new Date(b.created_at).getTime()
-        );
+        const sortedMessages = [...data]
+          .filter((msg) => !msg.is_deleted)
+          .sort(
+            (a, b) =>
+              new Date(a.created_at).getTime() -
+              new Date(b.created_at).getTime()
+          );
+
+        shouldScrollToBottomRef.current = true;
+        scrollBehaviorRef.current = "auto";
 
         setMessages(sortedMessages);
 
@@ -99,6 +116,9 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         recipient_id: chat.otherUserId, // <-- ارسال شناسه مخاطب
       });
       
+      shouldScrollToBottomRef.current = true;
+      scrollBehaviorRef.current = "smooth";
+
       setMessages((prev) => [...prev, newMessage]);
       setActiveReplyTo(null);
     } catch (err) {
@@ -120,15 +140,12 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   // هندل کردن حذف پیام
   const handleDeleteMessage = async (messageId: string) => {
     if (!chat) return;
+
     await deleteMessage(chat.id, messageId);
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === messageId
-          ? { ...msg, content: "", is_deleted: true, updated_at: new Date().toISOString() }
-          : msg
-      )
-    );
+
+    setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
   };
+
 
   if (!chat) {
     return (

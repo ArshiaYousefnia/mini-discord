@@ -21,9 +21,8 @@ export default function MessageBubble({
   onEdit,
   onDelete,
 }: Props) {
-  const messageText = message.is_deleted
-    ? "This message was deleted."
-    : message.content ?? "";
+  const messageText = message.content ?? "";
+
 
   const isMe =
     Boolean(currentUserId && message.sender === currentUserId) ||
