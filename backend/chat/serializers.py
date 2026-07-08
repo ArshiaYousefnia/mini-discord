@@ -76,7 +76,8 @@ class ConversationListSerializer(serializers.ModelSerializer):
     avatar = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.IntegerField()     # will be annotated in the view
-   
+    other_user_id = serializers.SerializerMethodField()
+
 
     class Meta:
         model = Conversation
@@ -113,5 +114,6 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
 class ConversationMarkReadSerializer(serializers.Serializer):
     last_read_message_id = serializers.UUIDField(required=True)
+
 
 
