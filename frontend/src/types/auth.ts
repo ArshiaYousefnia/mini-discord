@@ -30,4 +30,7 @@ export type LoginResponse = {
   access: string;
   username: string;
   email: string;
+  id: string;
+  display_name: string;
+  avatar_url: string;
 };
