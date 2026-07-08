@@ -74,10 +74,7 @@ export default function MessageInput({
                 "message"}
             </span>
             <span className="reply-text">
-              {/* Task #52: is_deleted is the source of truth, not content emptiness */}
-              {activeReplyTo.is_deleted
-                ? "Original message was deleted"
-                : activeReplyTo.content || ""}
+              {activeReplyTo.content || "Deleted message"}
             </span>
           </div>
 

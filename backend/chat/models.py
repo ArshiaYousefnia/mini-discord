@@ -6,6 +6,7 @@ from django.db import models
 from users.models import avatar_upload_path, DEFAULT_AVATAR_PATH
 
 
+
 class Conversation(models.Model):
     class Type(models.TextChoices):
         DM = 'DM', 'Direct Message'
@@ -17,12 +18,14 @@ class Conversation(models.Model):
     type = models.CharField(max_length=10, choices=Type.choices)
     name = models.CharField(max_length=200, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
+
     avatar = models.FileField(
         upload_to=avatar_upload_path,
         blank=True,
         null=True,
         default=None
     )
+
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -31,6 +34,7 @@ class Conversation(models.Model):
         related_name='owned_conversations',
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
 
     @property
     def avatar_url(self):
@@ -43,6 +47,7 @@ class Conversation(models.Model):
         if self.type != self.Type.DM:
             return None
         return self.members.exclude(user=user).first().user if self.members.count() == 2 else None
+
 
     def __str__(self):
         if self.type == self.Type.DM:
