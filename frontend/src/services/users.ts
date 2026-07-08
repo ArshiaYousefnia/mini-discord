@@ -11,6 +11,8 @@ export const getUserProfile = async (userId: string): Promise<UserProfile> => {
 export const getUserEditProfile = async (
   userId: string
 ): Promise<UserEditProfile> => {
+  console.log(userId);
+  
   const response = await api.get<UserEditProfile>(
     `/api/users/${userId}/profile/update/`
   );
