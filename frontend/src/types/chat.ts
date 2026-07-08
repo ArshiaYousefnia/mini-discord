@@ -14,47 +14,23 @@ export type Conversation = {
   avatar: string | null;
   last_message: BackendLastMessage | null;
   unread_count: number;
-  other_user_id: string | null;
-  other_user_is_online: boolean | null;
+  other_user_id: string | null; // <-- important!
+  created_at: string;
 };
 
-export interface Attachment {
-  id: string;
-  file_url: string;
-  file_name: string;
-  file_size?: number;
-  created_at?: string;
-}
-
-export interface Message {
+export type Message = {
   id: string;
   conversation: string;
-  sender: string | number;
-  sender_username?: string;
-  sender_display_name?: string;
+  sender: string;
+  sender_username: string;
+  sender_display_name: string;
   content: string | null;
-  reply_to?: string | null;
+  reply_to: string | null;
   is_edited: boolean;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
-  attachments?: Attachment[];
-  // Present when the conversation is a CHANNEL (ChannelMessageSerializer).
-  topic_id?: string | null;
-  topic_name?: string | null;
-}
-
-export interface SendConversationMessagePayload {
-  conversation_id: string;
-  content?: string;
-  reply_to?: string | null;
-  recipient_id?: string;
-  files?: File[]; // Added
-  // Task #22/#49 — scopes a channel message to a topic (channels only; the
-  // backend ignores this field for DM/GROUP conversations).
-  topic_id?: string | null;
-}
-
+};
 
 export type ChatListItem = {
   id: string;
@@ -64,7 +40,7 @@ export type ChatListItem = {
   lastMessage: string;
   lastMessageAt: string | null;
   unreadCount: number;
-  other_user_id?: string | null;
+  otherUserId?: string | null; // <-- include it for DM use
 };
 
 export type UserProfile = {
@@ -82,112 +58,9 @@ export type SendDirectMessagePayload = {
   reply_to?: string | null;
 };
 
-
-export type CreateGroupPayload = {
-  name: string;
-  description?: string;
-  avatar?: File | null;
-};
-
-export type CreatedGroupResponse = {
-  id: string;
-  name: string;
-  description?: string;
-  avatar?: string | null;
-};
-
-export type GroupProfile = {
-  id: string;
-  type: string;
-  name: string;
-  description: string;
-  avatar_url: string;
-  owner_id: string;
-  owner_display_name: string;
-  created_at: string;
-  invite_token: string; 
-  member_count: Number;
-}
-
-export type GroupMember = {
-  user_id: string;
-  display_name: string;
-  avatar_url: string | null;
-  is_online: boolean;
-  role_name: string;
-};
-
-export type GroupMembers = GroupMember[];
-
-export type CreateChannelRequest = {
-  name: string;
-  description?: string;
-  avatar?: File;
-  is_private?: boolean;
-  public_id?: string | null;
-};
-
-export type CreateChannelResponse = {
-  id: string;
-  name: string;
-  description: string;
-  avatar_url: string | null;
-  is_private: boolean;
-  public_id: string | null;
-  invite_link: string;
-  owner_id: string | number;
-};
-
-export type ChannelPermissions = {
-    is_owner: boolean;
-    can_send_messages: boolean;
-    can_send_media: boolean;
-    can_delete_messages: boolean;
-    can_manage_members: boolean;
-    can_manage_roles: boolean;
-    can_edit_channel_info: boolean;
-    can_view_invite_link: boolean;
-    can_delete_channel: boolean;
-    can_create_topic: boolean;
-    can_manage_others_topics: boolean;
-}
-
-export type ChannelProfile = {
-  id: string;
-  name: string;
-  description: string;
-  avatar: string;
-  avatar_url: string;
-  owner_id: string;
-  owner_display_name: string;
-  created_at: string;
-  invite_link: string | null; 
-  is_private: boolean;        
-  public_id: string | null;
-}
-
-export type ChannelMember = {
-  id: string;
-  user_id: string;
-  username: string;
-  display_name: string;
-  avatar_url: string | null;
-  // NOTE: the backend's ChannelMemberSerializer returns a `roles` array of role
-  // *names* (not a single `role_name` string, unlike the group member serializer).
-  // This was previously mistyped here as `role_name`, which never matched the
-  // actual API response for channel members.
-  roles: string[];
-  is_online: boolean;
-};
-
-export type ChannelMembers = ChannelMember[];
-
-// Task #22 / #49 — topics inside a channel.
-export type Topic = {
-  id: string;
-  name: string;
-  creator_id: string;
-  creator_display_name: string;
-  created_at: string;
-  updated_at: string;
+export type SendConversationMessagePayload = {
+  conversation_id: string;
+  content: string;
+  reply_to?: string | null;
+  recipient_id?: string | null;
 };
