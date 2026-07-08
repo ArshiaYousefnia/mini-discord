@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { UserEditProfile } from "../types/user";
-import { getUserEditProfile} from "../services/users";
+import { getUserEditProfile, updateUserProfile} from "../services/users";
 import "../styles/editProfile.css";
 import { logoutUser } from "../services/authService";
 
 export default function EditProfilePage() {
-  const { userId } = useParams<{ userId: string }>();
+  const userId = localStorage.getItem("Id");
+  console.log(userId);
+  
   const navigate = useNavigate();
 
   const [user, setUser] = useState<UserEditProfile | null>(null);
@@ -105,9 +107,9 @@ export default function EditProfilePage() {
         formData.append("avatar", avatarFile);
       }
 
-      //const updated = await updateUserProfile(userId, formData);
+      const updated = await updateUserProfile(userId, formData);
 
-      //setUser(updated);
+      setUser(updated);
 
       // clear preview so UI switches to backend avatar_url
       setAvatarPreview(null);
@@ -139,7 +141,9 @@ export default function EditProfilePage() {
       localStorage.removeItem("refreshToken");
       localStorage.removeItem("username");
       localStorage.removeItem("email");
-      
+      localStorage.removeItem("id");
+      localStorage.removeItem("display_name");
+      localStorage.removeItem("avatar_url");
       navigate("/login", { replace: true });
     }
   };
@@ -169,7 +173,7 @@ export default function EditProfilePage() {
         <form onSubmit={handleSubmit}>
           <div className="edit-profile-header">
             <img
-              src={avatarPreview || user.avatar_url || ""}
+              src={avatarPreview || user.avatar || ""}
               alt={user.display_name}
               className="edit-profile-avatar"
             />
