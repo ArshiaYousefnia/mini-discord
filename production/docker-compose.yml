@@ -11,8 +11,7 @@ services:
     depends_on:
       - postgres
       - redis
-      - minio
-
+      - minio-init
   frontend:
     image: ${HARBOR_HOST:-registry.hamdocker.ir}/${HARBOR_PROJECT:-ayousefnia}/frontend:${FRONTEND_TAG:-latest}
     container_name: react-frontend
@@ -57,6 +56,30 @@ services:
     ports:
       - "9000:9000"      # S3 API
       - "9001:9001"      # web console
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+        set -e;
+        apk add --no-cache curl;
+        until mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; do
+          echo 'Waiting for MinIO...';
+          sleep 2;
+        done;
+        echo 'MinIO ready.';
+        mc mb myminio/avatars --ignore-existing;
+        echo 'Bucket avatars ready.';
+        curl -sSL -o /tmp/default_avatar.svg ${DEFAULT_AVATAR_URL:-https://raw.githubusercontent.com/ArshiaYousefnia/mini-discord/main/backend/static/images/default_avatar.svg};
+        mc cp /tmp/default_avatar.svg myminio/avatars/default_avatar.svg;
+        echo 'Default avatar uploaded.';
+        mc anonymous set public myminio/avatars;
+        echo 'Bucket set to public.';
+        exit 0;
+      "
+    restart: "no"
 
 volumes:
   postgres_data:
