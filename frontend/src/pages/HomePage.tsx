@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
 import {
@@ -13,7 +12,6 @@ import {
 import type { ChatListItem, Conversation } from "../types/chat";
 import type { BackendUserProfile } from "../types/user";
 import "../styles/home.css";
-import { useOnlineStatus } from "../hooks/useOnlineStatus";
 
 // Retrieve current logged in user config
 function getCurrentUsername(): string {
@@ -35,46 +33,22 @@ export default function HomePage() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [currentUsername, setCurrentUsername] = useState("");
 
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  // Hook now tracks live websocket updates only.
-  // Initial DM presence is hydrated from REST conversation data below.
-  const { onlineUsers, setOnlineUsers } = useOnlineStatus();
-
   useEffect(() => {
     setCurrentUsername(getCurrentUsername());
+
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
+
     window.addEventListener("resize", handleResize);
+
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const loadChats = async (isBackgroundRefresh = false, targetGroupId?: string) => {
+  const loadChats = async () => {
     try {
-      if (!isBackgroundRefresh) {
-        setLoading(true);
-        setPageError("");
-      }
+      setLoading(true);
+      setPageError("");
 
       const conversations: Conversation[] = await getConversations();
-
-      // Hydrate initial online state for DM sidebar entries from REST.
-      // WebSocket events will overwrite these values as users go online/offline.
-      const initialStatuses: Record<string, boolean> = {};
-      conversations.forEach((conversation) => {
-        if (
-          conversation.type === "DM" &&
-          conversation.other_user_id
-        ) {
-          initialStatuses[String(conversation.other_user_id)] = Boolean(
-            conversation.other_user_is_online
-          );
-        }
-      });
-
-      setOnlineUsers((prev) => ({
-        ...prev,
-        ...initialStatuses,
-      }));
 
       const mappedChats = await Promise.all(
         conversations.map(async (conversation) => {
@@ -86,70 +60,24 @@ export default function HomePage() {
         })
       );
 
-      let sorted = sortChatsByRecent(mappedChats);
-
-      const chatIdFromUrl = searchParams.get("chat");
-      const idToSelect = targetGroupId || chatIdFromUrl;
-
-      if (idToSelect) {
-        const chatToSelect = sorted.find((c) => c.id === idToSelect);
-
-        if (chatToSelect) {
-          const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
-
-          if (!isBackgroundRefresh || targetGroupId) {
-            setSelectedChat(readChat);
-          }
-
-          sorted = sorted.map((c) =>
-            c.id === idToSelect ? readChat : c
-          );
-
-          if (!targetGroupId && chatIdFromUrl) {
-            searchParams.delete("chat");
-            setSearchParams(searchParams, { replace: true });
-          }
-        }
-      }
-
-      if (selectedChat) {
-        const updatedSelectedChat = sorted.find((c) => c.id === selectedChat.id);
-
-        if (!updatedSelectedChat) {
-          setSelectedChat(null);
-
-          if (searchParams.get("chat") === selectedChat.id) {
-            searchParams.delete("chat");
-            setSearchParams(searchParams, { replace: true });
-          }
-        } else if (
-          updatedSelectedChat.name !== selectedChat.name ||
-          updatedSelectedChat.avatar !== selectedChat.avatar
-        ) {
-          setSelectedChat({
-            ...updatedSelectedChat,
-            unreadCount: selectedChat.unreadCount,
-          });
-        }
-      }
+      const sorted = sortChatsByRecent(mappedChats);
 
       setChatItems(sorted);
+
+      // Do NOT auto-select first chat.
+      // selectedChat remains null until the user explicitly chooses one.
     } catch (err) {
-      if (!isBackgroundRefresh) {
-        setPageError("Failed to fetch conversations.");
-      }
+      setPageError("Failed to fetch conversations.");
     } finally {
-      if (!isBackgroundRefresh) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     loadChats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // New function: select chat and immediately clear unread badge locally
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
       ...chat,
@@ -172,32 +100,14 @@ export default function HomePage() {
 
   const handleStartDirectMessage = async (user: BackendUserProfile) => {
     try {
+      // This currently sends "Hello!" to initialize the DM.
       await createDirectMessage(user.id, "Hello!");
+
       await loadChats();
     } catch (err) {
       alert("Failed to initialize conversation.");
     }
   };
-
-  const handleGroupExit = (groupId: string) => {
-    setChatItems((prev) => prev.filter((c) => c.id !== groupId));
-    setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
-  };
-
-  // Task #55 — after joining a channel found via public-ID search, select
-  // it the same way we already do for group invite joins: set `?chat=` and
-  // reload the conversation list so the new channel appears in the sidebar.
-  const handleChannelJoined = async (channelId: string) => {
-    setSearchParams({ chat: channelId });
-    await loadChats(false, channelId);
-  };
-
-  // Determine if the currently selected chat's other user is online.
-  // We use String() representation here to match our normalized websocket state.
-  const isOtherUserOnline =
-    selectedChat?.other_user_id
-      ? !!onlineUsers[String(selectedChat.other_user_id)]
-      : undefined;
 
   return (
     <div className="home-page">
@@ -208,9 +118,6 @@ export default function HomePage() {
           onSelectChat={handleSelectChat}
           currentUsername={currentUsername}
           onStartDirectMessage={handleStartDirectMessage}
-          onRefresh={() => loadChats(true)}
-          onlineUsers={onlineUsers ?? {}}
-          onChannelJoined={handleChannelJoined}
         />
       )}
 
@@ -225,13 +132,6 @@ export default function HomePage() {
               chat={selectedChat}
               isMobile={isMobile}
               onBack={() => setSelectedChat(null)}
-              onGroupExit={handleGroupExit}
-              onGroupJoined={async (groupId) => {
-                setSearchParams({ chat: groupId });
-                await loadChats(false, groupId);
-              }}
-              isOtherUserOnline={isOtherUserOnline}
-              onlineUsers={onlineUsers}
             />
           )}
         </div>

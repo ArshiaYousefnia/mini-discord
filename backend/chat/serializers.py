@@ -1,12 +1,14 @@
 from rest_framework import serializers
 from .models import Conversation, ConversationMember, Message
 
+
 class MinimalMessageSerializer(serializers.ModelSerializer):
     sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
 
     class Meta:
         model = Message
         fields = ['id', 'content', 'sender_display_name', 'created_at']
+
 
 class MessageSerializer(serializers.ModelSerializer):
     sender_username = serializers.CharField(source='sender.username', read_only=True)
@@ -36,6 +38,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
 
+
     def validate(self, data):
         if data.get('reply_to'):
             if data['reply_to'].conversation_id != data['conversation'].id:
@@ -63,18 +66,29 @@ class ConversationMemberSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField()  # or use a user serializer
     class Meta:
         model = ConversationMember
-        fields = ['user', 'joined_at']
+
+        
 
 class ConversationListSerializer(serializers.ModelSerializer):
-    type = serializers.CharField(source='type')   # the choice is already a string
+    #type = serializers.CharField(source='type')   # the choice is already a string
+
     display_name = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.IntegerField()     # will be annotated in the view
+    other_user_id = serializers.SerializerMethodField()
+
 
     class Meta:
         model = Conversation
-        fields = ['id', 'type', 'display_name', 'avatar', 'last_message', 'unread_count']
+        fields = ['id', 'type', 'display_name', 'avatar', 'last_message', 'unread_count', 'other_user_id']
+
+    def get_other_user_id(self, obj):
+        user = self.context['request'].user
+        if obj.type == Conversation.Type.DM:
+            other = obj.get_other_user(user)
+        return other.id if other else None
+
 
     def get_display_name(self, obj):
         user = self.context['request'].user
@@ -100,5 +114,6 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
 class ConversationMarkReadSerializer(serializers.Serializer):
     last_read_message_id = serializers.UUIDField(required=True)
+
 
 

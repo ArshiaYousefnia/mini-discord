@@ -1,30 +1,15 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import type { Message } from "../types/chat";
-import { joinGroupByToken } from "../services/groupService";
 import "../styles/chat.css";
-import CachedAttachment from "./CachedAttachment";
-
 
 type Props = {
   message: Message;
   currentUserId?: string | null;
   currentUsername?: string | null;
   replyMessage?: Message | null;
-  // Renamed from `isGroupOwner`: this now generically means "the current
-  // user is allowed to delete OTHER members' messages in this chat" —
-  // true for group owners, and for channel members/owners who have the
-  // "Delete others messages" permission (Task #29).
-  canDeleteOthers?: boolean;
-  isGroupChat?: boolean;
-  senderAvatarUrl?: string;
-  canReply?: boolean;
   onReply: (message: Message) => void;
   onEdit: (messageId: string, newText: string) => Promise<void>;
   onDelete: (messageId: string) => Promise<void>;
-  onAvatarClick?: (userId: string) => void;
-  onGroupJoined?: (groupId: string) => void;
-  onChannelPreview?: (token: string) => void; // Optional override hook for the invite-preview flow
 };
 
 export default function MessageBubble({
@@ -32,33 +17,20 @@ export default function MessageBubble({
   currentUserId,
   currentUsername,
   replyMessage,
-  canDeleteOthers = false,
-  isGroupChat = false,
-  senderAvatarUrl,
-  canReply = true,
   onReply,
   onEdit,
   onDelete,
-  onAvatarClick,
-  onGroupJoined,
-  onChannelPreview,
 }: Props) {
-  const navigate = useNavigate();
   const messageText = message.content ?? "";
 
-  const isMe =
-    (currentUserId != null &&
-      String(message.sender) === String(currentUserId)) ||
-    (currentUsername != null && message.sender_username === currentUsername);
 
-  const alignmentClass = isMe ? "outgoing" : "incoming";
-  const canDelete = isMe || canDeleteOthers;
-  const showSenderMeta = isGroupChat && !isMe;
+  const isMe =
+    Boolean(currentUserId && message.sender === currentUserId) ||
+    Boolean(currentUsername && message.sender_username === currentUsername);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content ?? "");
   const [loading, setLoading] = useState(false);
-  const [joinLoading, setJoinLoading] = useState(false);
 
   const formattedTime = useMemo(() => {
     try {
@@ -93,12 +65,9 @@ export default function MessageBubble({
   };
 
   const handleDelete = async () => {
-    const isModerationDelete = !isMe && canDeleteOthers;
-    const confirmText = isModerationDelete
-      ? "Delete this message for everyone in this chat?"
-      : "Are you sure you want to delete this message?";
-
-    if (!window.confirm(confirmText)) return;
+    if (!window.confirm("Are you sure you want to delete this message?")) {
+      return;
+    }
 
     try {
       await onDelete(message.id);
@@ -107,321 +76,100 @@ export default function MessageBubble({
     }
   };
 
-  const handleJoinGroup = async (token: string) => {
-    try {
-      setJoinLoading(true);
-      const data = await joinGroupByToken(token);
-
-      const groupId = data?.group_id || data?.id;
-
-      if (onGroupJoined && groupId) {
-        onGroupJoined(String(groupId));
-      } else {
-        alert("Successfully joined the group!");
-      }
-    } catch (err: any) {
-      if (err.response?.status === 400) {
-        const groupId = err.response?.data?.group_id;
-        if (onGroupJoined && groupId) {
-          onGroupJoined(String(groupId));
-        } else {
-          alert("You are already a group member!");
-        }
-      } else if (err.response?.status === 404) {
-        alert("Invalid invite link");
-      } else {
-        alert(err.message || "Failed to join group.");
-      }
-    } finally {
-      setJoinLoading(false);
-    }
-  };
-
-  const handleJoinChannel = (token: string) => {
-    // Task #20 — invite links always go through the read-only preview
-    // screen first ("preview first, then join"), never a direct join.
-    if (onChannelPreview) {
-      onChannelPreview(token);
-      return;
-    }
-    navigate(`/channels/join/${token}`);
-  };
-
-  const renderContent = (text: string) => {
-    // Matches http://groups/join/token or http://channels/join/token with optional trailing slash
-    const inviteRegex = /(http:\/\/(?:groups|channels)\/join\/[a-zA-Z0-9_-]+\/?)/g;
-    const parts = text.split(inviteRegex);
-
-    return (
-      <span className="message-content">
-        {parts.map((part, index) => {
-          if (part.match(inviteRegex)) {
-            // Remove optional trailing slash for parsing
-            const cleanPart = part.endsWith("/") ? part.slice(0, -1) : part;
-            const urlSegments = cleanPart.split("/");
-            
-            const token = urlSegments.pop() || "";
-            const isChannel = urlSegments.includes("channels");
-
-            return (
-              <button
-                key={index}
-                className="inline-invite-link"
-                onClick={() => isChannel ? handleJoinChannel(token) : handleJoinGroup(token)}
-                disabled={!isChannel && joinLoading}
-                type="button"
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#1db954", // NeoSpotify theme green
-                  textDecoration: "underline",
-                  cursor: "pointer",
-                  padding: 0,
-                  fontFamily: "inherit",
-                  fontSize: "inherit",
-                }}
-              >
-                {!isChannel && joinLoading ? "Joining..." : part}
-              </button>
-            );
-          }
-
-          return <span key={index}>{part}</span>;
-        })}
-      </span>
-    );
-  };
-
-  const renderAttachments = (attachments?: any[]) => {
-    if (!attachments || attachments.length === 0) return null;
-
-    return (
-      <div
-        className="message-attachments"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
-          marginBottom: "8px", // Changed from marginTop to marginBottom to separate media from text below
-        }}
-      >
-        {attachments.map((att) => (
-          <CachedAttachment key={att.id} attachment={att} />
-        ))}
-      </div>
-    );
-  };
-
-
-  const renderReplyPreview = () => {
-    if (replyMessage) {
-      return (
-        <div
-          className="message-reply-preview"
-          onClick={() => {
-            if (replyMessage.is_deleted) return;
-
-            const target = document.getElementById(`msg-${replyMessage.id}`);
-
-            if (target) {
-              target.scrollIntoView({ behavior: "smooth", block: "center" });
-
-              target.classList.remove("message-highlight-flash");
-              void target.offsetWidth;
-              target.classList.add("message-highlight-flash");
-
-              setTimeout(() => {
-                target.classList.remove("message-highlight-flash");
-              }, 1600);
-            }
-          }}
-          style={{ cursor: replyMessage.is_deleted ? "default" : "pointer" }}
-        >
-          {replyMessage.is_deleted ? (
-            <div
-              className="reply-text-preview"
-              style={{ fontStyle: "italic", opacity: 0.7 }}
-            >
-              Original message was deleted
-            </div>
-          ) : (
-            <>
-              <div className="reply-sender">
-                {replyMessage.sender_display_name ||
-                  replyMessage.sender_username}
-              </div>
-              <div className="reply-text-preview">
-                {(replyMessage.content ?? "").slice(0, 70)}
-              </div>
-            </>
-          )}
-        </div>
-      );
-    }
-
-    if (message.reply_to) {
-      return (
-        <div
-          className="message-reply-preview"
-          style={{ cursor: "default", fontStyle: "italic", opacity: 0.6 }}
-        >
-          <div className="reply-text-preview">Original message unavailable</div>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  const bubbleInnerContent = (
-    <>
-      {renderReplyPreview()}
-
-      {isEditing ? (
-        <div className="edit-input-container">
-          {/* Media renders above the textarea in edit mode */}
-          {renderAttachments(message.attachments)}
-          
-          <textarea
-            className="edit-textarea"
-            value={editText}
-            onChange={(e) => setEditText(e.target.value)}
-            disabled={loading}
-            maxLength={2000}
-            autoFocus
-          />
-
-          <div className="edit-actions-row">
-            <button
-              className="edit-action-btn cancel"
-              onClick={() => {
-                setIsEditing(false);
-                setEditText(message.content ?? "");
-              }}
-              disabled={loading}
-              type="button"
-            >
-              Cancel
-            </button>
-
-            <button
-              className="edit-action-btn save"
-              onClick={handleSaveEdit}
-              disabled={loading || !editText.trim()}
-              type="button"
-            >
-              {loading ? "Saving..." : "Save"}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {message.is_deleted ? (
-            <div className="message-text">Deleted message</div>
-          ) : (
-            <>
-              {/* Media renders above the text content in normal view */}
-              {renderAttachments(message.attachments)}
-              {messageText ? (
-                <div className="message-text">{renderContent(messageText)}</div>
-              ) : null}
-            </>
-          )}
-        </>
-      )}
-
-      {!isEditing && (
-        <div className="message-meta">
-          {message.is_edited && !message.is_deleted && (
-            <span className="message-edited-label">(edited)</span>
-          )}
-
-          <span>{formattedTime}</span>
-
-          {isMe && !message.is_deleted && (
-            <span className="message-status-icon">✓</span>
-          )}
-        </div>
-      )}
-    </>
-  );
-
   return (
     <div
       id={`msg-${message.id}`}
-      className={[
-        "message-bubble-wrapper",
-        alignmentClass,
-        message.is_deleted ? "deleted" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      className={`message-bubble-wrapper ${isMe ? "outgoing" : "incoming"} ${
+        message.is_deleted ? "deleted" : ""
+      }`}
     >
       {!isEditing && !message.is_deleted && (
         <div className="message-actions">
-          {canReply && (
-            <button
-              className="action-btn"
-              onClick={() => onReply(message)}
-              type="button"
-            >
-              Reply
-            </button>
-          )}
+          <button className="action-btn" onClick={() => onReply(message)}>
+            Reply
+          </button>
 
           {isMe && (
-            <button
-              className="action-btn"
-              onClick={() => setIsEditing(true)}
-              type="button"
-            >
-              Edit
-            </button>
-          )}
-
-          {canDelete && (
-            <button
-              className="action-btn delete"
-              onClick={handleDelete}
-              type="button"
-            >
-              Delete
-            </button>
+            <>
+              <button className="action-btn" onClick={() => setIsEditing(true)}>
+                Edit
+              </button>
+              <button className="action-btn delete" onClick={handleDelete}>
+                Delete
+              </button>
+            </>
           )}
         </div>
       )}
 
-      {showSenderMeta && (
-        <img
-          src={senderAvatarUrl || "/default-avatar.svg"}
-          onClick={() => onAvatarClick && onAvatarClick(String(message.sender))}
-          alt=""
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: "50%",
-            flexShrink: 0,
-            cursor: "pointer",
-          }}
-        />
-      )}
-
       <div className="message-bubble">
-        {showSenderMeta && (
-          <div
-            className="message-sender-name"
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              opacity: 0.8,
-              marginBottom: 2,
+        {replyMessage && (
+          <div 
+            className="message-reply-preview"
+            onClick={() => {
+              const target = document.getElementById(`msg-${replyMessage.id}`);
+              target?.scrollIntoView({ behavior: "smooth", block: "center" });
             }}
+            style={{ cursor: "pointer" }}
           >
-            {message.sender_display_name || message.sender_username}
+            <div className="reply-sender">
+              {replyMessage.sender_display_name || replyMessage.sender_username}
+            </div>
+            <div className="reply-text-preview">
+              {(replyMessage.content ?? "Deleted message").slice(0, 70)}
+            </div>
           </div>
         )}
 
-        {bubbleInnerContent}
+        {isEditing ? (
+          <div className="edit-input-container">
+            <textarea
+              className="edit-textarea"
+              value={editText}
+              onChange={(event) => setEditText(event.target.value)}
+              disabled={loading}
+              maxLength={2000}
+              autoFocus
+            />
+
+            <div className="edit-actions-row">
+              <button
+                className="edit-action-btn cancel"
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditText(message.content ?? "");
+                }}
+                disabled={loading}
+                type="button"
+              >
+                Cancel
+              </button>
+
+              <button
+                className="edit-action-btn save"
+                onClick={handleSaveEdit}
+                disabled={loading || !editText.trim()}
+                type="button"
+              >
+                {loading ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="message-text">{messageText}</div>
+        )}
+
+        {!isEditing && (
+          <div className="message-meta">
+            {message.is_edited && !message.is_deleted && (
+              <span className="message-edited-label">(edited)</span>
+            )}
+            <span>{formattedTime}</span>
+            {isMe && !message.is_deleted && (
+              <span className="message-status-icon">✓</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

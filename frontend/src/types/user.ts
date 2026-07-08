@@ -4,7 +4,7 @@ export type BackendUserProfile = {
   display_name: string;
   bio?: string | null;
   avatar_url?: string | null;
-  is_online: boolean;
+  is_online?: boolean;
 };
 
 export type UserProfile = {
@@ -21,5 +21,14 @@ export type UserEditProfile = {
   email: string;
   display_name: string;
   bio?: string | null;
-  avatar_url?: string | null;
+  avatar: string | null;
 };
+
+export interface UserSearchResult {
+  id: string;
+  username: string;
+  display_name: string;
+  bio: string;
+  avatar_url: string;
+  is_online?: boolean;
+}
