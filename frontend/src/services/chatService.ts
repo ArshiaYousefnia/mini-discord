@@ -10,10 +10,6 @@ import type {
 
 const LOCAL_MESSAGES_KEY = "mini_discord_demo_messages";
 
-// Task #33: minimum characters required before a search is sent to the
-// backend, so we don't hammer the DB on every keystroke.
-export const MIN_SEARCH_QUERY_LENGTH = 3;
-
 // ==========================================
 // Local Storage Fallback Helpers
 // ==========================================
@@ -78,11 +74,8 @@ function upsertLocalMessage(message: Message) {
 }
 
 function getLocalConversationMessages(conversationId: string) {
-  // NOTE: no longer filters out is_deleted messages — MessageBubble renders
-  // a "Deleted message" placeholder for these, and reply-preview lookups
-  // (task #52) need the deleted message to still be present in the list.
   return getLocalMessages().filter(
-    (message) => message.conversation === conversationId
+    (message) => message.conversation === conversationId && !message.is_deleted
   );
 }
 
@@ -109,45 +102,10 @@ export const chatService = {
       const messages = response.data;
 
       messages.forEach(upsertLocalMessage);
-      // NOTE: previously filtered out is_deleted messages here. Removed so
-      // that deleted messages remain available for reply-snippet lookups
-      // (task #52) and are still rendered as a "Deleted message" placeholder.
-      return messages;
+      return messages.filter((message) => !message.is_deleted);
     } catch (error) {
       console.warn(`Failed to fetch messages for conversation ${conversationId}, loading local cache`, error);
       return getLocalConversationMessages(conversationId);
-    }
-  },
-
-  // Task #33: Search messages within a single DM / Group / Channel.
-  searchMessages: async (
-    conversationId: string,
-    query: string
-  ): Promise<Message[]> => {
-    const trimmed = query.trim();
-
-    if (trimmed.length < MIN_SEARCH_QUERY_LENGTH) {
-      return [];
-    }
-
-    try {
-      const response = await api.get<Message[]>(
-        `/api/chat/conversations/${conversationId}/messages/search/`,
-        { params: { q: trimmed } }
-      );
-      return response.data;
-    } catch (error) {
-      console.warn(
-        `Failed to search messages on server for conversation ${conversationId}, falling back to local cache`,
-        error
-      );
-
-      const needle = trimmed.toLowerCase();
-      return getLocalConversationMessages(conversationId).filter(
-        (message) =>
-          !message.is_deleted &&
-          (message.content ?? "").toLowerCase().includes(needle)
-      );
     }
   },
 
@@ -163,43 +121,17 @@ export const chatService = {
 
   sendDirectMessage: async ({
     recipient_id,
-    content = "",
+    content,
     reply_to = null,
-    files = [],
-  }: SendDirectMessagePayload & { files?: File[] }): Promise<Message> => {
-    if (!content.trim() && (!files || files.length === 0)) {
-      throw new Error("Message or attachment cannot be empty.");
+  }: SendDirectMessagePayload): Promise<Message> => {
+    if (!content.trim()) {
+      throw new Error("Message cannot be empty.");
     }
 
     if (content.length > 2000) {
       throw new Error("Message exceeds the 2000 character limit.");
     }
 
-    // Handle File Attachments
-    if (files && files.length > 0) {
-      const formData = new FormData();
-      if (content.trim()) formData.append("content", content.trim());
-      if (reply_to) formData.append("reply_to", reply_to);
-      formData.append("recipient_id", recipient_id);
-
-      files.forEach((file) => {
-        formData.append("uploaded_files", file);
-      });
-
-      try {
-        const response = await api.post<Message>("/api/chat/dm/", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        const message = response.data;
-        upsertLocalMessage(message);
-        return message;
-      } catch (error) {
-        console.error("Failed to send direct message with files to API", error);
-        throw error;
-      }
-    }
-
-    // Fallback to Standard JSON
     try {
       const response = await api.post<Message>("/api/chat/dm/", {
         recipient_id,
@@ -225,58 +157,20 @@ export const chatService = {
   
   sendConversationMessage: async ({
     conversation_id,
-    content = "",
+    content,
     reply_to = null,
     recipient_id,
-    files = [],
-    topic_id = null,
   }: SendConversationMessagePayload): Promise<Message> => {
-    if (!content.trim() && (!files || files.length === 0)) {
-      throw new Error("Message or attachment cannot be empty.");
+    if (!content.trim()) {
+      throw new Error("Message cannot be empty.");
     }
 
-    // If there are files, we MUST send as FormData
-    if (files && files.length > 0) {
-      const formData = new FormData();
-      if (content.trim()) formData.append("content", content.trim());
-      if (reply_to) formData.append("reply_to", reply_to);
-      // Task #22/#49 — scope the message to a topic when sending in a
-      // channel. Ignored server-side for DM/GROUP conversations.
-      if (topic_id) formData.append("topic_id", topic_id);
-
-      files.forEach((file) => {
-        formData.append("uploaded_files", file);
-      });
-
-      try {
-        if (recipient_id) {
-          formData.append("recipient_id", recipient_id);
-          const response = await api.post<Message>("/api/chat/dm/", formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
-          const message = response.data;
-          upsertLocalMessage(message);
-          return message;
-        }
-
-        const response = await api.post<Message>(
-          `/api/chat/conversations/${conversation_id}/messages/`,
-          formData,
-          {
-            headers: { "Content-Type": "multipart/form-data" },
-          }
-        );
-        const message = response.data;
-        upsertLocalMessage(message);
-        return message;
-      } catch (error) {
-        console.error("Failed to send multipart message to API", error);
-        throw error;
-      }
+    if (content.length > 2000) {
+      throw new Error("Message exceeds the 2000 character limit.");
     }
 
-    // Fallback to standard JSON payload when no files are attached
     try {
+      // اگر چت از نوع DM باشد و شناسه مخاطب را داشته باشیم، از Endpoint سالم استفاده می‌کنیم
       if (recipient_id) {
         const response = await api.post<Message>("/api/chat/dm/", {
           recipient_id,
@@ -288,18 +182,21 @@ export const chatService = {
         return message;
       }
       
+      // در غیر این صورت (مانند چت‌های گروهی یا کانال‌ها در آینده) به آدرس قبلی می‌فرستیم
       const response = await api.post<Message>(
         `/api/chat/conversations/${conversation_id}/messages/`,
-        { content, reply_to, topic_id }
+        { content, reply_to }
       );
       const message = response.data;
       upsertLocalMessage(message);
       return message;
     } catch (error) {
       console.error("Failed to send message to API", error);
-      throw error;
+      throw error; // خطا را پرتاب می‌کنیم تا UI متوجه شکست ارسال شود
     }
   },
+
+
 
   editMessage: async (
     conversationId: string,
@@ -353,6 +250,7 @@ export const chatService = {
         `/api/chat/conversations/${conversationId}/messages/${messageId}/`
       );
       
+      // Update local cache state reflecting deletion
       const messages = getLocalMessages();
       const updatedMessages = messages.map((message) =>
         message.id === messageId
@@ -404,7 +302,6 @@ export const chatService = {
 export const {
   getConversations,
   getConversationMessages,
-  searchMessages,
   getUserProfile,
   sendDirectMessage,
   sendConversationMessage,
@@ -414,17 +311,17 @@ export const {
 } = chatService;
 
 // Backward-compatible named exports & aliases
+// Replace: export const createDirectMessage = sendDirectMessage;
+// With this wrapper:
 export async function createDirectMessage(
   recipientId: string,
   content: string,
-  replyTo: string | null = null,
-  files: File[] = [] // Supported here as well now
+  replyTo: string | null = null
 ): Promise<Message> {
   return sendDirectMessage({
     recipient_id: recipientId,
     content: content,
     reply_to: replyTo,
-    files: files,
   });
 }
 
