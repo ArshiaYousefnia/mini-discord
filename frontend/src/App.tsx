@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import UserProfilePage from "./pages/UserProfilePage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import EditProfilePage from "./pages/EditProfilePage";
+import HomePage from "./pages/HomePage";
 
 
 function Home() {
@@ -26,15 +27,15 @@ export default function App() {
         }
       />
       <Route
-        path="/users/:userId/profile/update/"
+        path="/profile/"
         element={
           <ProtectedRoute>
             <EditProfilePage />
           </ProtectedRoute>
         }
       />
-
-
+  
+      <Route path="/HomePage/" element={<HomePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
