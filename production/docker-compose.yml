@@ -57,14 +57,29 @@ services:
       - "9000:9000"      # S3 API
       - "9001:9001"      # web console
 
+  avatar-fetch:
+    image: curlimages/curl:latest
+    container_name: avatar-fetch
+    user: root
+    volumes:
+      - avatar_asset:/asset
+    entrypoint: >
+      sh -c "
+        curl -sSL -o /asset/default_avatar.svg ${DEFAULT_AVATAR_URL:-https://raw.githubusercontent.com/ArshiaYousefnia/mini-discord/main/backend/static/images/default_avatar.svg};
+        echo 'Avatar downloaded.';
+      "
+    restart: "no"
+
   minio-init:
     image: minio/mc
     depends_on:
       - minio
+      - avatar-fetch
+    volumes:
+      - avatar_asset:/asset
     entrypoint: >
       /bin/sh -c "
         set -e;
-        apk add --no-cache curl;
         until mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; do
           echo 'Waiting for MinIO...';
           sleep 2;
@@ -72,8 +87,7 @@ services:
         echo 'MinIO ready.';
         mc mb myminio/avatars --ignore-existing;
         echo 'Bucket avatars ready.';
-        curl -sSL -o /tmp/default_avatar.svg ${DEFAULT_AVATAR_URL:-https://raw.githubusercontent.com/ArshiaYousefnia/mini-discord/main/backend/static/images/default_avatar.svg};
-        mc cp /tmp/default_avatar.svg myminio/avatars/default_avatar.svg;
+        mc cp /asset/default_avatar.svg myminio/avatars/default_avatar.svg;
         echo 'Default avatar uploaded.';
         mc anonymous set public myminio/avatars;
         echo 'Bucket set to public.';
@@ -85,3 +99,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  avatar_asset:
