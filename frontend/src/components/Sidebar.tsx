@@ -11,8 +11,6 @@ type Props = {
   onSelectChat: (chat: ChatListItem) => void;
   currentUsername: string;
   onStartDirectMessage: (user: BackendUserProfile) => Promise<void>;
-  // NEW: Optional callback to trigger a refresh of the chats list from the parent
-  onRefresh?: () => void; 
 };
 
 function getLoggedInUsername(): string {
@@ -20,17 +18,21 @@ function getLoggedInUsername(): string {
     const raw = localStorage.getItem("username");
     if (!raw) return "";
 
+    // case 1: stored as plain string, e.g. aa
     try {
       const parsed = JSON.parse(raw);
 
+      // case 2: stored as object, e.g. {"username":"aa"}
       if (typeof parsed === "object" && parsed?.username) {
         return String(parsed.username).trim().toLowerCase();
       }
 
+      // case 3: stored as JSON string, e.g. "aa"
       if (typeof parsed === "string") {
         return parsed.trim().toLowerCase();
       }
     } catch {
+      // case 4: raw plain string not JSON
       return raw.trim().toLowerCase();
     }
 
@@ -46,20 +48,22 @@ export default function Sidebar({
   onSelectChat,
   currentUsername,
   onStartDirectMessage,
-  onRefresh, // NEW
 }: Props) {
   const navigate = useNavigate();
 
+  // --- State for Profile ---
   const [displayName, setDisplayName] = useState<string>("My Profile");
   const [avatarUrl, setAvatarUrl] = useState<string>(
     "https://i.pravatar.cc/150?img=12"
   );
 
+  // --- State for Search ---
   const [search, setSearch] = useState("");
   const [searchingGlobal, setSearchingGlobal] = useState(false);
   const [globalUser, setGlobalUser] = useState<BackendUserProfile | null>(null);
   const [searchError, setSearchError] = useState("");
 
+  // --- Logged in username ---
   const [loggedInUsername, setLoggedInUsername] = useState("");
 
   useEffect(() => {
@@ -75,27 +79,8 @@ export default function Sidebar({
     setLoggedInUsername(fromStorage || fromProp);
   }, [currentUsername]);
 
-  // NEW: Polling mechanism to fetch updates periodically (e.g., every 5 seconds)
-  useEffect(() => {
-    if (!onRefresh) return;
-    
-    const interval = setInterval(() => {
-      onRefresh();
-    }, 5000); // 5000ms = 5 seconds
-    
-    return () => clearInterval(interval);
-  }, [onRefresh]);
-
   const goToEditProfile = () => {
     navigate("/profile/");
-  };
-
-  const goToCreateGroup = () => {
-    navigate("/groups/create");
-  };
-
-  const goToCreateChannel = () => {
-    navigate("/channels/create");
   };
 
   const isGlobalSearchQuery = search.trim().startsWith("@");
@@ -147,7 +132,6 @@ export default function Sidebar({
 
   return (
     <div className="sidebar">
-      {/* Rest of the JSX remains exactly the same */}
       <div className="sidebar-top">
         <div
           className="my-profile"
@@ -263,24 +247,6 @@ export default function Sidebar({
             ))
           )
         )}
-      </div>
-
-      <div className="sidebar-bottom">
-        <button
-          type="button"
-          className="create-group-sidebar-btn"
-          onClick={goToCreateGroup}
-        >
-          + Create Group
-        </button>
-        <button
-          type="button"
-          className="create-group-sidebar-btn create-channel-sidebar-btn"
-          onClick={goToCreateChannel}
-          style={{ marginTop: "10px" }}
-          >
-          + Create Channel
-        </button>
       </div>
     </div>
   );

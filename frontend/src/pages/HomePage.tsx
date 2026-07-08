@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
 import {
@@ -33,23 +32,21 @@ export default function HomePage() {
   const [pageError, setPageError] = useState("");
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [currentUsername, setCurrentUsername] = useState("");
-  
-  const [searchParams, setSearchParams] = useSearchParams(); 
 
   useEffect(() => {
     setCurrentUsername(getCurrentUsername());
+
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
+
     window.addEventListener("resize", handleResize);
+
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // NEW: Added isBackgroundRefresh parameter to prevent UI flickering on polls
-  const loadChats = async (isBackgroundRefresh = false, targetGroupId?: string) => {
+  const loadChats = async () => {
     try {
-      if (!isBackgroundRefresh) {
-        setLoading(true);
-        setPageError("");
-      }
+      setLoading(true);
+      setPageError("");
 
       const conversations: Conversation[] = await getConversations();
 
@@ -63,85 +60,24 @@ export default function HomePage() {
         })
       );
 
-      let sorted = sortChatsByRecent(mappedChats);
-
-      // Prioritize the directly passed targetGroupId, fallback to URL parameter
-      const chatIdFromUrl = searchParams.get("chat");
-      const idToSelect = targetGroupId || chatIdFromUrl;
-      
-      if (idToSelect) {
-        const chatToSelect = sorted.find((c) => c.id === idToSelect);
-        
-        if (chatToSelect) {
-          const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
-          
-          // Auto-select if it's the initial load OR if an explicit targetGroupId was provided
-          if (!isBackgroundRefresh || targetGroupId) {
-            setSelectedChat(readChat);
-          }
-          
-          sorted = sorted.map((c) =>
-            c.id === idToSelect ? readChat : c
-          );
-
-          // Only delete the URL parameter if we actually used it
-          if (!targetGroupId && chatIdFromUrl) {
-            searchParams.delete("chat");
-            setSearchParams(searchParams, { replace: true });
-          }
-        }
-      }
-
-      // If a chat is already selected, make sure we update it with new backend data (like a new avatar/name)
-      // If a chat is already selected, make sure we update it with new backend data
-      // Inside your loadChats or fetchConversations function:
-      if (selectedChat) {
-        // Check if the currently open chat still exists in the fresh data from the backend
-        const updatedSelectedChat = sorted.find(c => c.id === selectedChat.id);
-        
-        if (!updatedSelectedChat) {
-          // The chat was deleted or the user was kicked out.
-          // This will unmount ChatView and show the blank "Select a chat" screen.
-          setSelectedChat(null);
-          
-          // Also clear the URL parameter so it doesn't try to reload it on refresh
-          if (searchParams.get("chat") === selectedChat.id) {
-            searchParams.delete("chat");
-            setSearchParams(searchParams, { replace: true });
-          }
-        } else if (
-          updatedSelectedChat.name !== selectedChat.name || 
-          updatedSelectedChat.avatar !== selectedChat.avatar
-        ) {
-          // Update name/avatar if they changed
-          setSelectedChat({ ...updatedSelectedChat, unreadCount: selectedChat.unreadCount });
-        }
-      }
-
-// Update the sidebar items
-setChatItems(sorted);
-
+      const sorted = sortChatsByRecent(mappedChats);
 
       setChatItems(sorted);
 
-
-      setChatItems(sorted);
+      // Do NOT auto-select first chat.
+      // selectedChat remains null until the user explicitly chooses one.
     } catch (err) {
-      if (!isBackgroundRefresh) {
-        setPageError("Failed to fetch conversations.");
-      }
+      setPageError("Failed to fetch conversations.");
     } finally {
-      if (!isBackgroundRefresh) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   };
 
-
   useEffect(() => {
-    loadChats(); // Initial load
-  }, []); 
+    loadChats();
+  }, []);
 
+  // New function: select chat and immediately clear unread badge locally
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
       ...chat,
@@ -164,18 +100,13 @@ setChatItems(sorted);
 
   const handleStartDirectMessage = async (user: BackendUserProfile) => {
     try {
+      // This currently sends "Hello!" to initialize the DM.
       await createDirectMessage(user.id, "Hello!");
+
       await loadChats();
     } catch (err) {
       alert("Failed to initialize conversation.");
     }
-  };
-
-  // Tasks #15 / #35: called by ChatView after the user leaves or deletes
-  // a group, so it disappears from the chat list immediately for them.
-  const handleGroupExit = (groupId: string) => {
-    setChatItems((prev) => prev.filter((c) => c.id !== groupId));
-    setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
   };
 
   return (
@@ -187,8 +118,6 @@ setChatItems(sorted);
           onSelectChat={handleSelectChat}
           currentUsername={currentUsername}
           onStartDirectMessage={handleStartDirectMessage}
-          // NEW: Pass the loadChats function, specifically tagging it as a background refresh
-          onRefresh={() => loadChats(true)} 
         />
       )}
 
@@ -203,13 +132,6 @@ setChatItems(sorted);
               chat={selectedChat}
               isMobile={isMobile}
               onBack={() => setSelectedChat(null)}
-              onGroupExit={handleGroupExit}
-              onGroupJoined={async (groupId) => {
-              // 1. Set the URL param so loadChats knows which chat to auto-select
-              setSearchParams({ chat: groupId });
-              // 2. Fetch the updated list of conversations (including the newly joined one)
-              await loadChats(false, groupId);
-            }}
             />
           )}
         </div>

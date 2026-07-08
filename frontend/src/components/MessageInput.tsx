@@ -5,7 +5,6 @@ import "../styles/chat.css";
 type Props = {
   activeReplyTo: Message | null;
   disabled?: boolean;
-  canSendMessages?: boolean; // <-- Added permission property
   placeholder?: string;
   onCancelReply: () => void;
   onSendMessage: (text: string) => Promise<void>;
@@ -14,7 +13,6 @@ type Props = {
 export default function MessageInput({
   activeReplyTo,
   disabled = false,
-  canSendMessages = true, // <-- Default to true for backward compatibility
   placeholder = "Type a message...",
   onCancelReply,
   onSendMessage,
@@ -22,16 +20,6 @@ export default function MessageInput({
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Combine disabled states
-  const isInputDisabled = disabled || !canSendMessages || loading;
-
-  // Determine appropriate placeholder based on state
-  const displayPlaceholder = !canSendMessages
-    ? "You do not have permission to send messages in this channel."
-    : disabled
-    ? "Chat is not available."
-    : placeholder;
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -46,7 +34,7 @@ export default function MessageInput({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!text.trim() || isInputDisabled) {
+    if (!text.trim() || loading || disabled) {
       return;
     }
 
@@ -86,10 +74,7 @@ export default function MessageInput({
                 "message"}
             </span>
             <span className="reply-text">
-              {/* Task #52: is_deleted is the source of truth, not content emptiness */}
-              {activeReplyTo.is_deleted
-                ? "Original message was deleted"
-                : activeReplyTo.content || ""}
+              {activeReplyTo.content || "Deleted message"}
             </span>
           </div>
 
@@ -108,19 +93,19 @@ export default function MessageInput({
         <textarea
           ref={textareaRef}
           className="chat-textarea"
-          placeholder={displayPlaceholder}
+          placeholder={disabled ? "Chat is not available." : placeholder}
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleKeyDown}
           maxLength={2000}
-          disabled={isInputDisabled}
+          disabled={loading || disabled}
           rows={1}
         />
 
         <button
           type="submit"
           className="chat-send-btn"
-          disabled={!text.trim() || isInputDisabled}
+          disabled={!text.trim() || loading || disabled}
           aria-label="Send message"
         >
           {loading ? "..." : "➤"}
