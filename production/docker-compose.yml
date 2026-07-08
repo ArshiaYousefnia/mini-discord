@@ -1,0 +1,102 @@
+services:
+  backend:
+    image: ${HARBOR_HOST:-registry.hamdocker.ir}/${HARBOR_PROJECT:-ayousefnia}/backend:${BACKEND_TAG:-latest}
+    container_name: django-backend
+    restart: unless-stopped
+    volumes:
+      - ./.env:/app/.env
+    ports:
+      - "8000:8000"
+    command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && python manage.py runserver 0.0.0.0:8000"
+    depends_on:
+      - postgres
+      - redis
+      - minio-init
+  frontend:
+    image: ${HARBOR_HOST:-registry.hamdocker.ir}/${HARBOR_PROJECT:-ayousefnia}/frontend:${FRONTEND_TAG:-latest}
+    container_name: react-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:alpine
+    container_name: postgres-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-django_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-django_password}
+      POSTGRES_DB: ${DB_NAME:-django_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    ports:
+      - "5432:5432"      # optional – remove if you don't need external access
+
+  redis:
+    image: redis:alpine
+    container_name: redis-cache
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"      # optional
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio-storage
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"      # S3 API
+      - "9001:9001"      # web console
+
+  avatar-fetch:
+    image: curlimages/curl:latest
+    container_name: avatar-fetch
+    user: root
+    volumes:
+      - avatar_asset:/asset
+    entrypoint: >
+      sh -c "
+        curl -sSL -o /asset/default_avatar.svg ${DEFAULT_AVATAR_URL:-https://raw.githubusercontent.com/ArshiaYousefnia/mini-discord/main/backend/static/images/default_avatar.svg};
+        echo 'Avatar downloaded.';
+      "
+    restart: "no"
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+      - avatar-fetch
+    volumes:
+      - avatar_asset:/asset
+    entrypoint: >
+      /bin/sh -c "
+        set -e;
+        until mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; do
+          echo 'Waiting for MinIO...';
+          sleep 2;
+        done;
+        echo 'MinIO ready.';
+        mc mb myminio/avatars --ignore-existing;
+        echo 'Bucket avatars ready.';
+        mc cp /asset/default_avatar.svg myminio/avatars/default_avatar.svg;
+        echo 'Default avatar uploaded.';
+        mc anonymous set public myminio/avatars;
+        echo 'Bucket set to public.';
+        exit 0;
+      "
+    restart: "no"
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  avatar_asset:

@@ -14,9 +14,49 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
+from users.views import UserProfileUpdateView
+from mini_discord import settings
+from users.views import UserRegistrationView, LoginView, LogoutView, UserProfileView, UserSearchView
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularSwaggerView,
+    SpectacularRedocView,
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/register/', UserRegistrationView.as_view(), name='register'),
+    path("api/login/", LoginView.as_view(), name="login"),
+    path("api/logout/", LogoutView.as_view(), name="logout"),
+    path('api/users/<uuid:user_id>/profile/', UserProfileView.as_view(), name='user-profile'),
+    path(
+    'api/users/<uuid:user_id>/profile/update/',
+    UserProfileUpdateView.as_view(),
+    name='user-profile-update'
+    ),
+    path('api/chat/', include('chat.urls')),
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/docs/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="swagger-ui",
+    ),
+    path(
+        "api/redoc/",
+        SpectacularRedocView.as_view(url_name="schema"),
+        name="redoc",
+    ),
+    path(
+    "api/users/search/",
+    UserSearchView.as_view(),
+    name="user-search",
+    ),
 ]
+
+
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+

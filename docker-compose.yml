@@ -8,7 +8,7 @@ services:
       - ./backend/.env
     volumes:
       - /app/.venv
-    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && python manage.py runserver 0.0.0.0:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 10s
@@ -17,13 +17,13 @@ services:
     depends_on:
       - postgres
       - redis
-      - minio
+      - minio-init
 
   frontend:
     build:
       context: ./frontend
       args:
-        REACT_APP_API_URL: http://backend:8000
+        REACT_APP_API_URL: http://localhost:8000
     container_name: react-frontend
     ports:
       - "3000:80"
@@ -41,7 +41,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U django_user -d django_db"]
       interval: 10s
@@ -71,8 +71,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -80,6 +80,35 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    volumes:
+      - ./backend/static/images/default_avatar.svg:/default_avatar.svg
+    entrypoint: >
+      /bin/sh -c "
+        set -e;
+        until mc alias set myminio http://minio:9000 minioadmin minioadmin; do
+          echo 'Waiting for MinIO...';
+          sleep 2;
+        done;
+        echo 'MinIO ready.';
+
+        mc mb myminio/avatars --ignore-existing;
+        echo 'Bucket avatars ready.';
+
+        mc cp /default_avatar.svg myminio/avatars/default_avatar.svg;
+        echo 'Default avatar uploaded.';
+
+        # Use the modern 'mc anonymous' command to set public access
+        mc anonymous set public myminio/avatars;
+        echo 'Bucket set to public.';
+
+        exit 0;
+      "
+    restart: "no"
 
 volumes:
   postgres_data:
