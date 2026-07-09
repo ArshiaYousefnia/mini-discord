@@ -2,6 +2,27 @@ from rest_framework import serializers
 from .models import Conversation, ConversationMember, Message, Role
 
 
+
+class GroupDetailSerializer(serializers.ModelSerializer):
+    owner_id = serializers.UUIDField(source='owner.id', read_only=True)
+    owner_display_name = serializers.CharField(source='owner.display_name', read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+    invite_token = serializers.UUIDField(read_only=True)
+
+    class Meta:
+        model = Conversation
+        fields = [
+            'id', 'type', 'name', 'description',
+            'avatar', 'avatar_url',
+            'owner_id', 'owner_display_name',
+            'created_at', 'invite_token', 
+        ]
+        read_only_fields = ['id', 'type', 'created_at', 'invite_token']
+
+    def get_avatar_url(self, obj):
+        return obj.avatar_url
+    
+
 class MinimalMessageSerializer(serializers.ModelSerializer):
     sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
 
