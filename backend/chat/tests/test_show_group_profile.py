@@ -63,6 +63,10 @@ class GroupProfileAPITests(APITestCase):
             "A test group description"
         )
 
+        self.assertEqual(
+            response.data["member_count"],
+            1
+        )
 
 
     def test_non_member_cannot_view_group_profile(self):

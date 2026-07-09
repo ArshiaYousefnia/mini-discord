@@ -15,12 +15,15 @@ class GroupDetailSerializer(serializers.ModelSerializer):
             'id', 'type', 'name', 'description',
             'avatar', 'avatar_url',
             'owner_id', 'owner_display_name',
-            'created_at', 'invite_token', 
+            'created_at', 'invite_token', 'member_count',
         ]
         read_only_fields = ['id', 'type', 'created_at', 'invite_token']
 
     def get_avatar_url(self, obj):
         return obj.avatar_url
+    
+    def get_member_count(self, obj):
+        return obj.members.count()
     
 
 class MinimalMessageSerializer(serializers.ModelSerializer):
