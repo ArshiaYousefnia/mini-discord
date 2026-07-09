@@ -2,11 +2,9 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 
 from rest_framework.views import APIView
 
-from .models import Conversation, ConversationMember, Message
 from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer
 
 from django.contrib.auth import get_user_model
@@ -16,7 +14,7 @@ from django.db.models.functions import Coalesce
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember, Message
-from .serializers import ConversationListSerializer
+from .serializers import ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer
 
 
 User = get_user_model()
@@ -238,3 +236,18 @@ class ConversationMarkReadView(APIView):
         member.save(update_fields=['last_read_message'])
         return Response({"detail": "Read status updated."}, status=status.HTTP_200_OK)
 
+
+class GroupCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = GroupCreateSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        conversation = serializer.save()
+
+        detail_serializer = GroupDetailSerializer(conversation)
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
