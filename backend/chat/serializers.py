@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Conversation, ConversationMember, Message
+from .models import Conversation, ConversationMember, Message, Role
 
 
 class MinimalMessageSerializer(serializers.ModelSerializer):
@@ -115,5 +115,59 @@ class ConversationListSerializer(serializers.ModelSerializer):
 class ConversationMarkReadSerializer(serializers.Serializer):
     last_read_message_id = serializers.UUIDField(required=True)
 
+class GroupCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = ['name', 'description', 'avatar']
+
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Group name is required.")
+        return value.strip()
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        # Set conversation type and owner
+        validated_data['type'] = Conversation.Type.GROUP
+        validated_data['owner'] = user
+
+        conversation = super().create(validated_data)
+
+        # Create default Group Owner role
+        role = Role.objects.create(
+            conversation=conversation,
+            name='Group Owner',
+            can_send_messages=True,
+            can_send_media=True,
+            can_delete_messages=True,
+            can_manage_members=True,
+            can_manage_roles=True,
+        )
+
+        # Add the creator as a member with that role
+        ConversationMember.objects.create(
+            conversation=conversation,
+            user=user,
+            role=role,
+        )
+
+        return conversation
 
 
+class GroupDetailSerializer(serializers.ModelSerializer):
+    owner_id = serializers.UUIDField(source='owner.id', read_only=True)
+    owner_display_name = serializers.CharField(source='owner.display_name', read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Conversation
+        fields = [
+            'id', 'type', 'name', 'description',
+            'avatar', 'avatar_url',
+            'owner_id', 'owner_display_name',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'type', 'created_at']
+
+    def get_avatar_url(self, obj):
+        return obj.avatar_url
