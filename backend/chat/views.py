@@ -13,11 +13,13 @@ from django.db.models import OuterRef, Subquery, Count, Q, Value, Prefetch
 from django.db.models.functions import Coalesce
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from .models import Conversation, ConversationMember, Message
+from .models import Conversation, ConversationMember, Message, Role 
+
 from .serializers import ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer
 
 
 User = get_user_model()
+
 
 
 class SendDirectMessageView(viewsets.GenericViewSet):
@@ -251,3 +253,50 @@ class GroupCreateView(APIView):
 
         detail_serializer = GroupDetailSerializer(conversation)
         return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+    
+    
+
+class GroupJoinView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, invite_token):
+        try:
+            conversation = Conversation.objects.get(
+                invite_token=invite_token,
+                type=Conversation.Type.GROUP
+            )
+        except Conversation.DoesNotExist:
+            return Response(
+                {"detail": "This invite link is invalid or has expired."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        user = request.user
+
+        if ConversationMember.objects.filter(conversation=conversation, user=user).exists():
+            return Response(
+                {"detail": "You are already a member of this group."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        role, _ = Role.objects.get_or_create(
+            conversation=conversation,
+            name='Member',
+            defaults={
+                'can_send_messages': True,
+                'can_send_media': True,
+                'can_delete_messages': False,
+                'can_manage_members': False,
+                'can_manage_roles': False,
+            }
+        )
+
+        ConversationMember.objects.create(
+            conversation=conversation,
+            user=user,
+            role=role
+        )
+
+        serializer = GroupDetailSerializer(conversation, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
