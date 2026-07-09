@@ -1,4 +1,3 @@
-
 from django.urls import path
 from .views import (
     UserRegistrationView,
@@ -6,7 +5,7 @@ from .views import (
     LogoutView,
     UserProfileView,
     UserProfileUpdateView,
-    GlobalSearchView,
+    UserSearchView,
 )
 
 urlpatterns = [
@@ -19,7 +18,5 @@ urlpatterns = [
         UserProfileUpdateView.as_view(),
         name='user-profile-update'
     ),
-
-
-    path('users/search/', GlobalSearchView.as_view(), name='global-search'),
+    path('users/search/', UserSearchView.as_view(), name='user-search'),
 ]
