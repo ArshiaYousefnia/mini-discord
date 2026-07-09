@@ -21,7 +21,7 @@ class Conversation(models.Model):
     # Newly added invite_token for joining groups via URL
     invite_token = models.UUIDField(
         default=uuid.uuid4, 
-        unique=True, 
+        unique=False, 
         editable=False, 
         db_index=True
     )
