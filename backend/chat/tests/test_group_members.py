@@ -6,7 +6,9 @@ from django.contrib.auth import get_user_model
 
 from chat.models import Conversation, ConversationMember, Role
 
+
 User = get_user_model()
+
 
 class GroupMembersAPITests(APITestCase):
 
@@ -29,12 +31,14 @@ class GroupMembersAPITests(APITestCase):
         self.member.is_online = True
         self.member.save()
 
+
         self.group = Conversation.objects.create(
             type=Conversation.Type.GROUP,
             name="Test Group",
             description="Test Description",
             owner=self.owner
         )
+
 
         owner_role = Role.objects.create(
             conversation=self.group,
@@ -47,17 +51,19 @@ class GroupMembersAPITests(APITestCase):
             name="Member"
         )
 
-        owner_member = ConversationMember.objects.create(
-            conversation=self.group,
-            user=self.owner
-        )
-        owner_member.roles.add(owner_role)
 
-        regular_member = ConversationMember.objects.create(
+        ConversationMember.objects.create(
             conversation=self.group,
-            user=self.member
+            user=self.owner,
+            role=owner_role
         )
-        regular_member.roles.add(member_role)
+
+        ConversationMember.objects.create(
+            conversation=self.group,
+            user=self.member,
+            role=member_role
+        )
+
 
         self.url = reverse(
             'group-members',
@@ -65,6 +71,7 @@ class GroupMembersAPITests(APITestCase):
                 'conversation_id': self.group.id
             }
         )
+
 
     def test_member_can_view_group_members(self):
 
@@ -90,6 +97,7 @@ class GroupMembersAPITests(APITestCase):
             'role_name',
             owner
         )
+
 
     def test_non_member_cannot_view_members(self):
 

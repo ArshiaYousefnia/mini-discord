@@ -8,6 +8,9 @@ class GroupDetailSerializer(serializers.ModelSerializer):
     owner_display_name = serializers.CharField(source='owner.display_name', read_only=True)
     avatar_url = serializers.SerializerMethodField()
     invite_token = serializers.UUIDField(read_only=True)
+    member_count = serializers.SerializerMethodField()
+    
+
 
     class Meta:
         model = Conversation
@@ -15,12 +18,15 @@ class GroupDetailSerializer(serializers.ModelSerializer):
             'id', 'type', 'name', 'description',
             'avatar', 'avatar_url',
             'owner_id', 'owner_display_name',
-            'created_at', 'invite_token', 
+            'created_at', 'invite_token', 'member_count',
         ]
         read_only_fields = ['id', 'type', 'created_at', 'invite_token']
 
     def get_avatar_url(self, obj):
         return obj.avatar_url
+    
+    def get_member_count(self, obj):
+        return obj.members.count()
     
 
 class MinimalMessageSerializer(serializers.ModelSerializer):
@@ -175,20 +181,28 @@ class GroupCreateSerializer(serializers.ModelSerializer):
         return conversation
 
 
-class GroupDetailSerializer(serializers.ModelSerializer):
-    owner_id = serializers.UUIDField(source='owner.id', read_only=True)
-    owner_display_name = serializers.CharField(source='owner.display_name', read_only=True)
-    avatar_url = serializers.SerializerMethodField()
+class GroupMemberSerializer(serializers.ModelSerializer):
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    display_name = serializers.CharField(source='user.display_name', read_only=True)
+    avatar_url = serializers.CharField(source='user.avatar_url', read_only=True)
+    is_online = serializers.BooleanField(source='user.is_online', read_only=True)
+    role_name = serializers.SerializerMethodField()
 
     class Meta:
-        model = Conversation
+        model = ConversationMember
         fields = [
-            'id', 'type', 'name', 'description',
-            'avatar', 'avatar_url',
-            'owner_id', 'owner_display_name',
-            'created_at',
+            'user_id',
+            'display_name',
+            'avatar_url',
+            'is_online',
+            'role_name',
         ]
-        read_only_fields = ['id', 'type', 'created_at']
 
-    def get_avatar_url(self, obj):
-        return obj.avatar_url
+    def get_role_name(self, obj):
+        if obj.role:
+            if obj.role.can_manage_members:
+                return "Owner"
+            return obj.role.name
+
+        return "Member"
+
