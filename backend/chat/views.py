@@ -300,3 +300,21 @@ class GroupJoinView(APIView):
 
         serializer = GroupDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class GroupProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.GROUP,
+            members__user=request.user
+        )
+
+        serializer = GroupDetailSerializer(
+            conversation,
+            context={'request': request}
+        )
+
+        return Response(serializer.data)
