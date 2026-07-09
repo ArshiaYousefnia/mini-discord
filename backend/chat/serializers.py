@@ -9,6 +9,7 @@ class GroupDetailSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     invite_token = serializers.UUIDField(read_only=True)
     member_count = serializers.SerializerMethodField()
+    
 
 
     class Meta:
@@ -179,4 +180,29 @@ class GroupCreateSerializer(serializers.ModelSerializer):
 
         return conversation
 
+
+class GroupMemberSerializer(serializers.ModelSerializer):
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    display_name = serializers.CharField(source='user.display_name', read_only=True)
+    avatar_url = serializers.CharField(source='user.avatar_url', read_only=True)
+    is_online = serializers.BooleanField(source='user.is_online', read_only=True)
+    role_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConversationMember
+        fields = [
+            'user_id',
+            'display_name',
+            'avatar_url',
+            'is_online',
+            'role_name',
+        ]
+
+    def get_role_name(self, obj):
+        if obj.role:
+            if obj.role.can_manage_members:
+                return "Owner"
+            return obj.role.name
+
+        return "Member"
 

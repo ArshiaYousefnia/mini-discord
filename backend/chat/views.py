@@ -15,7 +15,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember, Message, Role 
 
-from .serializers import ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer
+from .serializers import GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer
 
 
 User = get_user_model()
@@ -315,6 +315,43 @@ class GroupProfileView(APIView):
         serializer = GroupDetailSerializer(
             conversation,
             context={'request': request}
+        )
+
+        return Response(serializer.data)
+    
+class GroupMembersView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.GROUP
+        )
+
+        # فقط اعضای گروه اجازه مشاهده دارند
+        is_member = ConversationMember.objects.filter(
+            conversation=conversation,
+            user=request.user
+        ).exists()
+
+        if not is_member:
+            return Response(
+                {"detail": "You are not a member of this group."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        members = ConversationMember.objects.filter(
+            conversation=conversation
+        ).select_related(
+            'user',
+            'role'
+        )
+
+        serializer = GroupMemberSerializer(
+            members,
+            many=True
         )
 
         return Response(serializer.data)
