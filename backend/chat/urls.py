@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 
 from .views import SendDirectMessageView, ConversationViewSet, MessageViewSet, ConversationListView, \
-    ConversationMarkReadView, GroupCreateView
+    ConversationMarkReadView, GroupCreateView,GroupJoinView
 
 
 
@@ -39,5 +39,10 @@ urlpatterns = [
         'conversations/groups/create/',
         GroupCreateView.as_view(),
         name='group-create'
+    ),
+    path(
+        'conversations/groups/join/<uuid:invite_token>/', 
+        GroupJoinView.as_view(), 
+        name='group-join'
     ),
 ]
