@@ -37,7 +37,7 @@ class GroupCreateTests(TestCase):
 
         # Check membership
         member = ConversationMember.objects.get(conversation=conv, user=self.user)
-        self.assertEqual(member.roles.first(), role)
+        self.assertEqual(member.role, role)
 
     def test_create_group_with_all_fields(self):
         avatar = SimpleUploadedFile(

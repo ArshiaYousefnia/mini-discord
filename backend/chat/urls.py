@@ -3,8 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 
 from .views import SendDirectMessageView, ConversationViewSet, MessageViewSet, ConversationListView, \
-    ConversationMarkReadView
-
+    ConversationMarkReadView, GroupCreateView
 
 
 
@@ -22,14 +21,9 @@ conversation_message_detail = MessageViewSet.as_view({
 })
 
 urlpatterns = [
-
-
     path('conversations/', ConversationListView.as_view(), name='conversation-list'),
     path('conversations/<uuid:conversation_id>/mark_read/', ConversationMarkReadView.as_view(), name='conversation-mark-read'),
     path('', include(router.urls)),
-
-
-
     path(
         'conversations/<uuid:conversation_pk>/messages/',
         conversation_messages_list,
@@ -40,5 +34,10 @@ urlpatterns = [
         'conversations/<uuid:conversation_pk>/messages/<uuid:pk>/',
         conversation_message_detail,
         name='conversation-message-detail',
+    ),
+    path(
+        'conversations/groups/create/',
+        GroupCreateView.as_view(),
+        name='group-create'
     ),
 ]
