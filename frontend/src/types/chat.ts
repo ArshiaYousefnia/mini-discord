@@ -14,7 +14,7 @@ export type Conversation = {
   avatar: string | null;
   last_message: BackendLastMessage | null;
   unread_count: number;
-  other_user_id: string | null; // <-- important!
+  other_user_id: string | null;
   created_at: string;
 };
 

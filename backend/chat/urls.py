@@ -13,6 +13,7 @@ router.register(r'conversations', ConversationViewSet, basename='conversation')
 
 conversation_messages_list = MessageViewSet.as_view({
     'get': 'list',
+    'post': 'create', 
 })
 
 conversation_message_detail = MessageViewSet.as_view({
