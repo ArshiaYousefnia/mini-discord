@@ -5,6 +5,7 @@ import UserProfilePage from "./pages/UserProfilePage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import EditProfilePage from "./pages/EditProfilePage";
 import HomePage from "./pages/HomePage";
+import CreateGroupPage from "./pages/CreateGroupPage";
 
 
 function Home() {
@@ -37,6 +38,8 @@ export default function App() {
   
       <Route path="/HomePage/" element={<HomePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/groups/create" element={<CreateGroupPage />} />
+
     </Routes>
   );
 }

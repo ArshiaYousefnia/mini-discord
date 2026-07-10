@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom"; // <-- 1. Import useSearchParams
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
 import {
@@ -32,14 +33,14 @@ export default function HomePage() {
   const [pageError, setPageError] = useState("");
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [currentUsername, setCurrentUsername] = useState("");
+  
+  // <-- 2. Initialize search params
+  const [searchParams, setSearchParams] = useSearchParams(); 
 
   useEffect(() => {
     setCurrentUsername(getCurrentUsername());
-
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
-
     window.addEventListener("resize", handleResize);
-
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
@@ -60,12 +61,30 @@ export default function HomePage() {
         })
       );
 
-      const sorted = sortChatsByRecent(mappedChats);
+      let sorted = sortChatsByRecent(mappedChats);
+
+      // <-- 3. Check URL for a specific chat to auto-select
+      const chatIdFromUrl = searchParams.get("chat");
+      
+      if (chatIdFromUrl) {
+        const chatToSelect = sorted.find((c) => c.id === chatIdFromUrl);
+        
+        if (chatToSelect) {
+          const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
+          setSelectedChat(readChat);
+          
+          // Apply read status to the list item too
+          sorted = sorted.map((c) =>
+            c.id === chatIdFromUrl ? readChat : c
+          );
+
+          // Clean up the URL parameter quietly so refreshing doesn't force re-selection
+          searchParams.delete("chat");
+          setSearchParams(searchParams, { replace: true });
+        }
+      }
 
       setChatItems(sorted);
-
-      // Do NOT auto-select first chat.
-      // selectedChat remains null until the user explicitly chooses one.
     } catch (err) {
       setPageError("Failed to fetch conversations.");
     } finally {
@@ -75,9 +94,8 @@ export default function HomePage() {
 
   useEffect(() => {
     loadChats();
-  }, []);
+  }, []); // Note: leaving dependency array empty so it runs once on mount
 
-  // New function: select chat and immediately clear unread badge locally
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
       ...chat,
@@ -100,9 +118,7 @@ export default function HomePage() {
 
   const handleStartDirectMessage = async (user: BackendUserProfile) => {
     try {
-      // This currently sends "Hello!" to initialize the DM.
       await createDirectMessage(user.id, "Hello!");
-
       await loadChats();
     } catch (err) {
       alert("Failed to initialize conversation.");
