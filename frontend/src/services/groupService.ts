@@ -11,7 +11,7 @@ export type CreatedGroupResponse = {
   id: string;
   name: string;
   description?: string;
-  avatar_url?: string | null;
+  avatar?: string | null;
 };
 
 export async function createGroup(
@@ -28,7 +28,7 @@ export async function createGroup(
     formData.append("avatar", payload.avatar);
   }
 
-  const response = await api.post("/api/groups/", formData, {
+  const response = await api.post("/api/chat/conversations/groups/create/", formData, {
     headers: {
       "Content-Type": "multipart/form-data",
     },

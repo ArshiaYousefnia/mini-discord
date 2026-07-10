@@ -105,6 +105,7 @@ class ConversationViewSet(mixins.ListModelMixin,
 
 class MessageViewSet(
     mixins.ListModelMixin,
+    mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet
@@ -121,7 +122,18 @@ class MessageViewSet(
             is_deleted=False
         ).order_by("created_at")
     
-
+    def perform_create(self, serializer):
+        conversation_id = self.kwargs.get("conversation_pk")
+        
+        # Verify the conversation exists and the user is a member
+        conversation = get_object_or_404(
+            Conversation, 
+            id=conversation_id, 
+            members__user=self.request.user
+        )
+        
+        # Save the message with the sender and conversation
+        serializer.save(sender=self.request.user, conversation=conversation)
 
     def partial_update(self, request, *args, **kwargs):
         message = self.get_object()

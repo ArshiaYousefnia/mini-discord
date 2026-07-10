@@ -37,7 +37,6 @@ export default function CreateGroupPage() {
     try {
       setSubmitting(true);
       setError("");
-
       const createdGroup = await createGroup({
         name: name.trim(),
         description: description.trim(),
@@ -45,7 +44,7 @@ export default function CreateGroupPage() {
       });
 
       // redirect directly to the created group chat
-      navigate(`/?chat=${createdGroup.id}`);
+     navigate(`/HomePage/?chat=${createdGroup.id}`);
     } catch (err: any) {
       const backendMessage =
         err?.response?.data?.detail ||
