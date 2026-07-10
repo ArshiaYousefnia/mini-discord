@@ -111,6 +111,21 @@ export default function EditProfilePage() {
 
       setUser(updated);
 
+      localStorage.setItem("display_name", updated.display_name);
+      if (updated.avatar) { 
+        localStorage.setItem("avatar_url", updated.avatar); 
+      }
+
+      localStorage.setItem("display_name", updated.display_name);
+      if (updated.avatar) { 
+        localStorage.setItem("avatar_url", updated.avatar); 
+      }
+
+      // --- ADD THIS LINE ---
+      window.dispatchEvent(new Event("profileUpdated"));
+      // ---------------------
+
+      setAvatarPreview(null);
       // clear preview so UI switches to backend avatar_url
       setAvatarPreview(null);
       setAvatarFile(null);

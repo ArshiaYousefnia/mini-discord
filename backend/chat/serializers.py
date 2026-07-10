@@ -58,6 +58,7 @@ class MessageSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'conversation', # <-- ADDED THIS
             'sender',
             'is_edited',
             'is_deleted',
@@ -65,11 +66,15 @@ class MessageSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
 
-
     def validate(self, data):
         if data.get('reply_to'):
-            if data['reply_to'].conversation_id != data['conversation'].id:
-                raise serializers.ValidationError("Reply message does not belong to this conversation.")
+            # Since 'conversation' is read-only, it won't be in 'data'. 
+            # We get the conversation ID from the URL parameters via the view context.
+            view = self.context.get('view')
+            if view and 'conversation_id' in view.kwargs:
+                url_convo_id = str(view.kwargs['conversation_id'])
+                if str(data['reply_to'].conversation_id) != url_convo_id:
+                    raise serializers.ValidationError("Reply message does not belong to this conversation.")
         return data
 
     def validate_content(self, value):
@@ -112,9 +117,11 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
     def get_other_user_id(self, obj):
         user = self.context['request'].user
+        other = None  
         if obj.type == Conversation.Type.DM:
             other = obj.get_other_user(user)
         return other.id if other else None
+
 
 
     def get_display_name(self, obj):
@@ -145,7 +152,7 @@ class ConversationMarkReadSerializer(serializers.Serializer):
 class GroupCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
-        fields = ['name', 'description', 'avatar']
+        fields = ['id', 'name', 'description', 'avatar']
 
     def validate_name(self, value):
         if not value or not value.strip():
