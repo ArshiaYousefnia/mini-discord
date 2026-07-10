@@ -27,6 +27,11 @@ urlpatterns = [
         ConversationViewSet.as_view({'post': 'leave'}),
         name='conversation-leave',
     ),
+    path(
+        'conversations/<uuid:pk>/remove-member/',
+        ConversationViewSet.as_view({'post': 'remove_member'}),
+        name='conversation-remove-member',
+    ),
     path('conversations/<uuid:conversation_id>/mark_read/', ConversationMarkReadView.as_view(), name='conversation-mark-read'),
     path('', include(router.urls)),
     path(
