@@ -121,6 +121,9 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
       setMessages((prev) => [...prev, newMessage]);
       setActiveReplyTo(null);
+
+      await markConversationRead(chat.id, newMessage.id);
+      
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to send message");
     }

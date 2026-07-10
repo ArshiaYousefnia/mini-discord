@@ -18,21 +18,17 @@ function getLoggedInUsername(): string {
     const raw = localStorage.getItem("username");
     if (!raw) return "";
 
-    // case 1: stored as plain string, e.g. aa
     try {
       const parsed = JSON.parse(raw);
 
-      // case 2: stored as object, e.g. {"username":"aa"}
       if (typeof parsed === "object" && parsed?.username) {
         return String(parsed.username).trim().toLowerCase();
       }
 
-      // case 3: stored as JSON string, e.g. "aa"
       if (typeof parsed === "string") {
         return parsed.trim().toLowerCase();
       }
     } catch {
-      // case 4: raw plain string not JSON
       return raw.trim().toLowerCase();
     }
 
@@ -51,19 +47,16 @@ export default function Sidebar({
 }: Props) {
   const navigate = useNavigate();
 
-  // --- State for Profile ---
   const [displayName, setDisplayName] = useState<string>("My Profile");
   const [avatarUrl, setAvatarUrl] = useState<string>(
     "https://i.pravatar.cc/150?img=12"
   );
 
-  // --- State for Search ---
   const [search, setSearch] = useState("");
   const [searchingGlobal, setSearchingGlobal] = useState(false);
   const [globalUser, setGlobalUser] = useState<BackendUserProfile | null>(null);
   const [searchError, setSearchError] = useState("");
 
-  // --- Logged in username ---
   const [loggedInUsername, setLoggedInUsername] = useState("");
 
   useEffect(() => {
@@ -81,6 +74,10 @@ export default function Sidebar({
 
   const goToEditProfile = () => {
     navigate("/profile/");
+  };
+
+  const goToCreateGroup = () => {
+    navigate("/groups/create");
   };
 
   const isGlobalSearchQuery = search.trim().startsWith("@");
@@ -247,6 +244,16 @@ export default function Sidebar({
             ))
           )
         )}
+      </div>
+
+      <div className="sidebar-bottom">
+        <button
+          type="button"
+          className="create-group-sidebar-btn"
+          onClick={goToCreateGroup}
+        >
+          + Create Group
+        </button>
       </div>
     </div>
   );
