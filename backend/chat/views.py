@@ -80,7 +80,7 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Save with sender = request.user
-        message = serializer.save(sender=request.user)
+        message = serializer.save(sender=request.user, conversation=conversation)
 
         # update last_read_message for sender (so they mark own message as read)
         # Not required for the story, but useful later
