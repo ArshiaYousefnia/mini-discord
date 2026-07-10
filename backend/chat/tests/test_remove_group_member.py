@@ -80,7 +80,7 @@ class GroupRemoveMemberTests(TestCase):
 
         # Verify the removed user no longer sees the conversation in their list
         self.client.force_authenticate(user=self.member)
-        list_url = reverse('conversation-overview')
+        list_url = reverse('conversation-list')
         response = self.client.get(list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # conversation should not be in the list
