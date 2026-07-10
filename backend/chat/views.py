@@ -130,6 +130,53 @@ class ConversationViewSet(mixins.ListModelMixin,
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=True, methods=['post'], url_path='remove-member')
+    def remove_member(self, request, pk=None):
+        conversation = self.get_object()  # ensures user is a member of the conversation
+
+        # Only allow for groups
+        if conversation.type != Conversation.Type.GROUP:
+            return Response(
+                {"detail": "Member removal is only available for groups."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check that the requester is the owner
+        if conversation.owner != request.user:
+            return Response(
+                {"detail": "Only the group owner can remove members."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        target_user_id = request.data.get('user_id')
+        if not target_user_id:
+            return Response(
+                {"detail": "user_id is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate that the target user is actually a member of this group
+        membership = ConversationMember.objects.filter(
+            conversation=conversation,
+            user_id=target_user_id
+        ).first()
+
+        if not membership:
+            return Response(
+                {"detail": "This user is not a member of the group."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Prevent owner from removing themselves (they must use leave or delete group)
+        if str(target_user_id) == str(request.user.id):
+            return Response(
+                {"detail": "You cannot remove yourself. Use the leave action instead."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        membership.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class MessageViewSet(
     mixins.ListModelMixin,
