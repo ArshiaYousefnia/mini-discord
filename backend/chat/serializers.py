@@ -213,3 +213,18 @@ class GroupMemberSerializer(serializers.ModelSerializer):
 
         return "Member"
 
+class GroupUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = (
+            "name",
+            "description",
+            "avatar",
+        )
+
+    def validate_name(self, value):
+        if not value.strip():
+            raise serializers.ValidationError(
+                "Group name is required."
+            )
+        return value
