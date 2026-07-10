@@ -20,9 +20,13 @@ conversation_message_detail = MessageViewSet.as_view({
     'patch': 'partial_update',
     'delete': 'destroy',
 })
-
 urlpatterns = [
     path('conversations/', ConversationListView.as_view(), name='conversation-list'),
+    path(
+        'conversations/<uuid:pk>/leave/',
+        ConversationViewSet.as_view({'post': 'leave'}),
+        name='conversation-leave',
+    ),
     path('conversations/<uuid:conversation_id>/mark_read/', ConversationMarkReadView.as_view(), name='conversation-mark-read'),
     path('', include(router.urls)),
     path(
@@ -37,13 +41,18 @@ urlpatterns = [
         name='conversation-message-detail',
     ),
     path(
+        'conversations/<uuid:conversation_pk>/messages/search/',
+        MessageViewSet.as_view({'get': 'search'}),
+        name='conversation-messages-search',
+    ),
+    path(
         'conversations/groups/create/',
         GroupCreateView.as_view(),
         name='group-create'
     ),
     path(
-        'conversations/groups/join/<uuid:invite_token>/', 
-        GroupJoinView.as_view(), 
+        'conversations/groups/join/<uuid:invite_token>/',
+        GroupJoinView.as_view(),
         name='group-join'
     ),
     path(
@@ -62,3 +71,4 @@ urlpatterns = [
         name="group-update",
     ),
 ]
+
