@@ -1,11 +1,13 @@
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from rest_framework.views import APIView
 
-from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer
+from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
+    MinimalMessageSerializer
 
 from django.contrib.auth import get_user_model
 
@@ -102,6 +104,32 @@ class ConversationViewSet(mixins.ListModelMixin,
             members__user=self.request.user
         ).distinct()
 
+    @action(detail=True, methods=['post'], url_path='leave')
+    def leave(self, request, pk=None):
+        conversation = self.get_object()  # ensures user is a member
+
+        # Optional: prevent leaving a DM (or allow; we'll restrict to groups for now)
+        if conversation.type != Conversation.Type.GROUP:
+            return Response(
+                {"detail": "You can only leave group conversations."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prevent owner from leaving
+        if conversation.owner == request.user:
+            return Response(
+                {"detail": "The group owner cannot leave the group. Transfer ownership first or delete the group."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Remove the member
+        ConversationMember.objects.filter(
+            conversation=conversation,
+            user=request.user
+        ).delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class MessageViewSet(
     mixins.ListModelMixin,
@@ -133,7 +161,13 @@ class MessageViewSet(
         )
         
         # Save the message with the sender and conversation
-        serializer.save(sender=self.request.user, conversation=conversation)
+        message = serializer.save(sender=self.request.user, conversation=conversation)
+
+        member = ConversationMember.objects.get(
+            conversation=conversation, user=self.request.user
+        )
+        member.last_read_message = message
+        member.save(update_fields=['last_read_message'])
 
     def partial_update(self, request, *args, **kwargs):
         message = self.get_object()
@@ -171,6 +205,34 @@ class MessageViewSet(
 
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def search(self, request, conversation_pk=None):
+        """
+        Search messages in a conversation. Query param: q (min 3 chars).
+        """
+        query = request.query_params.get('q', '').strip()
+        if len(query) < 3:
+            return Response(
+                {"detail": "Search query must be at least 3 characters."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Ensure user is a member
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_pk,
+            members__user=request.user
+        )
+
+        messages = Message.objects.filter(
+            conversation=conversation,
+            is_deleted=False,
+            content__icontains=query
+        ).order_by('-created_at')  # most recent first
+
+        # Use MinimalMessageSerializer to return id, content, sender_display_name, created_at
+        serializer = MinimalMessageSerializer(messages, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class ConversationListView(ListAPIView):
