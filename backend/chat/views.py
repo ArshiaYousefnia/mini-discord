@@ -15,7 +15,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember, Message, Role 
 
-from .serializers import GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer
+from .serializers import GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer
 
 
 User = get_user_model()
@@ -367,3 +367,37 @@ class GroupMembersView(APIView):
         )
 
         return Response(serializer.data)
+
+
+class GroupUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, conversation_id):
+
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.GROUP,
+        )
+
+        if not ConversationMember.objects.filter(
+            conversation=conversation,
+            user=request.user,
+        ).exists():
+            return Response(
+                {"detail": "You are not a member of this group."},
+                status=403,
+            )
+
+        serializer = GroupUpdateSerializer(
+            conversation,
+            data=request.data,
+            partial=True,
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            GroupDetailSerializer(conversation).data
+        )
