@@ -2,11 +2,10 @@ from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
-from django.contrib.auth import get_user_model
 
+from users.models import User
 from chat.models import Conversation, ConversationMember, Role
 
-User = get_user_model()
 
 class EditGroupTests(APITestCase):
 
@@ -56,17 +55,17 @@ class EditGroupTests(APITestCase):
             can_send_media=True,
         )
 
-        owner_member = ConversationMember.objects.create(
+        ConversationMember.objects.create(
             conversation=self.group,
-            user=self.owner
+            user=self.owner,
+            role=self.owner_role,
         )
-        owner_member.roles.add(self.owner_role)
 
-        regular_member = ConversationMember.objects.create(
+        ConversationMember.objects.create(
             conversation=self.group,
-            user=self.member
+            user=self.member,
+            role=self.member_role,
         )
-        regular_member.roles.add(self.member_role)
 
         self.url = reverse(
             "group-update",
