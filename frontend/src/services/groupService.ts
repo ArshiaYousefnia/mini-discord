@@ -42,3 +42,11 @@ export const joinGroupByToken = async (token: string): Promise<any> => {
   return response.data;
 };
 
+
+export const removeGroupMember = async (groupId: string, userId: string): Promise<void> => {
+  const response = await api.post(`/api/chat/conversations/${groupId}/remove-member/`, {
+    user_id: userId,
+  });
+  return response.data;
+};
+

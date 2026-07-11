@@ -6,7 +6,7 @@ import {
   editMessage,
   deleteMessage
 } from "../services/chatService";
-import { getGroupProfile, getGroupMembers } from "../services/groupService";
+import { getGroupProfile, getGroupMembers, removeGroupMember } from "../services/groupService";
 import { getUserProfile } from "../services/users";
 import type { ChatListItem, Message, GroupProfile, GroupMembers } from "../types/chat";
 import type { UserProfile } from "../types/user";
@@ -34,13 +34,18 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null); 
   const [profileLoading, setProfileLoading] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false); 
+  const [memberToRemove, setMemberToRemove] = useState<any>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
 
-  const currentUserId = localStorage.getItem("userId") || localStorage.getItem("user_id");
+  // Fetch from the exact "Id" key as stored on login
+  const currentUserId = localStorage.getItem("Id");
   const currentUsername = localStorage.getItem("username");
+
+  // Determine if the current user is the owner based on groupProfile.owner_id
+  const isCurrentUserOwner = groupProfile?.owner_id === currentUserId;
 
   useEffect(() => {
     if (loading) return;
@@ -203,6 +208,27 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     }
   };
 
+  const confirmRemoveMember = async () => {
+    if (!chat || !memberToRemove) return;
+    try {
+      await removeGroupMember(chat.id, memberToRemove.user_id);
+      
+      // Update local state
+      setGroupMembers((prev) => 
+        prev ? prev.filter((m) => m.user_id !== memberToRemove.user_id) : null
+      );
+      
+      setGroupProfile((prev) => 
+        prev ? { ...prev, member_count: Number(prev.member_count) - 1 } : null
+      );
+      
+      setMemberToRemove(null);
+    } catch (error) {
+      console.error("Failed to remove member:", error);
+      alert("Failed to remove group member.");
+    }
+  };
+
   if (!chat) {
     return (
       <div className="chat-placeholder" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -215,6 +241,33 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
   return (
     <div className="chat-view" style={{ position: 'relative', overflow: 'hidden' }}>
+      
+      {/* Removal Confirmation Modal Overlay */}
+      {memberToRemove && (
+        <div className="remove-modal-overlay">
+          <div className="remove-modal-box">
+            <h3>Remove Member</h3>
+            <p>
+              Are you sure you want to remove <span>{memberToRemove.display_name}</span> from the group?
+            </p>
+            <div className="remove-modal-actions">
+              <button 
+                onClick={() => setMemberToRemove(null)}
+                className="cancel-btn"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmRemoveMember}
+                className="confirm-btn"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="chat-view-header">
         {isMobile && (
@@ -305,7 +358,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
                       {groupMembers.map((member) => (
                         <div 
                           key={member.user_id} 
-                          className="member-row" 
+                          className="member-row group" 
                           onClick={() => handleUserClick(member.user_id)}
                         >
                           <div className="member-avatar-wrapper">
@@ -315,9 +368,26 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
                             />
                             {member.is_online && <span className="status-indicator online"></span>}
                           </div>
-                          <span className="member-name">{member.display_name}</span>
-                          {member.role_name === "Owner" && (
-                            <span className="badge owner-badge">Owner</span>
+                          
+                          <span className="member-name flex-1">{member.display_name}</span>
+                          
+                          {/* Owner Badge utilizing owner_id */}
+                          {String(member.user_id) === String(groupProfile.owner_id) && (
+                            <span className="badge owner-badge mr-2">Owner</span>
+                          )}
+
+                          {/* Removal Functionality: Only Owner sees this, and not for themselves */}
+                          {isCurrentUserOwner && String(member.user_id) !== String(currentUserId) && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMemberToRemove(member);
+                              }}
+                              className="remove-member-btn"
+                              title="Remove from group"
+                            >
+                              Remove
+                            </button>
                           )}
                         </div>
                       ))}
