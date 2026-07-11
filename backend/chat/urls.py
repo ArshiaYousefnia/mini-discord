@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
-from .views import GroupUpdateView,GroupMembersView,SendDirectMessageView, ConversationViewSet, MessageViewSet, ConversationListView, \
+from .views import GroupDeleteView,GroupUpdateView,GroupMembersView,SendDirectMessageView, ConversationViewSet, MessageViewSet, ConversationListView, \
     ConversationMarkReadView, GroupCreateView,GroupJoinView, GroupProfileView
 
 
@@ -75,5 +75,11 @@ urlpatterns = [
         GroupUpdateView.as_view(),
         name="group-update",
     ),
-]
 
+
+    path(
+        "conversations/groups/<uuid:conversation_id>/",
+        GroupDeleteView.as_view(),
+        name="group-delete",
+    ),
+]

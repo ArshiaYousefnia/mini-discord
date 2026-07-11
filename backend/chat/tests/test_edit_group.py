@@ -8,6 +8,9 @@ from chat.models import Conversation, ConversationMember, Role
 
 User = get_user_model()
 
+from users.models import User
+
+
 class EditGroupTests(APITestCase):
 
     def setUp(self):
