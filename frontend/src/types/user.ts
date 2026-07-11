@@ -12,7 +12,7 @@ export type UserProfile = {
   username: string;
   display_name: string;
   bio?: string | null;
-  avatar?: string | null;
+  avatar_url: string;
   is_online: boolean;
 };
 

@@ -713,3 +713,121 @@
   gap: 8px;
 }
 
+/* --- Clickable Avatars --- */
+.clickable-avatar {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.clickable-avatar:hover {
+  opacity: 0.8;
+}
+
+/* --- Group Members Section --- */
+.group-members-section {
+  margin-top: 24px;
+  background: #f9fafb; /* Light gray background */
+  border: 1px solid #e5e7eb; /* Subtle border for definition */
+  border-radius: 8px;
+  padding: 16px;
+  width: 100%; /* Ensure the section takes full width */
+  box-sizing: border-box;
+}
+.group-members-section h4 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #6b7280; /* Muted dark gray for headers */
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 350px;
+  overflow-y: auto;
+  width: 100%; /* Stretch list to full width */
+  
+  /* Scrollbar styles for the members list (lighter) */
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.members-list::-webkit-scrollbar {
+  width: 6px;
+}
+.members-list::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
+/* --- Individual Member Row --- */
+.member-row {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%; /* Row matches parent width */
+  box-sizing: border-box; /* Includes padding in width calculation */
+  transition: background-color 0.2s ease;
+}
+.member-row:hover {
+  background-color: rgba(0, 0, 0, 0.06); /* Darker hover effect for light theme */
+}
+
+.member-avatar-wrapper {
+  position: relative;
+  margin-right: 12px;
+}
+.member-avatar-wrapper img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.status-indicator.online {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  background-color: #1ed760; /* NeoSpotify Green */
+  border: 2px solid #f9fafb; /* Matches the new light background */
+  border-radius: 50%;
+}
+.member-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827; /* Near-black text for light theme */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.badge.owner-badge {
+  background-color: #1ed760; /* NeoSpotify Green */
+  color: #ffffff; /* White text for contrast against green */
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+/* --- Back to Group Button --- */
+.back-to-group-btn {
+  background: transparent;
+  color: #4b5563; /* Darker gray text */
+  border: 1px solid #d1d5db; /* Light gray border */
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+.back-to-group-btn:hover {
+  color: #111827; /* Darken text on hover */
+  border-color: #9ca3af; /* Darken border on hover */
+  background-color: rgba(0, 0, 0, 0.02); /* Very subtle background on hover */
+}
