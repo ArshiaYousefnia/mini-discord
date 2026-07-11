@@ -26,7 +26,7 @@ export async function createGroup(
 }
 
 
-export const getUserProfile = async (groupId: string): Promise<GroupProfile> => {
-  const response = await api.post(`/api/chat/conversations/${groupId}/profile/`);
+export const getGroupProfile = async (groupId: string): Promise<GroupProfile> => {
+  const response = await api.get<GroupProfile>(`/api/chat/conversations/groups/${groupId}/profile/`);
   return response.data;
 }
