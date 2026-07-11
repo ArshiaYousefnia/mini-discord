@@ -6,8 +6,10 @@ import {
   editMessage,
   deleteMessage
 } from "../services/chatService";
-import { getGroupProfile} from "../services/groupService";
+import { getGroupProfile } from "../services/groupService";
+import { getUserProfile } from "../services/users"; // <-- Added import
 import type { ChatListItem, Message, GroupProfile } from "../types/chat";
+import type { UserProfile } from "../types/user"; // <-- Added import
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
 
@@ -24,9 +26,10 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const [error, setError] = useState("");
   const [activeReplyTo, setActiveReplyTo] = useState<Message | null>(null);
 
-  // Group Profile States
+  // Profile States (Group & DM)
   const [showProfile, setShowProfile] = useState(false);
   const [groupProfile, setGroupProfile] = useState<GroupProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null); // <-- Added state for DM
   const [profileLoading, setProfileLoading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -113,7 +116,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         conversation_id: chat.id,
         content: text,
         reply_to: activeReplyTo ? activeReplyTo.id : null,
-        recipient_id: chat.otherUserId, 
+        recipient_id: chat.other_user_id, 
       });
       
       shouldScrollToBottomRef.current = true;
@@ -144,7 +147,9 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   };
 
   const handleHeaderClick = async () => {
-    if (chat?.type === "GROUP") {
+    if (!chat) return;
+
+    if (chat.type === "GROUP") {
       setShowProfile(true);
       if (!groupProfile || groupProfile.id !== chat.id) {
         setProfileLoading(true);
@@ -153,6 +158,19 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
           setGroupProfile(data);
         } catch (err) {
           console.error("Failed to load group profile", err);
+        } finally {
+          setProfileLoading(false);
+        }
+      }
+    } else if (chat.type === "DM" && chat.other_user_id) { // <-- Added DM logic
+      setShowProfile(true);
+      if (!userProfile || userProfile.id !== chat.other_user_id) {
+        setProfileLoading(true);
+        try {
+          const data = await getUserProfile(chat.other_user_id);
+          setUserProfile(data);
+        } catch (err) {
+          console.error("Failed to load user profile", err);
         } finally {
           setProfileLoading(false);
         }
@@ -169,7 +187,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   }
 
   return (
-    <div className="chat-view">
+    <div className="chat-view" style={{ position: 'relative', overflow: 'hidden' }}>
       {/* Header */}
       <div className="chat-view-header">
         {isMobile && (
@@ -179,7 +197,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         )}
 
         <div 
-          className={`chat-header-info ${chat.type === "GROUP" ? "clickable" : ""}`} 
+          className={`chat-header-info ${chat.type === "GROUP" || chat.type === "DM" ? "clickable" : ""}`} 
           onClick={handleHeaderClick}
         >
           <img
@@ -191,20 +209,21 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         </div>
       </div>
 
-      {/* Group Profile Overlay */}
+      {/* Profile Overlay (Both Group & User) */}
       {showProfile && (
-        <div className="group-profile-overlay">
+        <div className="group-profile-overlay slideInRight">
           <div className="group-profile-header">
             <button className="back-button" onClick={() => setShowProfile(false)} type="button">
               ← Close
             </button>
-            <h3>Group Profile</h3>
+            <h3>{chat.type === "GROUP" ? "Group Profile" : "User Profile"}</h3>
           </div>
           
           <div className="group-profile-content">
             {profileLoading ? (
               <div className="chat-placeholder">Loading profile...</div>
-            ) : groupProfile ? (
+            ) : chat.type === "GROUP" && groupProfile ? (
+              
               <div className="group-profile-card">
                 <img 
                   src={groupProfile.avatar_url || chat.avatar} 
@@ -224,6 +243,27 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
                 <div className="group-profile-meta">
                   <p>Created by: {groupProfile.owner_display_name}</p>
                   <p>Created at: {new Date(groupProfile.created_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+            ) : chat.type === "DM" && userProfile ? (
+              
+              <div className="group-profile-card">
+                <img 
+                  src={userProfile.avatar || chat.avatar} 
+                  alt={userProfile.display_name} 
+                  className="group-profile-avatar-large"
+                />
+                <h2 className="group-profile-name">{userProfile.display_name}</h2>
+                <p className="group-profile-meta">@{userProfile.username}</p>
+                
+                {userProfile.bio && (
+                  <div className="group-profile-description">
+                    {userProfile.bio}
+                  </div>
+                )}
+                
+                <div className="group-profile-meta" style={{ color: userProfile.is_online ? '#4ade80' : '#9ca3af', marginTop: '8px' }}>
+                  {userProfile.is_online ? 'Online' : 'Offline'}
                 </div>
               </div>
             ) : (

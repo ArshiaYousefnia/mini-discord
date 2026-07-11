@@ -40,7 +40,7 @@ export type ChatListItem = {
   lastMessage: string;
   lastMessageAt: string | null;
   unreadCount: number;
-  otherUserId?: string | null; // <-- include it for DM use
+  other_user_id?: string | null; // <-- include it for DM use
 };
 
 export type UserProfile = {
