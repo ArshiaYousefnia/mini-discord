@@ -10,7 +10,7 @@ import {
   getGroupProfile, 
   getGroupMembers, 
   removeGroupMember,
-  updateGroupProfile // Added import
+  updateGroupProfile
 } from "../services/groupService";
 import { getUserProfile } from "../services/users";
 import type { ChatListItem, Message, GroupProfile, GroupMembers } from "../types/chat";
@@ -22,8 +22,6 @@ interface Props {
   chat: ChatListItem | null;
   isMobile: boolean;
   onBack: () => void;
-  // Optional: Add onChatUpdated if you want to notify the parent sidebar of the name/avatar change
-  // onChatUpdated?: (chatId: string, updates: Partial<ChatListItem>) => void;
 }
 
 export default function ChatView({ chat, isMobile, onBack }: Props) {
@@ -70,18 +68,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     }
   }, [chat]);
 
-  useEffect(() => {
-    if (loading) return;
-    if (!shouldScrollToBottomRef.current) return;
-
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: scrollBehaviorRef.current,
-      });
-      shouldScrollToBottomRef.current = false;
-    });
-  }, [messages.length, loading, chat?.id]);
-
+  // Load Initial Messages
   useEffect(() => {
     if (!chat) {
       setMessages([]);
@@ -128,6 +115,67 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
       isMounted = false;
     };
   }, [chat]);
+
+  // NEW: Background polling for Live Updates to the Group Profile
+  useEffect(() => {
+    // Only poll if there is an active chat and it's a group
+    if (!chat || chat.type.toUpperCase() !== "GROUP") return;
+
+    let isMounted = true;
+
+    const pollGroupInfo = async () => {
+      try {
+        const [profileData, membersData] = await Promise.all([
+          getGroupProfile(chat.id),
+          getGroupMembers(chat.id)
+        ]);
+
+        if (!isMounted) return;
+
+        // Update the profile and member list silently
+        setGroupProfile(profileData);
+        setGroupMembers(membersData);
+
+        // Update the header visually
+        setLocalChatInfo(prev => {
+          const newName = profileData.name;
+          const newAvatar = profileData.avatar_url || chat.avatar;
+          
+          // Only update if it actually changed to prevent unnecessary renders
+          if (prev?.name !== newName || prev?.avatar !== newAvatar) {
+            return { name: newName, avatar: newAvatar };
+          }
+          return prev;
+        });
+
+      } catch (error) {
+        // Fail silently on background polls so we don't interrupt the user
+        console.error("Failed to background refresh group data:", error);
+      }
+    };
+
+    // Poll every 5 seconds
+    const intervalId = setInterval(pollGroupInfo, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [chat]);
+
+  // Handle scroll to bottom
+  useEffect(() => {
+    if (loading) return;
+    if (!shouldScrollToBottomRef.current) return;
+
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: scrollBehaviorRef.current,
+      });
+      shouldScrollToBottomRef.current = false;
+    });
+  }, [messages.length, loading, chat?.id]);
+
 
   const handleSendMessage = async (text: string) => {
     if (!chat) return;
@@ -182,7 +230,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     if (chatType === "GROUP") {
       setShowProfile(true);
       setProfileViewType("group");
-      setIsEditingGroup(false); // Reset edit mode on open
+      setIsEditingGroup(false); 
       
       if (!groupProfile || groupProfile.id !== chat.id) {
         setProfileLoading(true);
@@ -229,7 +277,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     }
   };
 
-  // Setup Edit Mode
   const handleStartEdit = () => {
     if (!groupProfile) return;
     setEditGroupName(groupProfile.name);
@@ -238,7 +285,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     setIsEditingGroup(true);
   };
 
-  // Submit Edit
   const handleSaveEdit = async () => {
     if (!chat || !groupProfile) return;
     if (!editGroupName.trim()) {
@@ -254,7 +300,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         avatar: editGroupAvatar,
       });
 
-      // Update Local States for immediate UI feedback
       setGroupProfile(updatedProfile);
       setLocalChatInfo({
         name: updatedProfile.name,
@@ -495,7 +540,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
                 )}
               </div>
             ) : profileViewType === "user" && userProfile ? (
-              // ... user profile code stays the same
               <div className="group-profile-card">
                 <img src={userProfile.avatar_url} alt={userProfile.display_name} className="group-profile-avatar-large" />
                 <h2 className="group-profile-name">{userProfile.display_name}</h2>
@@ -514,8 +558,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
       {/* Body / Message History */}
       <div className="chat-view-body">
-         {/* ... Rest of your body and message mapping stays the same ... */}
-         {/* Omitted for brevity, but leave your existing code here */}
          {loading && <div className="chat-placeholder">Loading messages...</div>}
          {!loading && error && <div className="chat-placeholder">{error}</div>}
          {!loading && !error && messages.length === 0 && <div className="chat-placeholder">No messages yet.</div>}
