@@ -1,18 +1,6 @@
 // src/services/groupService.ts
+import type { CreatedGroupResponse, CreateGroupPayload, GroupProfile } from "../types/chat";
 import api from "./api";
-
-export type CreateGroupPayload = {
-  name: string;
-  description?: string;
-  avatar?: File | null;
-};
-
-export type CreatedGroupResponse = {
-  id: string;
-  name: string;
-  description?: string;
-  avatar?: string | null;
-};
 
 export async function createGroup(
   payload: CreateGroupPayload
@@ -34,5 +22,11 @@ export async function createGroup(
     },
   });
 
+  return response.data;
+}
+
+
+export const getUserProfile = async (groupId: string): Promise<GroupProfile> => {
+  const response = await api.post(`/api/chat/conversations/${groupId}/profile/`);
   return response.data;
 }
