@@ -6,7 +6,12 @@ import {
   editMessage,
   deleteMessage
 } from "../services/chatService";
-import { getGroupProfile, getGroupMembers, removeGroupMember } from "../services/groupService";
+import { 
+  getGroupProfile, 
+  getGroupMembers, 
+  removeGroupMember,
+  updateGroupProfile // Added import
+} from "../services/groupService";
 import { getUserProfile } from "../services/users";
 import type { ChatListItem, Message, GroupProfile, GroupMembers } from "../types/chat";
 import type { UserProfile } from "../types/user";
@@ -17,6 +22,8 @@ interface Props {
   chat: ChatListItem | null;
   isMobile: boolean;
   onBack: () => void;
+  // Optional: Add onChatUpdated if you want to notify the parent sidebar of the name/avatar change
+  // onChatUpdated?: (chatId: string, updates: Partial<ChatListItem>) => void;
 }
 
 export default function ChatView({ chat, isMobile, onBack }: Props) {
@@ -25,6 +32,9 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeReplyTo, setActiveReplyTo] = useState<Message | null>(null);
+
+  // We keep a local reference of the chat info for immediate header updates
+  const [localChatInfo, setLocalChatInfo] = useState<{name: string; avatar: string} | null>(null);
 
   // Profile States (Group, Members & DM)
   const [showProfile, setShowProfile] = useState(false);
@@ -36,16 +46,29 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const [inviteCopied, setInviteCopied] = useState(false); 
   const [memberToRemove, setMemberToRemove] = useState<any>(null);
 
+  // Edit Group States
+  const [isEditingGroup, setIsEditingGroup] = useState(false);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [editGroupDescription, setEditGroupDescription] = useState("");
+  const [editGroupAvatar, setEditGroupAvatar] = useState<File | null>(null);
+  const [editGroupLoading, setEditGroupLoading] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch from the exact "Id" key as stored on login
   const currentUserId = localStorage.getItem("Id");
   const currentUsername = localStorage.getItem("username");
 
-  // Determine if the current user is the owner based on groupProfile.owner_id
   const isCurrentUserOwner = groupProfile?.owner_id === currentUserId;
+
+  // Sync local chat info when chat prop changes
+  useEffect(() => {
+    if (chat) {
+      setLocalChatInfo({ name: chat.name, avatar: chat.avatar });
+    }
+  }, [chat]);
 
   useEffect(() => {
     if (loading) return;
@@ -68,44 +91,33 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     let isMounted = true;
     setShowProfile(false); 
     setProfileViewType(null);
+    setIsEditingGroup(false);
 
     const loadMessages = async () => {
       try {
         setLoading(true);
         setError("");
-
         const data = await getConversationMessages(chat.id);
-
         if (!isMounted) return;
 
         const sortedMessages = [...data]
           .filter((msg) => !msg.is_deleted)
-          .sort(
-            (a, b) =>
-              new Date(a.created_at).getTime() -
-              new Date(b.created_at).getTime()
-          );
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
         shouldScrollToBottomRef.current = true;
         scrollBehaviorRef.current = "auto";
-
         setMessages(sortedMessages);
 
         const latest = sortedMessages[sortedMessages.length - 1];
         if (latest) {
           await markConversationRead(chat.id, latest.id);
         }
-
       } catch (err) {
         if (isMounted) {
-          setError(
-            err instanceof Error ? err.message : "Failed to load messages"
-          );
+          setError(err instanceof Error ? err.message : "Failed to load messages");
         }
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
     };
 
@@ -129,12 +141,9 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
       
       shouldScrollToBottomRef.current = true;
       scrollBehaviorRef.current = "smooth";
-
       setMessages((prev) => [...prev, newMessage]);
       setActiveReplyTo(null);
-
       await markConversationRead(chat.id, newMessage.id);
-      
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to send message");
     }
@@ -143,9 +152,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const handleEditMessage = async (messageId: string, newText: string) => {
     if (!chat) return;
     const updatedMessage = await editMessage(chat.id, messageId, newText);
-    setMessages((prev) =>
-      prev.map((msg) => (msg.id === messageId ? updatedMessage : msg))
-    );
+    setMessages((prev) => prev.map((msg) => (msg.id === messageId ? updatedMessage : msg)));
   };
 
   const handleDeleteMessage = async (messageId: string) => {
@@ -175,6 +182,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     if (chatType === "GROUP") {
       setShowProfile(true);
       setProfileViewType("group");
+      setIsEditingGroup(false); // Reset edit mode on open
       
       if (!groupProfile || groupProfile.id !== chat.id) {
         setProfileLoading(true);
@@ -212,20 +220,53 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     if (!chat || !memberToRemove) return;
     try {
       await removeGroupMember(chat.id, memberToRemove.user_id);
-      
-      // Update local state
-      setGroupMembers((prev) => 
-        prev ? prev.filter((m) => m.user_id !== memberToRemove.user_id) : null
-      );
-      
-      setGroupProfile((prev) => 
-        prev ? { ...prev, member_count: Number(prev.member_count) - 1 } : null
-      );
-      
+      setGroupMembers((prev) => prev ? prev.filter((m) => m.user_id !== memberToRemove.user_id) : null);
+      setGroupProfile((prev) => prev ? { ...prev, member_count: Number(prev.member_count) - 1 } : null);
       setMemberToRemove(null);
     } catch (error) {
       console.error("Failed to remove member:", error);
       alert("Failed to remove group member.");
+    }
+  };
+
+  // Setup Edit Mode
+  const handleStartEdit = () => {
+    if (!groupProfile) return;
+    setEditGroupName(groupProfile.name);
+    setEditGroupDescription(groupProfile.description || "");
+    setEditGroupAvatar(null);
+    setIsEditingGroup(true);
+  };
+
+  // Submit Edit
+  const handleSaveEdit = async () => {
+    if (!chat || !groupProfile) return;
+    if (!editGroupName.trim()) {
+      alert("Group name cannot be empty.");
+      return;
+    }
+
+    try {
+      setEditGroupLoading(true);
+      const updatedProfile = await updateGroupProfile(chat.id, {
+        name: editGroupName,
+        description: editGroupDescription,
+        avatar: editGroupAvatar,
+      });
+
+      // Update Local States for immediate UI feedback
+      setGroupProfile(updatedProfile);
+      setLocalChatInfo({
+        name: updatedProfile.name,
+        avatar: updatedProfile.avatar_url || chat.avatar
+      });
+      
+      setIsEditingGroup(false);
+    } catch (error) {
+      console.error("Failed to update group:", error);
+      alert("Failed to update group details.");
+    } finally {
+      setEditGroupLoading(false);
     }
   };
 
@@ -247,22 +288,10 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         <div className="remove-modal-overlay">
           <div className="remove-modal-box">
             <h3>Remove Member</h3>
-            <p>
-              Are you sure you want to remove <span>{memberToRemove.display_name}</span> from the group?
-            </p>
+            <p>Are you sure you want to remove <span>{memberToRemove.display_name}</span> from the group?</p>
             <div className="remove-modal-actions">
-              <button 
-                onClick={() => setMemberToRemove(null)}
-                className="cancel-btn"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={confirmRemoveMember}
-                className="confirm-btn"
-              >
-                Remove
-              </button>
+              <button onClick={() => setMemberToRemove(null)} className="cancel-btn">Cancel</button>
+              <button onClick={confirmRemoveMember} className="confirm-btn">Remove</button>
             </div>
           </div>
         </div>
@@ -281,11 +310,11 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
           onClick={handleHeaderClick}
         >
           <img
-            src={chat.avatar}
-            alt={chat.name}
+            src={localChatInfo?.avatar || chat.avatar}
+            alt={localChatInfo?.name || chat.name}
             className="chat-view-avatar"
           />
-          <div className="chat-view-name">{chat.name}</div>
+          <div className="chat-view-name">{localChatInfo?.name || chat.name}</div>
         </div>
       </div>
 
@@ -303,116 +332,175 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
               </button>
             )}
             <h3>{profileViewType === "group" ? "Group Profile" : "User Profile"}</h3>
+            
+            {/* Edit Button in Header */}
+            {profileViewType === "group" && !isEditingGroup && groupProfile && (
+              <button className="edit-group-btn" onClick={handleStartEdit}>
+                Edit
+              </button>
+            )}
           </div>
           
           <div className="group-profile-content">
             {profileLoading ? (
               <div className="chat-placeholder">Loading profile...</div>
             ) : profileViewType === "group" && groupProfile ? (
-              
               <div className="group-profile-card">
-                <img 
-                  src={groupProfile.avatar_url || chat.avatar} 
-                  alt={groupProfile.name} 
-                  className="group-profile-avatar-large"
-                />
-                <h2 className="group-profile-name">{groupProfile.name}</h2>
-                <div className="group-profile-member-count">
-                  {Number(groupProfile.member_count)} Members
-                </div>
-                {groupProfile.description && (
-                  <div className="group-profile-description">
-                    {groupProfile.description}
-                  </div>
-                )}
                 
-                <div className="group-profile-meta">
-                  <p>Created by: {groupProfile.owner_display_name}</p>
-                  <p>Created at: {new Date(groupProfile.created_at).toLocaleDateString()}</p>
-                </div>
-
-                {/* Invite Link Section */}
-                {groupProfile.invite_token && (
-                  <div className="invite-link-section">
-                    <h4>Invite Link</h4>
-                    <div className="invite-input-wrapper">
+                {/* EDIT MODE */}
+                {isEditingGroup ? (
+                  <div className="edit-group-form">
+                    <div className="edit-avatar-section">
+                      <img 
+                        src={editGroupAvatar ? URL.createObjectURL(editGroupAvatar) : (groupProfile.avatar_url || chat.avatar)} 
+                        alt="Group Avatar" 
+                        className="group-profile-avatar-large"
+                      />
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        ref={fileInputRef} 
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setEditGroupAvatar(e.target.files[0]);
+                          }
+                        }}
+                      />
+                      <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>
+                        Change Avatar
+                      </button>
+                    </div>
+                    
+                    <div className="edit-field">
+                      <label>Group Name <span style={{color: 'red'}}>*</span></label>
                       <input 
                         type="text" 
-                        readOnly 
-                        value={`http://join/${groupProfile.invite_token}`} 
-                        className="invite-input"
-                        onClick={(e) => (e.target as HTMLInputElement).select()}
+                        value={editGroupName}
+                        onChange={(e) => setEditGroupName(e.target.value)}
+                        placeholder="Enter group name"
+                        className="edit-input"
                       />
-                      <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? 'copied' : ''}`}>
-                        {inviteCopied ? "Copied!" : "Copy"}
+                    </div>
+
+                    <div className="edit-field">
+                      <label>Description</label>
+                      <textarea 
+                        value={editGroupDescription}
+                        onChange={(e) => setEditGroupDescription(e.target.value)}
+                        placeholder="Group description..."
+                        className="edit-textarea"
+                      />
+                    </div>
+
+                    <div className="edit-actions">
+                      <button 
+                        className="cancel-edit-btn" 
+                        onClick={() => setIsEditingGroup(false)}
+                        disabled={editGroupLoading}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        className="save-edit-btn" 
+                        onClick={handleSaveEdit}
+                        disabled={editGroupLoading || !editGroupName.trim()}
+                      >
+                        {editGroupLoading ? "Saving..." : "Save Changes"}
                       </button>
                     </div>
                   </div>
-                )}
-
-                {/* Members List */}
-                {groupMembers && groupMembers.length > 0 && (
-                  <div className="group-members-section">
-                    <h4>Members</h4>
-                    <div className="members-list">
-                      {groupMembers.map((member) => (
-                        <div 
-                          key={member.user_id} 
-                          className="member-row group" 
-                          onClick={() => handleUserClick(member.user_id)}
-                        >
-                          <div className="member-avatar-wrapper">
-                            <img 
-                              src={member.avatar_url || "/default-avatar.png"} 
-                              alt={member.display_name} 
-                            />
-                            {member.is_online && <span className="status-indicator online"></span>}
-                          </div>
-                          
-                          <span className="member-name flex-1">{member.display_name}</span>
-                          
-                          {/* Owner Badge utilizing owner_id */}
-                          {String(member.user_id) === String(groupProfile.owner_id) && (
-                            <span className="badge owner-badge mr-2">Owner</span>
-                          )}
-
-                          {/* Removal Functionality: Only Owner sees this, and not for themselves */}
-                          {isCurrentUserOwner && String(member.user_id) !== String(currentUserId) && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMemberToRemove(member);
-                              }}
-                              className="remove-member-btn"
-                              title="Remove from group"
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                ) : (
+                  /* VIEW MODE */
+                  <>
+                    <img 
+                      src={groupProfile.avatar_url || chat.avatar} 
+                      alt={groupProfile.name} 
+                      className="group-profile-avatar-large"
+                    />
+                    <h2 className="group-profile-name">{groupProfile.name}</h2>
+                    <div className="group-profile-member-count">
+                      {Number(groupProfile.member_count)} Members
                     </div>
-                  </div>
-                )}
+                    {groupProfile.description && (
+                      <div className="group-profile-description">
+                        {groupProfile.description}
+                      </div>
+                    )}
+                    
+                    <div className="group-profile-meta">
+                      <p>Created by: {groupProfile.owner_display_name}</p>
+                      <p>Created at: {new Date(groupProfile.created_at).toLocaleDateString()}</p>
+                    </div>
 
+                    {/* Invite Link Section */}
+                    {groupProfile.invite_token && (
+                      <div className="invite-link-section">
+                        <h4>Invite Link</h4>
+                        <div className="invite-input-wrapper">
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value={`http://join/${groupProfile.invite_token}`} 
+                            className="invite-input"
+                            onClick={(e) => (e.target as HTMLInputElement).select()}
+                          />
+                          <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? 'copied' : ''}`}>
+                            {inviteCopied ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Members List */}
+                    {groupMembers && groupMembers.length > 0 && (
+                      <div className="group-members-section">
+                        <h4>Members</h4>
+                        <div className="members-list">
+                          {groupMembers.map((member) => (
+                            <div 
+                              key={member.user_id} 
+                              className="member-row group" 
+                              onClick={() => handleUserClick(member.user_id)}
+                            >
+                              <div className="member-avatar-wrapper">
+                                <img 
+                                  src={member.avatar_url || "/default-avatar.png"} 
+                                  alt={member.display_name} 
+                                />
+                                {member.is_online && <span className="status-indicator online"></span>}
+                              </div>
+                              <span className="member-name flex-1">{member.display_name}</span>
+                              {String(member.user_id) === String(groupProfile.owner_id) && (
+                                <span className="badge owner-badge mr-2">Owner</span>
+                              )}
+                              {isCurrentUserOwner && String(member.user_id) !== String(currentUserId) && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMemberToRemove(member);
+                                  }}
+                                  className="remove-member-btn"
+                                  title="Remove from group"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             ) : profileViewType === "user" && userProfile ? (
-              
+              // ... user profile code stays the same
               <div className="group-profile-card">
-                <img 
-                  src={userProfile.avatar_url} 
-                  alt={userProfile.display_name} 
-                  className="group-profile-avatar-large"
-                />
+                <img src={userProfile.avatar_url} alt={userProfile.display_name} className="group-profile-avatar-large" />
                 <h2 className="group-profile-name">{userProfile.display_name}</h2>
                 <p className="group-profile-meta">@{userProfile.username}</p>
-                
-                {userProfile.bio && (
-                  <div className="group-profile-description">
-                    {userProfile.bio}
-                  </div>
-                )}
-                
+                {userProfile.bio && <div className="group-profile-description">{userProfile.bio}</div>}
                 <div className="group-profile-meta" style={{ color: userProfile.is_online ? '#4ade80' : '#9ca3af', marginTop: '8px' }}>
                   {userProfile.is_online ? 'Online' : 'Offline'}
                 </div>
@@ -426,25 +514,15 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
       {/* Body / Message History */}
       <div className="chat-view-body">
-        {loading && (
-          <div className="chat-placeholder">Loading messages...</div>
-        )}
-
-        {!loading && error && (
-          <div className="chat-placeholder">{error}</div>
-        )}
-
-        {!loading && !error && messages.length === 0 && (
-          <div className="chat-placeholder">No messages yet.</div>
-        )}
-
-        {!loading && !error && messages.length > 0 && (
+         {/* ... Rest of your body and message mapping stays the same ... */}
+         {/* Omitted for brevity, but leave your existing code here */}
+         {loading && <div className="chat-placeholder">Loading messages...</div>}
+         {!loading && error && <div className="chat-placeholder">{error}</div>}
+         {!loading && !error && messages.length === 0 && <div className="chat-placeholder">No messages yet.</div>}
+         {!loading && !error && messages.length > 0 && (
           <div className="message-history">
             {messages.map((msg) => {
-              const replyMsg = msg.reply_to
-                ? messages.find((m) => m.id === msg.reply_to)
-                : null;
-
+              const replyMsg = msg.reply_to ? messages.find((m) => m.id === msg.reply_to) : null;
               return (
                 <MessageBubble
                   key={msg.id}

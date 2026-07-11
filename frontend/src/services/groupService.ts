@@ -50,3 +50,32 @@ export const removeGroupMember = async (groupId: string, userId: string): Promis
   return response.data;
 };
 
+
+export const updateGroupProfile = async (
+  groupId: string,
+  payload: { name: string; description?: string; avatar?: File | null }
+): Promise<GroupProfile> => {
+  const formData = new FormData();
+  
+  if (payload.name) {
+    formData.append("name", payload.name);
+  }
+  
+  // Send description even if empty string to clear it, but check for undefined
+  if (payload.description !== undefined) {
+    formData.append("description", payload.description);
+  }
+  
+  if (payload.avatar) {
+    formData.append("avatar", payload.avatar);
+  }
+
+  const response = await api.patch(`/api/chat/conversations/groups/${groupId}/edit/`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
+  return response.data;
+};
+
