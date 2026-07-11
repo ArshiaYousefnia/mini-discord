@@ -90,3 +90,13 @@ export type GroupProfile = {
   invite_token: string; 
   member_count: Number;
 }
+
+export type GroupMember = {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_online: boolean;
+  role_name: string;
+};
+
+export type GroupMembers = GroupMember[];

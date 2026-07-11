@@ -6,10 +6,10 @@ import {
   editMessage,
   deleteMessage
 } from "../services/chatService";
-import { getGroupProfile } from "../services/groupService";
-import { getUserProfile } from "../services/users"; // <-- Added import
-import type { ChatListItem, Message, GroupProfile } from "../types/chat";
-import type { UserProfile } from "../types/user"; // <-- Added import
+import { getGroupProfile, getGroupMembers } from "../services/groupService";
+import { getUserProfile } from "../services/users";
+import type { ChatListItem, Message, GroupProfile, GroupMembers } from "../types/chat";
+import type { UserProfile } from "../types/user";
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
 
@@ -26,10 +26,12 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const [error, setError] = useState("");
   const [activeReplyTo, setActiveReplyTo] = useState<Message | null>(null);
 
-  // Profile States (Group & DM)
+  // Profile States (Group, Members & DM)
   const [showProfile, setShowProfile] = useState(false);
+  const [profileViewType, setProfileViewType] = useState<"group" | "user" | null>(null);
   const [groupProfile, setGroupProfile] = useState<GroupProfile | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null); // <-- Added state for DM
+  const [groupMembers, setGroupMembers] = useState<GroupMembers | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null); 
   const [profileLoading, setProfileLoading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -47,7 +49,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
       messagesEndRef.current?.scrollIntoView({
         behavior: scrollBehaviorRef.current,
       });
-
       shouldScrollToBottomRef.current = false;
     });
   }, [messages.length, loading, chat?.id]);
@@ -59,7 +60,8 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     }
 
     let isMounted = true;
-    setShowProfile(false); // Reset profile view when changing chats
+    setShowProfile(false); 
+    setProfileViewType(null);
 
     const loadMessages = async () => {
       try {
@@ -116,7 +118,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         conversation_id: chat.id,
         content: text,
         reply_to: activeReplyTo ? activeReplyTo.id : null,
-        recipient_id: chat.other_user_id, 
+        recipient_id: chat.other_user_id || (chat as any).otherUserId, 
       });
       
       shouldScrollToBottomRef.current = true;
@@ -146,34 +148,48 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
   };
 
+  const handleUserClick = async (userId: string) => {
+    setShowProfile(true);
+    setProfileViewType("user");
+    setProfileLoading(true);
+    try {
+      const data = await getUserProfile(userId);
+      setUserProfile(data);
+    } catch (err) {
+      console.error("Failed to load user profile", err);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
   const handleHeaderClick = async () => {
     if (!chat) return;
+    const chatType = chat.type.toUpperCase();
 
-    if (chat.type === "GROUP") {
+    if (chatType === "GROUP") {
       setShowProfile(true);
+      setProfileViewType("group");
+      
       if (!groupProfile || groupProfile.id !== chat.id) {
         setProfileLoading(true);
         try {
-          const data = await getGroupProfile(chat.id);
-          setGroupProfile(data);
+          // Fetch both profile and members concurrently
+          const [profileData, membersData] = await Promise.all([
+            getGroupProfile(chat.id),
+            getGroupMembers(chat.id)
+          ]);
+          setGroupProfile(profileData);
+          setGroupMembers(membersData);
         } catch (err) {
-          console.error("Failed to load group profile", err);
+          console.error("Failed to load group details", err);
         } finally {
           setProfileLoading(false);
         }
       }
-    } else if (chat.type === "DM" && chat.other_user_id) { // <-- Added DM logic
-      setShowProfile(true);
-      if (!userProfile || userProfile.id !== chat.other_user_id) {
-        setProfileLoading(true);
-        try {
-          const data = await getUserProfile(chat.other_user_id);
-          setUserProfile(data);
-        } catch (err) {
-          console.error("Failed to load user profile", err);
-        } finally {
-          setProfileLoading(false);
-        }
+    } else if (chatType === "DM") { 
+      const otherUserId = chat.other_user_id || (chat as any).otherUserId;
+      if (otherUserId) {
+        handleUserClick(otherUserId);
       }
     }
   };
@@ -186,6 +202,8 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     );
   }
 
+  const chatType = chat.type.toUpperCase();
+
   return (
     <div className="chat-view" style={{ position: 'relative', overflow: 'hidden' }}>
       {/* Header */}
@@ -197,7 +215,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         )}
 
         <div 
-          className={`chat-header-info ${chat.type === "GROUP" || chat.type === "DM" ? "clickable" : ""}`} 
+          className={`chat-header-info ${chatType === "GROUP" || chatType === "DM" ? "clickable" : ""}`} 
           onClick={handleHeaderClick}
         >
           <img
@@ -213,16 +231,22 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
       {showProfile && (
         <div className="group-profile-overlay slideInRight">
           <div className="group-profile-header">
-            <button className="back-button" onClick={() => setShowProfile(false)} type="button">
-              ← Close
-            </button>
-            <h3>{chat.type === "GROUP" ? "Group Profile" : "User Profile"}</h3>
+            {chatType === "GROUP" && profileViewType === "user" ? (
+              <button className="back-to-group-btn back-button" onClick={() => setProfileViewType("group")} type="button">
+                ← Back to Group
+              </button>
+            ) : (
+              <button className="back-button" onClick={() => setShowProfile(false)} type="button">
+                ← Close
+              </button>
+            )}
+            <h3>{profileViewType === "group" ? "Group Profile" : "User Profile"}</h3>
           </div>
           
           <div className="group-profile-content">
             {profileLoading ? (
               <div className="chat-placeholder">Loading profile...</div>
-            ) : chat.type === "GROUP" && groupProfile ? (
+            ) : profileViewType === "group" && groupProfile ? (
               
               <div className="group-profile-card">
                 <img 
@@ -244,12 +268,41 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
                   <p>Created by: {groupProfile.owner_display_name}</p>
                   <p>Created at: {new Date(groupProfile.created_at).toLocaleDateString()}</p>
                 </div>
+
+                {/* Members List */}
+                {groupMembers && groupMembers.length > 0 && (
+                  <div className="group-members-section">
+                    <h4>Members</h4>
+                    <div className="members-list">
+                      {groupMembers.map((member) => (
+                        <div 
+                          key={member.user_id} 
+                          className="member-row" 
+                          onClick={() => handleUserClick(member.user_id)}
+                        >
+                          <div className="member-avatar-wrapper">
+                            <img 
+                              src={member.avatar_url || "/default-avatar.png"} 
+                              alt={member.display_name} 
+                            />
+                            {member.is_online && <span className="status-indicator online"></span>}
+                          </div>
+                          <span className="member-name">{member.display_name}</span>
+                          {member.role_name === "Owner" && (
+                            <span className="badge owner-badge">Owner</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
               </div>
-            ) : chat.type === "DM" && userProfile ? (
+            ) : profileViewType === "user" && userProfile ? (
               
               <div className="group-profile-card">
                 <img 
-                  src={userProfile.avatar || chat.avatar} 
+                  src={userProfile.avatar_url} 
                   alt={userProfile.display_name} 
                   className="group-profile-avatar-large"
                 />
@@ -304,6 +357,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
                   onReply={(targetMsg) => setActiveReplyTo(targetMsg)}
                   onEdit={handleEditMessage}
                   onDelete={handleDeleteMessage}
+                  //onAvatarClick={() => handleUserClick(msg.sender_id)} // Trigger user profile on avatar click
                 />
               );
             })}
