@@ -6,7 +6,7 @@ import {
   editMessage,
   deleteMessage
 } from "../services/chatService";
-import { getUserProfile} from "../services/groupService";
+import { getGroupProfile} from "../services/groupService";
 import type { ChatListItem, Message, GroupProfile } from "../types/chat";
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
@@ -149,7 +149,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
       if (!groupProfile || groupProfile.id !== chat.id) {
         setProfileLoading(true);
         try {
-          const data = await getUserProfile(chat.id);
+          const data = await getGroupProfile(chat.id);
           setGroupProfile(data);
         } catch (err) {
           console.error("Failed to load group profile", err);
