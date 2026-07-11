@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom"; // <-- 1. Import useSearchParams
+import { useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
 import {
@@ -34,7 +34,6 @@ export default function HomePage() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [currentUsername, setCurrentUsername] = useState("");
   
-  // <-- 2. Initialize search params
   const [searchParams, setSearchParams] = useSearchParams(); 
 
   useEffect(() => {
@@ -44,10 +43,13 @@ export default function HomePage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const loadChats = async () => {
+  // NEW: Added isBackgroundRefresh parameter to prevent UI flickering on polls
+  const loadChats = async (isBackgroundRefresh = false) => {
     try {
-      setLoading(true);
-      setPageError("");
+      if (!isBackgroundRefresh) {
+        setLoading(true);
+        setPageError("");
+      }
 
       const conversations: Conversation[] = await getConversations();
 
@@ -63,7 +65,6 @@ export default function HomePage() {
 
       let sorted = sortChatsByRecent(mappedChats);
 
-      // <-- 3. Check URL for a specific chat to auto-select
       const chatIdFromUrl = searchParams.get("chat");
       
       if (chatIdFromUrl) {
@@ -71,30 +72,45 @@ export default function HomePage() {
         
         if (chatToSelect) {
           const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
-          setSelectedChat(readChat);
           
-          // Apply read status to the list item too
+          // Only auto-select if it's the initial load, not a background refresh
+          if (!isBackgroundRefresh) {
+            setSelectedChat(readChat);
+          }
+          
           sorted = sorted.map((c) =>
             c.id === chatIdFromUrl ? readChat : c
           );
 
-          // Clean up the URL parameter quietly so refreshing doesn't force re-selection
           searchParams.delete("chat");
           setSearchParams(searchParams, { replace: true });
         }
       }
 
+      // If a chat is already selected, make sure we update it with new backend data (like a new avatar/name)
+      if (selectedChat) {
+        const updatedSelectedChat = sorted.find(c => c.id === selectedChat.id);
+        if (updatedSelectedChat && 
+            (updatedSelectedChat.name !== selectedChat.name || updatedSelectedChat.avatar !== selectedChat.avatar)) {
+          setSelectedChat({ ...updatedSelectedChat, unreadCount: selectedChat.unreadCount });
+        }
+      }
+
       setChatItems(sorted);
     } catch (err) {
-      setPageError("Failed to fetch conversations.");
+      if (!isBackgroundRefresh) {
+        setPageError("Failed to fetch conversations.");
+      }
     } finally {
-      setLoading(false);
+      if (!isBackgroundRefresh) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadChats();
-  }, []); // Note: leaving dependency array empty so it runs once on mount
+    loadChats(); // Initial load
+  }, []); 
 
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
@@ -134,6 +150,8 @@ export default function HomePage() {
           onSelectChat={handleSelectChat}
           currentUsername={currentUsername}
           onStartDirectMessage={handleStartDirectMessage}
+          // NEW: Pass the loadChats function, specifically tagging it as a background refresh
+          onRefresh={() => loadChats(true)} 
         />
       )}
 
