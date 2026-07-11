@@ -237,19 +237,21 @@ class MessageViewSet(
     
 
     def destroy(self, request, *args, **kwargs):
-
         message = self.get_object()
 
         if message.sender != request.user:
-            return Response(
-                {"detail": "You can only delete your own messages."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            if (
+                message.conversation.type != Conversation.Type.GROUP
+                or message.conversation.owner != request.user
+            ):
+                return Response(
+                    {"detail": "You do not have permission to delete this message."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         message.is_deleted = True
         message.content = ""
         message.save(update_fields=["is_deleted", "content", "updated_at"])
-
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
