@@ -64,3 +64,29 @@ export type SendConversationMessagePayload = {
   reply_to?: string | null;
   recipient_id?: string | null;
 };
+
+export type CreateGroupPayload = {
+  name: string;
+  description?: string;
+  avatar?: File | null;
+};
+
+export type CreatedGroupResponse = {
+  id: string;
+  name: string;
+  description?: string;
+  avatar?: string | null;
+};
+
+export type GroupProfile = {
+  id: string;
+  type: string;
+  name: string;
+  description: string;
+  avatar_url: string;
+  owner_id: string;
+  owner_display_name: string;
+  created_at: string;
+  invite_token: string; 
+  member_count: Number;
+}

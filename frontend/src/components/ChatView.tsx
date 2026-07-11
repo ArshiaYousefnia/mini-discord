@@ -1,4 +1,4 @@
-import { useEffect, useRef , useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { 
   getConversationMessages,
   markConversationRead,
@@ -6,7 +6,8 @@ import {
   editMessage,
   deleteMessage
 } from "../services/chatService";
-import type { ChatListItem, Message } from "../types/chat";
+import { getUserProfile} from "../services/groupService";
+import type { ChatListItem, Message, GroupProfile } from "../types/chat";
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
 
@@ -23,11 +24,15 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const [error, setError] = useState("");
   const [activeReplyTo, setActiveReplyTo] = useState<Message | null>(null);
 
+  // Group Profile States
+  const [showProfile, setShowProfile] = useState(false);
+  const [groupProfile, setGroupProfile] = useState<GroupProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
 
-  // گرفتن اطلاعات کاربر فعلی از LocalStorage برای نسبت دادن پیام‌های ارسالی
   const currentUserId = localStorage.getItem("userId") || localStorage.getItem("user_id");
   const currentUsername = localStorage.getItem("username");
 
@@ -44,17 +49,14 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     });
   }, [messages.length, loading, chat?.id]);
 
-
-
   useEffect(() => {
     if (!chat) {
       setMessages([]);
       return;
     }
 
-
-
     let isMounted = true;
+    setShowProfile(false); // Reset profile view when changing chats
 
     const loadMessages = async () => {
       try {
@@ -78,7 +80,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
 
         setMessages(sortedMessages);
 
-        // --- mark conversation as read ---
         const latest = sortedMessages[sortedMessages.length - 1];
         if (latest) {
           await markConversationRead(chat.id, latest.id);
@@ -98,14 +99,13 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     };
 
     loadMessages();
-    setActiveReplyTo(null); // ریست کردن ریپلای با تغییر چت
+    setActiveReplyTo(null);
 
     return () => {
       isMounted = false;
     };
   }, [chat]);
 
-  // هندل کردن ارسال پیام جدید
   const handleSendMessage = async (text: string) => {
     if (!chat) return;
     try {
@@ -113,7 +113,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         conversation_id: chat.id,
         content: text,
         reply_to: activeReplyTo ? activeReplyTo.id : null,
-        recipient_id: chat.otherUserId, // <-- ارسال شناسه مخاطب
+        recipient_id: chat.otherUserId, 
       });
       
       shouldScrollToBottomRef.current = true;
@@ -129,9 +129,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     }
   };
 
-
-
-  // هندل کردن ویرایش پیام
   const handleEditMessage = async (messageId: string, newText: string) => {
     if (!chat) return;
     const updatedMessage = await editMessage(chat.id, messageId, newText);
@@ -140,15 +137,28 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     );
   };
 
-  // هندل کردن حذف پیام
   const handleDeleteMessage = async (messageId: string) => {
     if (!chat) return;
-
     await deleteMessage(chat.id, messageId);
-
     setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
   };
 
+  const handleHeaderClick = async () => {
+    if (chat?.type === "GROUP") {
+      setShowProfile(true);
+      if (!groupProfile || groupProfile.id !== chat.id) {
+        setProfileLoading(true);
+        try {
+          const data = await getUserProfile(chat.id);
+          setGroupProfile(data);
+        } catch (err) {
+          console.error("Failed to load group profile", err);
+        } finally {
+          setProfileLoading(false);
+        }
+      }
+    }
+  };
 
   if (!chat) {
     return (
@@ -168,14 +178,60 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
           </button>
         )}
 
-        <img
-          src={chat.avatar}
-          alt={chat.name}
-          className="chat-view-avatar"
-        />
-
-        <div className="chat-view-name">{chat.name}</div>
+        <div 
+          className={`chat-header-info ${chat.type === "GROUP" ? "clickable" : ""}`} 
+          onClick={handleHeaderClick}
+        >
+          <img
+            src={chat.avatar}
+            alt={chat.name}
+            className="chat-view-avatar"
+          />
+          <div className="chat-view-name">{chat.name}</div>
+        </div>
       </div>
+
+      {/* Group Profile Overlay */}
+      {showProfile && (
+        <div className="group-profile-overlay">
+          <div className="group-profile-header">
+            <button className="back-button" onClick={() => setShowProfile(false)} type="button">
+              ← Close
+            </button>
+            <h3>Group Profile</h3>
+          </div>
+          
+          <div className="group-profile-content">
+            {profileLoading ? (
+              <div className="chat-placeholder">Loading profile...</div>
+            ) : groupProfile ? (
+              <div className="group-profile-card">
+                <img 
+                  src={groupProfile.avatar_url || chat.avatar} 
+                  alt={groupProfile.name} 
+                  className="group-profile-avatar-large"
+                />
+                <h2 className="group-profile-name">{groupProfile.name}</h2>
+                <div className="group-profile-member-count">
+                  {Number(groupProfile.member_count)} Members
+                </div>
+                {groupProfile.description && (
+                  <div className="group-profile-description">
+                    {groupProfile.description}
+                  </div>
+                )}
+                
+                <div className="group-profile-meta">
+                  <p>Created by: {groupProfile.owner_display_name}</p>
+                  <p>Created at: {new Date(groupProfile.created_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="chat-placeholder">Failed to load profile.</div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Body / Message History */}
       <div className="chat-view-body">
@@ -194,7 +250,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         {!loading && !error && messages.length > 0 && (
           <div className="message-history">
             {messages.map((msg) => {
-              // پیدا کردن پیامی که به آن ریپلای شده (در صورت وجود)
               const replyMsg = msg.reply_to
                 ? messages.find((m) => m.id === msg.reply_to)
                 : null;
@@ -217,7 +272,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         )}
       </div>
 
-      {/* Input Area (اضافه شده) */}
       <MessageInput
         activeReplyTo={activeReplyTo}
         onCancelReply={() => setActiveReplyTo(null)}
