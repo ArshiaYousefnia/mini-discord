@@ -8,7 +8,6 @@ from chat.models import (
     ConversationMember,
     Message,
     Role,
-    Topic
 )
 
 
@@ -46,11 +45,11 @@ class DeleteGroupTests(APITestCase):
             can_manage_roles=True,
         )
 
-        owner_member = ConversationMember.objects.create(
+        ConversationMember.objects.create(
             conversation=self.group,
-            user=self.owner
+            user=self.owner,
+            role=self.owner_role,
         )
-        owner_member.roles.add(self.owner_role)
 
         ConversationMember.objects.create(
             conversation=self.group,
@@ -112,22 +111,19 @@ class DeleteGroupTests(APITestCase):
 
         self.assertEqual(Role.objects.count(), 0)
 
-    def test_member_can_delete_group(self):
-        """Any group member can delete the group."""
+    def test_member_cannot_delete_group(self):
         self.client.force_authenticate(self.member)
-        response = self.client.delete(self.url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(Conversation.objects.filter(id=self.group.id).exists())
 
-    def test_non_member_cannot_delete_group(self):
-        """A user who is not a member of the group cannot delete it."""
-        outsider = User.objects.create_user(
-            username='outsider', email='outsider@test.com', password='pass'
-        )
-        self.client.force_authenticate(outsider)
         response = self.client.delete(self.url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertTrue(Conversation.objects.filter(id=self.group.id).exists())
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+        self.assertTrue(
+            Conversation.objects.filter(id=self.group.id).exists()
+        )
 
     def test_delete_nonexistent_group(self):
         self.client.force_authenticate(self.owner)
