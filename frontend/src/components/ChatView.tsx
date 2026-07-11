@@ -33,6 +33,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const [groupMembers, setGroupMembers] = useState<GroupMembers | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null); 
   const [profileLoading, setProfileLoading] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false); 
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
@@ -173,7 +174,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
       if (!groupProfile || groupProfile.id !== chat.id) {
         setProfileLoading(true);
         try {
-          // Fetch both profile and members concurrently
           const [profileData, membersData] = await Promise.all([
             getGroupProfile(chat.id),
             getGroupMembers(chat.id)
@@ -194,10 +194,19 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     }
   };
 
+  const handleCopyInviteLink = () => {
+    if (groupProfile?.invite_token) {
+      const inviteLink = `http://join/${groupProfile.invite_token}`;
+      navigator.clipboard.writeText(inviteLink);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    }
+  };
+
   if (!chat) {
     return (
-      <div className="chat-placeholder">
-        Select a chat to start messaging
+      <div className="chat-placeholder" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div>Select a chat to start messaging</div>
       </div>
     );
   }
@@ -227,7 +236,7 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         </div>
       </div>
 
-      {/* Profile Overlay (Both Group & User) */}
+      {/* Profile Overlay */}
       {showProfile && (
         <div className="group-profile-overlay slideInRight">
           <div className="group-profile-header">
@@ -268,6 +277,25 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
                   <p>Created by: {groupProfile.owner_display_name}</p>
                   <p>Created at: {new Date(groupProfile.created_at).toLocaleDateString()}</p>
                 </div>
+
+                {/* Invite Link Section */}
+                {groupProfile.invite_token && (
+                  <div className="invite-link-section">
+                    <h4>Invite Link</h4>
+                    <div className="invite-input-wrapper">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value={`http://join/${groupProfile.invite_token}`} 
+                        className="invite-input"
+                        onClick={(e) => (e.target as HTMLInputElement).select()}
+                      />
+                      <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? 'copied' : ''}`}>
+                        {inviteCopied ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Members List */}
                 {groupMembers && groupMembers.length > 0 && (
@@ -357,7 +385,6 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
                   onReply={(targetMsg) => setActiveReplyTo(targetMsg)}
                   onEdit={handleEditMessage}
                   onDelete={handleDeleteMessage}
-                  //onAvatarClick={() => handleUserClick(msg.sender_id)} // Trigger user profile on avatar click
                 />
               );
             })}

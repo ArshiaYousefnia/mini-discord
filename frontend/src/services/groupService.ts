@@ -36,3 +36,9 @@ export const getGroupMembers = async (groupId: string): Promise<GroupMembers> =>
 
   return response.data;
 }
+
+export const joinGroupByToken = async (token: string): Promise<any> => {
+  const response = await api.post(`/api/chat/conversations/groups/join/${token}/`);
+  return response.data;
+};
+
