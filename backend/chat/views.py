@@ -510,3 +510,24 @@ class GroupUpdateView(APIView):
         return Response(
             GroupDetailSerializer(conversation).data
         )
+    
+class GroupDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, conversation_id):
+
+        group = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.GROUP,
+        )
+
+        if group.owner != request.user:
+            return Response(
+                {"detail": "Only the group owner can delete the group."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        group.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
