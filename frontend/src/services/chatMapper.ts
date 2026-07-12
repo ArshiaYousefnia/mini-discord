@@ -32,7 +32,7 @@ export function mapConversationToChatListItem(
     lastMessage: lastMessageText,
     lastMessageAt,
     unreadCount: conversation.unread_count || 0,
-    otherUserId: conversation.other_user_id, // <-- now accessible to UI
+    other_user_id: conversation.other_user_id, // <-- now accessible to UI
   };
 }
 
