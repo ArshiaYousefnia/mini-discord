@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Message } from "../types/chat";
+import { joinGroupByToken } from "../services/groupService";
 import "../styles/chat.css";
 
 type Props = {
@@ -23,7 +24,6 @@ export default function MessageBubble({
 }: Props) {
   const messageText = message.content ?? "";
 
-
   const isMe =
     Boolean(currentUserId && message.sender === currentUserId) ||
     Boolean(currentUsername && message.sender_username === currentUsername);
@@ -31,6 +31,7 @@ export default function MessageBubble({
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content ?? "");
   const [loading, setLoading] = useState(false);
+  const [joinLoading, setJoinLoading] = useState(false);
 
   const formattedTime = useMemo(() => {
     try {
@@ -74,6 +75,59 @@ export default function MessageBubble({
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete message");
     }
+  };
+
+  const handleJoinGroup = async (token: string) => {
+    try {
+      setJoinLoading(true);
+      await joinGroupByToken(token);
+      alert("Successfully joined the group!");
+      // Optionally trigger a re-fetch of the chat list in the parent component here
+      
+    } catch (err: any) {
+      if (err.response?.status === 400) {
+        alert("you are already a group member!");
+      } else if (err.response?.status === 404) {
+        alert("invalid invite link");
+      } else {
+        alert(err.message || "Failed to join group.");
+      }
+    } finally {
+      setJoinLoading(false);
+    }
+  };
+
+
+  const renderContent = (text: string) => {
+    const inviteRegex = /(http:\/\/join\/[a-zA-Z0-9_-]+)/g;
+    const parts = text.split(inviteRegex);
+
+    return parts.map((part, index) => {
+      if (part.match(inviteRegex)) {
+        const token = part.split("/").pop() || "";
+        return (
+          <button
+            key={index}
+            className="inline-invite-link"
+            onClick={() => handleJoinGroup(token)}
+            disabled={joinLoading}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#1db954",
+              textDecoration: "underline",
+              cursor: "pointer",
+              padding: 0,
+              fontFamily: "inherit",
+              fontSize: "inherit"
+            }}
+          >
+            {joinLoading ? "Joining..." : part}
+          </button>
+        );
+      }
+      return <span key={index}>{part}</span>;
+    });
   };
 
   return (
@@ -156,7 +210,9 @@ export default function MessageBubble({
             </div>
           </div>
         ) : (
-          <div className="message-text">{messageText}</div>
+          <div className="message-text">
+            {message.is_deleted ? "Deleted message" : renderContent(messageText)}
+          </div>
         )}
 
         {!isEditing && (
