@@ -1,18 +1,6 @@
 // src/services/groupService.ts
+import type { CreatedGroupResponse, CreateGroupPayload, GroupMembers, GroupProfile } from "../types/chat";
 import api from "./api";
-
-export type CreateGroupPayload = {
-  name: string;
-  description?: string;
-  avatar?: File | null;
-};
-
-export type CreatedGroupResponse = {
-  id: string;
-  name: string;
-  description?: string;
-  avatar?: string | null;
-};
 
 export async function createGroup(
   payload: CreateGroupPayload
@@ -36,3 +24,58 @@ export async function createGroup(
 
   return response.data;
 }
+
+
+export const getGroupProfile = async (groupId: string): Promise<GroupProfile> => {
+  const response = await api.get<GroupProfile>(`/api/chat/conversations/groups/${groupId}/profile/`);
+  return response.data;
+}
+
+export const getGroupMembers = async (groupId: string): Promise<GroupMembers> => {
+  const response = await api.get(`api/chat/conversations/groups/${groupId}/members/`);
+
+  return response.data;
+}
+
+export const joinGroupByToken = async (token: string): Promise<any> => {
+  const response = await api.post(`/api/chat/conversations/groups/join/${token}/`);
+  return response.data;
+};
+
+
+export const removeGroupMember = async (groupId: string, userId: string): Promise<void> => {
+  const response = await api.post(`/api/chat/conversations/${groupId}/remove-member/`, {
+    user_id: userId,
+  });
+  return response.data;
+};
+
+
+export const updateGroupProfile = async (
+  groupId: string,
+  payload: { name: string; description?: string; avatar?: File | null }
+): Promise<GroupProfile> => {
+  const formData = new FormData();
+  
+  if (payload.name) {
+    formData.append("name", payload.name);
+  }
+  
+  // Send description even if empty string to clear it, but check for undefined
+  if (payload.description !== undefined) {
+    formData.append("description", payload.description);
+  }
+  
+  if (payload.avatar) {
+    formData.append("avatar", payload.avatar);
+  }
+
+  const response = await api.patch(`/api/chat/conversations/groups/${groupId}/edit/`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
+  return response.data;
+};
+

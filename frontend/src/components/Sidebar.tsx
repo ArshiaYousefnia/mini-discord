@@ -11,6 +11,8 @@ type Props = {
   onSelectChat: (chat: ChatListItem) => void;
   currentUsername: string;
   onStartDirectMessage: (user: BackendUserProfile) => Promise<void>;
+  // NEW: Optional callback to trigger a refresh of the chats list from the parent
+  onRefresh?: () => void; 
 };
 
 function getLoggedInUsername(): string {
@@ -44,6 +46,7 @@ export default function Sidebar({
   onSelectChat,
   currentUsername,
   onStartDirectMessage,
+  onRefresh, // NEW
 }: Props) {
   const navigate = useNavigate();
 
@@ -71,6 +74,17 @@ export default function Sidebar({
 
     setLoggedInUsername(fromStorage || fromProp);
   }, [currentUsername]);
+
+  // NEW: Polling mechanism to fetch updates periodically (e.g., every 5 seconds)
+  useEffect(() => {
+    if (!onRefresh) return;
+    
+    const interval = setInterval(() => {
+      onRefresh();
+    }, 5000); // 5000ms = 5 seconds
+    
+    return () => clearInterval(interval);
+  }, [onRefresh]);
 
   const goToEditProfile = () => {
     navigate("/profile/");
@@ -129,6 +143,7 @@ export default function Sidebar({
 
   return (
     <div className="sidebar">
+      {/* Rest of the JSX remains exactly the same */}
       <div className="sidebar-top">
         <div
           className="my-profile"

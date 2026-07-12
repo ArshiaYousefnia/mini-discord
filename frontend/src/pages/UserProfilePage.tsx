@@ -70,7 +70,7 @@ export default function UserProfilePage() {
       <div className="user-profile-card">
         <div className="user-profile-header">
           <img
-            src={user.avatar || ""}
+            src={user.avatar_url || ""}
             alt={user.display_name}
             className="user-profile-avatar"
           />

@@ -8,6 +8,11 @@ type Props = {
 };
 
 export default function ChatItem({ chat, active = false, onClick }: Props) {
+  // Truncate the message if it exceeds 40 characters
+  const displayMessage = chat.lastMessage?.length > 40 
+    ? `${chat.lastMessage.substring(0, 30)}...` 
+    : chat.lastMessage;
+
   return (
     <button
       className={`chat-item ${active ? "active" : ""}`}
@@ -23,7 +28,7 @@ export default function ChatItem({ chat, active = false, onClick }: Props) {
         </div>
 
         <div className="chat-bottom-row">
-          <div className="chat-message">{chat.lastMessage}</div>
+          <div className="chat-message">{displayMessage}</div>
 
           {chat.unreadCount > 0 && (
             <div className="chat-unread-badge">{chat.unreadCount}</div>
