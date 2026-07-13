@@ -10,6 +10,10 @@ import type {
 
 const LOCAL_MESSAGES_KEY = "mini_discord_demo_messages";
 
+// Task #33: minimum characters required before a search is sent to the
+// backend, so we don't hammer the DB on every keystroke.
+export const MIN_SEARCH_QUERY_LENGTH = 3;
+
 // ==========================================
 // Local Storage Fallback Helpers
 // ==========================================
@@ -74,8 +78,11 @@ function upsertLocalMessage(message: Message) {
 }
 
 function getLocalConversationMessages(conversationId: string) {
+  // NOTE: no longer filters out is_deleted messages — MessageBubble renders
+  // a "Deleted message" placeholder for these, and reply-preview lookups
+  // (task #52) need the deleted message to still be present in the list.
   return getLocalMessages().filter(
-    (message) => message.conversation === conversationId && !message.is_deleted
+    (message) => message.conversation === conversationId
   );
 }
 
@@ -102,10 +109,61 @@ export const chatService = {
       const messages = response.data;
 
       messages.forEach(upsertLocalMessage);
-      return messages.filter((message) => !message.is_deleted);
+      // NOTE: previously filtered out is_deleted messages here. Removed so
+      // that deleted messages remain available for reply-snippet lookups
+      // (task #52) and are still rendered as a "Deleted message" placeholder.
+      return messages;
     } catch (error) {
       console.warn(`Failed to fetch messages for conversation ${conversationId}, loading local cache`, error);
       return getLocalConversationMessages(conversationId);
+    }
+  },
+
+  // Task #33: Search messages within a single DM / Group / Channel.
+  //
+  // ASSUMPTION: this calls GET /api/chat/conversations/:id/messages/search/?q=...
+  // matching the naming convention of the existing endpoints above. The
+  // Development section on issue #33 mentions the search backend was already
+  // added in MR !52 — if the real route or query param name differs
+  // (e.g. "query" instead of "q", or a different path), just update the
+  // `api.get` call below, the rest of the feature does not depend on it.
+  //
+  // Expected response shape: an array of Message objects (same shape as
+  // getConversationMessages) whose content matches the query,
+  // case-insensitively. Snippet highlighting is done entirely on the
+  // frontend (see MessageSearchPanel), so the backend does not need to
+  // return a pre-built snippet.
+  searchMessages: async (
+    conversationId: string,
+    query: string
+  ): Promise<Message[]> => {
+    const trimmed = query.trim();
+
+    if (trimmed.length < MIN_SEARCH_QUERY_LENGTH) {
+      return [];
+    }
+
+    try {
+      const response = await api.get<Message[]>(
+        `/api/chat/conversations/${conversationId}/messages/search/`,
+        { params: { q: trimmed } }
+      );
+      return response.data;
+    } catch (error) {
+      console.warn(
+        `Failed to search messages on server for conversation ${conversationId}, falling back to local cache`,
+        error
+      );
+
+      // Fallback: case-insensitive search over whatever messages we already
+      // have cached locally, so the feature still degrades gracefully if the
+      // backend search endpoint is unreachable or not deployed yet.
+      const needle = trimmed.toLowerCase();
+      return getLocalConversationMessages(conversationId).filter(
+        (message) =>
+          !message.is_deleted &&
+          (message.content ?? "").toLowerCase().includes(needle)
+      );
     }
   },
 
@@ -302,6 +360,7 @@ export const chatService = {
 export const {
   getConversations,
   getConversationMessages,
+  searchMessages,
   getUserProfile,
   sendDirectMessage,
   sendConversationMessage,
@@ -311,8 +370,6 @@ export const {
 } = chatService;
 
 // Backward-compatible named exports & aliases
-// Replace: export const createDirectMessage = sendDirectMessage;
-// With this wrapper:
 export async function createDirectMessage(
   recipientId: string,
   content: string,
