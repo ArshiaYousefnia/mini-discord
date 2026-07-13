@@ -79,3 +79,12 @@ export const updateGroupProfile = async (
   return response.data;
 };
 
+// --- Task #15: Leave a Group Chat ---
+export const leaveGroup = async (groupId: string): Promise<void> => {
+  await api.post(`/api/chat/conversations/${groupId}/leave/`);
+};
+
+// --- Task #35: Delete a Group ---
+export const deleteGroup = async (groupId: string): Promise<void> => {
+  await api.delete(`/api/chat/conversations/groups/${groupId}/`);
+};
