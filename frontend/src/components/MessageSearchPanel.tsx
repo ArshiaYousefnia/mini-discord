@@ -70,18 +70,11 @@ function buildSnippet(content: string, query: string): string {
 function formatResultTimestamp(isoString: string): string {
   try {
     const date = new Date(isoString);
-
-    if (Number.isNaN(date.getTime())) {
-      return "";
-    }
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-
-    return `${year}/${month}/${day} ${hours}:${minutes}`;
+    return `${date.toLocaleDateString([], {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })} · ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   } catch {
     return "";
   }
