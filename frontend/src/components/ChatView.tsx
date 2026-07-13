@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { 
   getConversationMessages,
   markConversationRead,
@@ -10,21 +10,27 @@ import {
   getGroupProfile, 
   getGroupMembers, 
   removeGroupMember,
-  updateGroupProfile
+  updateGroupProfile,
+  leaveGroup,
+  deleteGroup
 } from "../services/groupService";
 import { getUserProfile } from "../services/users";
 import type { ChatListItem, Message, GroupProfile, GroupMembers } from "../types/chat";
 import type { UserProfile } from "../types/user";
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
+import MessageSearchPanel from "./MessageSearchPanel";
 
 interface Props {
   chat: ChatListItem | null;
   isMobile: boolean;
   onBack: () => void;
+  // Called after the current user leaves (#15) or deletes (#35) a group,
+  // so the parent can remove it from the chat list / clear selection.
+  onGroupExit?: (groupId: string) => void;
 }
 
-export default function ChatView({ chat, isMobile, onBack }: Props) {
+export default function ChatView({ chat, isMobile, onBack, onGroupExit }: Props) {
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,15 +57,27 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const [editGroupAvatar, setEditGroupAvatar] = useState<File | null>(null);
   const [editGroupLoading, setEditGroupLoading] = useState(false);
 
+  // Task #15: Leave Group state
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+
+  // Task #35: Delete Group state
+  const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState(false);
+  const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
+
+  // Task #33: Search Messages within a Chat
+  const [showSearch, setShowSearch] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
 
   const currentUserId = localStorage.getItem("Id");
   const currentUsername = localStorage.getItem("username");
 
-  const isCurrentUserOwner = groupProfile?.owner_id === currentUserId;
+  const isCurrentUserOwner = String(groupProfile?.owner_id) === String(currentUserId);
 
   // Sync local chat info when chat prop changes
   useEffect(() => {
@@ -79,6 +97,9 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     setShowProfile(false); 
     setProfileViewType(null);
     setIsEditingGroup(false);
+    setShowLeaveConfirm(false);
+    setShowDeleteGroupConfirm(false);
+    setShowSearch(false); // Task #33: close search panel when switching chats
 
     const loadMessages = async () => {
       try {
@@ -87,8 +108,10 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         const data = await getConversationMessages(chat.id);
         if (!isMounted) return;
 
+        // Task #52: keep deleted messages in the array (sorted, not filtered)
+        // so they remain available as reply targets and render their
+        // "Deleted message" placeholder correctly.
         const sortedMessages = [...data]
-          .filter((msg) => !msg.is_deleted)
           .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
         shouldScrollToBottomRef.current = true;
@@ -117,45 +140,82 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   }, [chat]);
 
   // NEW: Background polling for Live Updates to the Group Profile
+
+useEffect(() => {
+  if (!chat || chat.type.toUpperCase() !== "GROUP") return;
+
+  let isMounted = true;
+
+  const pollGroupInfo = async () => {
+    try {
+      const [profileData, membersData] = await Promise.all([
+        getGroupProfile(chat.id),
+        getGroupMembers(chat.id)
+      ]);
+
+      if (!isMounted) return;
+
+      setGroupProfile(profileData);
+      setGroupMembers(membersData);
+
+      setLocalChatInfo(prev => {
+        const newName = profileData.name;
+        const newAvatar = profileData.avatar_url || chat.avatar;
+        if (prev?.name !== newName || prev?.avatar !== newAvatar) {
+          return { name: newName, avatar: newAvatar };
+        }
+        return prev;
+      });
+    } catch (error) {
+      console.error("Failed to background refresh group data:", error);
+    }
+  };
+
+  pollGroupInfo(); // NEW: run immediately instead of waiting 5s for the first tick
+  const intervalId = setInterval(pollGroupInfo, 5000);
+
+  return () => {
+    isMounted = false;
+    clearInterval(intervalId);
+  };
+}, [chat]);
+
+
+  // Task #52: Background polling for message list, so that a deletion made
+  // by another participant (or from another tab) reflects here — including
+  // deleted-reply snippets — without a manual refresh. This is a polling
+  // approximation of "real-time"; swap for a socket/channel push if the
+  // backend adds one.
   useEffect(() => {
-    // Only poll if there is an active chat and it's a group
-    if (!chat || chat.type.toUpperCase() !== "GROUP") return;
+    if (!chat) return;
 
     let isMounted = true;
 
-    const pollGroupInfo = async () => {
+    const pollMessages = async () => {
       try {
-        const [profileData, membersData] = await Promise.all([
-          getGroupProfile(chat.id),
-          getGroupMembers(chat.id)
-        ]);
-
+        const data = await getConversationMessages(chat.id);
         if (!isMounted) return;
 
-        // Update the profile and member list silently
-        setGroupProfile(profileData);
-        setGroupMembers(membersData);
+        const sorted = [...data].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
 
-        // Update the header visually
-        setLocalChatInfo(prev => {
-          const newName = profileData.name;
-          const newAvatar = profileData.avatar_url || chat.avatar;
-          
-          // Only update if it actually changed to prevent unnecessary renders
-          if (prev?.name !== newName || prev?.avatar !== newAvatar) {
-            return { name: newName, avatar: newAvatar };
+        setMessages((prev) => {
+          if (JSON.stringify(prev) === JSON.stringify(sorted)) {
+            return prev; // no change, skip re-render
           }
-          return prev;
+          if (sorted.length > prev.length) {
+            shouldScrollToBottomRef.current = true;
+            scrollBehaviorRef.current = "smooth";
+          }
+          return sorted;
         });
-
-      } catch (error) {
-        // Fail silently on background polls so we don't interrupt the user
-        console.error("Failed to background refresh group data:", error);
+      } catch (err) {
+        console.error("Failed to poll messages:", err);
       }
     };
 
-    // Poll every 5 seconds
-    const intervalId = setInterval(pollGroupInfo, 5000);
+    const intervalId = setInterval(pollMessages, 4000);
 
     return () => {
       isMounted = false;
@@ -206,7 +266,16 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
   const handleDeleteMessage = async (messageId: string) => {
     if (!chat) return;
     await deleteMessage(chat.id, messageId);
-    setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+    // Task #52: mark as deleted locally instead of removing it from the array,
+    // so any message replying to it can immediately show the
+    // "Original message was deleted" placeholder without waiting for the poll.
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId
+          ? { ...msg, content: null, is_deleted: true, updated_at: new Date().toISOString() }
+          : msg
+      )
+    );
   };
 
   const handleUserClick = async (userId: string) => {
@@ -315,6 +384,111 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
     }
   };
 
+  // Task #15: Leave a Group Chat
+  const handleLeaveGroup = async () => {
+    if (!chat) return;
+    try {
+      setLeaveLoading(true);
+      await leaveGroup(chat.id);
+      setShowLeaveConfirm(false);
+      setShowProfile(false);
+      onGroupExit?.(chat.id);
+    } catch (error) {
+      console.error("Failed to leave group:", error);
+      alert("Failed to leave the group.");
+    } finally {
+      setLeaveLoading(false);
+    }
+  };
+
+  // Task #35: Delete a Group
+  const handleDeleteGroup = async () => {
+    if (!chat) return;
+    try {
+      setDeleteGroupLoading(true);
+      await deleteGroup(chat.id);
+      setShowDeleteGroupConfirm(false);
+      setShowProfile(false);
+      onGroupExit?.(chat.id);
+    } catch (error) {
+      console.error("Failed to delete group:", error);
+      alert("Failed to delete the group.");
+    } finally {
+      setDeleteGroupLoading(false);
+    }
+  };
+
+  // Task #33: Open the search panel (mutually exclusive with the profile
+  // overlay — closing whichever one is open, similar to the existing
+  // overlay-switching pattern used for group/user profiles).
+  const handleToggleSearch = () => {
+    setShowProfile(false);
+    setShowSearch((prev) => !prev);
+  };
+
+  // Task #33: Jump to a message picked from search results, smoothly
+  // scrolling it into view and briefly flashing it so it's easy to spot.
+  const scrollToMessage = async (targetMessage: Message) => {
+    if (!chat) return;
+
+    const scrollAndHighlight = (): boolean => {
+      const el = document.getElementById(`msg-${targetMessage.id}`);
+      if (!el) return false;
+
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("message-highlight-flash");
+
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
+      highlightTimeoutRef.current = window.setTimeout(() => {
+        el.classList.remove("message-highlight-flash");
+      }, 1600);
+
+      return true;
+    };
+
+    setShowSearch(false);
+
+    // The current implementation loads full conversation history up-front,
+    // so the message is normally already rendered and this succeeds
+    // immediately. We still wait a tick for the search panel's unmount /
+    // the chat body to be visible before measuring.
+    requestAnimationFrame(() => {
+      if (scrollAndHighlight()) return;
+
+      // Fallback for when the target message isn't in the currently loaded
+      // list yet (e.g. once "load more history" / pagination is added to
+      // this view) — refetch history so it becomes available, then retry.
+      (async () => {
+        try {
+          const data = await getConversationMessages(chat.id);
+          const sorted = [...data].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          setMessages(sorted);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(scrollAndHighlight);
+          });
+        } catch (err) {
+          console.error("Failed to load message history for search result:", err);
+        }
+      })();
+    });
+  };
+
+
+  // Build a quick lookup: user_id -> avatar_url, for rendering sender
+  // avatars/names inside group message bubbles (Task #37).
+  const senderAvatarById = useMemo(() => {
+    const map: Record<string, string> = {};
+    groupMembers?.forEach((m) => {
+      map[String(m.user_id)] = m.avatar_url || "";
+    });
+    return map;
+  }, [groupMembers]);
+
+
   if (!chat) {
     return (
       <div className="chat-placeholder" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -342,6 +516,50 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
         </div>
       )}
 
+      {/* Task #15: Leave Group Confirmation Modal */}
+      {showLeaveConfirm && (
+        <div className="remove-modal-overlay">
+          <div className="remove-modal-box">
+            <h3>Leave Group</h3>
+            <p>Are you sure you want to leave this group? You'll stop receiving messages from it.</p>
+            <div className="remove-modal-actions">
+              <button onClick={() => setShowLeaveConfirm(false)} className="cancel-btn" disabled={leaveLoading}>
+                Cancel
+              </button>
+              <button onClick={handleLeaveGroup} className="confirm-btn" disabled={leaveLoading}>
+                {leaveLoading ? "Leaving..." : "Leave Group"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task #35: Delete Group Confirmation Modal */}
+      {showDeleteGroupConfirm && (
+        <div className="remove-modal-overlay">
+          <div className="remove-modal-box">
+            <h3>Delete Group</h3>
+            <p>
+              This will permanently delete this group and all its messages and media
+              for every member. This action cannot be undone.
+            </p>
+            <div className="remove-modal-actions">
+              <button onClick={() => setShowDeleteGroupConfirm(false)} className="cancel-btn" disabled={deleteGroupLoading}>
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteGroup}
+                className="confirm-btn"
+                disabled={deleteGroupLoading}
+                style={{ backgroundColor: "#dc2626", borderColor: "#dc2626" }}
+              >
+                {deleteGroupLoading ? "Deleting..." : "Delete for everyone"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="chat-view-header">
         {isMobile && (
@@ -361,7 +579,28 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
           />
           <div className="chat-view-name">{localChatInfo?.name || chat.name}</div>
         </div>
+
+        {/* Task #33: Search Messages within a Chat */}
+        <div className="chat-view-header-actions" style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
+          <button
+            className="chat-search-toggle-btn"
+            onClick={handleToggleSearch}
+            title="Search messages"
+            type="button"
+          >
+            🔍
+          </button>
+        </div>
       </div>
+
+      {/* Task #33: Search Overlay */}
+      {showSearch && (
+        <MessageSearchPanel
+          conversationId={chat.id}
+          onClose={() => setShowSearch(false)}
+          onResultClick={scrollToMessage}
+        />
+      )}
 
       {/* Profile Overlay */}
       {showProfile && (
@@ -536,6 +775,57 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
                         </div>
                       </div>
                     )}
+
+                    {/* Tasks #15 / #35: Leave / Delete Group */}
+                    <div
+                      className="group-danger-zone"
+                      style={{
+                        marginTop: 24,
+                        paddingTop: 16,
+                        borderTop: "1px solid rgba(255,255,255,0.1)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                      }}
+                    >
+                      {!isCurrentUserOwner && (
+                        <button
+                          type="button"
+                          onClick={() => setShowLeaveConfirm(true)}
+                          className="leave-group-btn"
+                          style={{
+                            padding: "10px 16px",
+                            borderRadius: 8,
+                            border: "1px solid #dc2626",
+                            background: "transparent",
+                            color: "#dc2626",
+                            cursor: "pointer",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Leave Group
+                        </button>
+                      )}
+
+                      {isCurrentUserOwner && (
+                        <button
+                          type="button"
+                          onClick={() => setShowDeleteGroupConfirm(true)}
+                          className="delete-group-btn"
+                          style={{
+                            padding: "10px 16px",
+                            borderRadius: 8,
+                            border: "none",
+                            background: "#dc2626",
+                            color: "#fff",
+                            cursor: "pointer",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Delete Group
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
@@ -563,21 +853,28 @@ export default function ChatView({ chat, isMobile, onBack }: Props) {
          {!loading && !error && messages.length === 0 && <div className="chat-placeholder">No messages yet.</div>}
          {!loading && !error && messages.length > 0 && (
           <div className="message-history">
-            {messages.map((msg) => {
-              const replyMsg = msg.reply_to ? messages.find((m) => m.id === msg.reply_to) : null;
-              return (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  currentUserId={currentUserId}
-                  currentUsername={currentUsername}
-                  replyMessage={replyMsg}
-                  onReply={(targetMsg) => setActiveReplyTo(targetMsg)}
-                  onEdit={handleEditMessage}
-                  onDelete={handleDeleteMessage}
-                />
-              );
+            
+            {messages
+              .filter((msg) => !msg.is_deleted)
+              .map((msg) => {
+                const replyMsg = msg.reply_to ? messages.find((m) => m.id === msg.reply_to) : null;
+                return (
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    currentUserId={currentUserId}
+                    currentUsername={currentUsername}
+                    replyMessage={replyMsg}
+                    isGroupOwner={chatType === "GROUP" && isCurrentUserOwner}
+                    isGroupChat={chatType === "GROUP"}
+                    senderAvatarUrl={senderAvatarById[String(msg.sender)]}
+                    onReply={(targetMsg) => setActiveReplyTo(targetMsg)}
+                    onEdit={handleEditMessage}
+                    onDelete={handleDeleteMessage}
+                  />
+                );
             })}
+
             <div ref={messagesEndRef} />
           </div>
         )}
