@@ -125,6 +125,13 @@ export default function HomePage() {
     }
   };
 
+  // Tasks #15 / #35: called by ChatView after the user leaves or deletes
+  // a group, so it disappears from the chat list immediately for them.
+  const handleGroupExit = (groupId: string) => {
+    setChatItems((prev) => prev.filter((c) => c.id !== groupId));
+    setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
+  };
+
   return (
     <div className="home-page">
       {(!isMobile || !selectedChat) && (
@@ -148,6 +155,7 @@ export default function HomePage() {
               chat={selectedChat}
               isMobile={isMobile}
               onBack={() => setSelectedChat(null)}
+              onGroupExit={handleGroupExit}
             />
           )}
         </div>
