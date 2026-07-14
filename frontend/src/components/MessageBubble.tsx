@@ -14,6 +14,7 @@ type Props = {
   onReply: (message: Message) => void;
   onEdit: (messageId: string, newText: string) => Promise<void>;
   onDelete: (messageId: string) => Promise<void>;
+  onAvatarClick?: (userId: string) => void; 
 };
 
 export default function MessageBubble({
@@ -27,6 +28,7 @@ export default function MessageBubble({
   onReply,
   onEdit,
   onDelete,
+  onAvatarClick,
 }: Props) {
   const messageText = message.content ?? "";
 
@@ -315,12 +317,14 @@ export default function MessageBubble({
       {showSenderMeta && (
         <img
           src={senderAvatarUrl || "/default-avatar.png"}
+          onClick={() => onAvatarClick && onAvatarClick(String(message.sender))}
           alt=""
           style={{
             width: 32,
             height: 32,
             borderRadius: "50%",
             flexShrink: 0,
+            cursor: "pointer"
           }}
         />
       )}
