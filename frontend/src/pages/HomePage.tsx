@@ -44,7 +44,7 @@ export default function HomePage() {
   }, []);
 
   // NEW: Added isBackgroundRefresh parameter to prevent UI flickering on polls
-  const loadChats = async (isBackgroundRefresh = false) => {
+  const loadChats = async (isBackgroundRefresh = false, targetGroupId?: string) => {
     try {
       if (!isBackgroundRefresh) {
         setLoading(true);
@@ -65,25 +65,30 @@ export default function HomePage() {
 
       let sorted = sortChatsByRecent(mappedChats);
 
+      // Prioritize the directly passed targetGroupId, fallback to URL parameter
       const chatIdFromUrl = searchParams.get("chat");
+      const idToSelect = targetGroupId || chatIdFromUrl;
       
-      if (chatIdFromUrl) {
-        const chatToSelect = sorted.find((c) => c.id === chatIdFromUrl);
+      if (idToSelect) {
+        const chatToSelect = sorted.find((c) => c.id === idToSelect);
         
         if (chatToSelect) {
           const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
           
-          // Only auto-select if it's the initial load, not a background refresh
-          if (!isBackgroundRefresh) {
+          // Auto-select if it's the initial load OR if an explicit targetGroupId was provided
+          if (!isBackgroundRefresh || targetGroupId) {
             setSelectedChat(readChat);
           }
           
           sorted = sorted.map((c) =>
-            c.id === chatIdFromUrl ? readChat : c
+            c.id === idToSelect ? readChat : c
           );
 
-          searchParams.delete("chat");
-          setSearchParams(searchParams, { replace: true });
+          // Only delete the URL parameter if we actually used it
+          if (!targetGroupId && chatIdFromUrl) {
+            searchParams.delete("chat");
+            setSearchParams(searchParams, { replace: true });
+          }
         }
       }
 
@@ -107,6 +112,7 @@ export default function HomePage() {
       }
     }
   };
+
 
   useEffect(() => {
     loadChats(); // Initial load
@@ -174,6 +180,12 @@ export default function HomePage() {
               isMobile={isMobile}
               onBack={() => setSelectedChat(null)}
               onGroupExit={handleGroupExit}
+              onGroupJoined={async (groupId) => {
+              // 1. Set the URL param so loadChats knows which chat to auto-select
+              setSearchParams({ chat: groupId });
+              // 2. Fetch the updated list of conversations (including the newly joined one)
+              await loadChats(false, groupId);
+            }}
             />
           )}
         </div>
