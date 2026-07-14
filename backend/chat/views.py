@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
-    MinimalMessageSerializer
+    MinimalMessageSerializer, ChannelCreateSerializer
 
 from django.contrib.auth import get_user_model
 
@@ -533,3 +533,37 @@ class GroupDeleteView(APIView):
         group.delete()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChannelCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = ChannelCreateSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        conversation = serializer.save()
+
+        # Retrieve the channel profile for invite link
+        channel = conversation.channel
+        invite_link = request.build_absolute_uri(
+            f'/api/chat/invite/{channel.invite_code}/'
+        )
+        # Or you may want a frontend deep link; adjust as needed.
+
+        return Response(
+            {
+                'id': conversation.id,
+                'name': conversation.name,
+                'description': conversation.description,
+                'avatar_url': conversation.avatar_url,
+                'is_private': channel.is_private,
+                'public_id': channel.public_id,
+                'invite_link': invite_link,
+                'owner_id': request.user.id,
+            },
+            status=status.HTTP_201_CREATED
+        )
