@@ -143,3 +143,30 @@ class Message(models.Model):
 
     def __str__(self):
         return f"Message {self.id} in {self.conversation_id}"
+
+class Channel(models.Model):
+    conversation = models.OneToOneField(
+        Conversation,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name='channel',
+    )
+    is_private = models.BooleanField(default=True)
+    public_id = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Unique public identifier, required only for public channels.",
+    )
+    invite_code = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        help_text="Permanent invite code (never changes).",
+    )
+
+    @property
+    def invite_link(self):
+        # The view will build the absolute URL; we just expose the code.
+        return self.invite_code
