@@ -15,6 +15,7 @@ type Props = {
   onEdit: (messageId: string, newText: string) => Promise<void>;
   onDelete: (messageId: string) => Promise<void>;
   onAvatarClick?: (userId: string) => void; 
+  onGroupJoined?: (groupId: string) => void;
 };
 
 export default function MessageBubble({
@@ -29,6 +30,7 @@ export default function MessageBubble({
   onEdit,
   onDelete,
   onAvatarClick,
+  onGroupJoined
 }: Props) {
   const messageText = message.content ?? "";
 
@@ -97,13 +99,27 @@ export default function MessageBubble({
   const handleJoinGroup = async (token: string) => {
     try {
       setJoinLoading(true);
-      await joinGroupByToken(token);
-      alert("Successfully joined the group!");
+      const data = await joinGroupByToken(token);
+      
+      // Assumes your backend returns the group ID (e.g., { group_id: "123", joined: true })
+      const groupId = data?.group_id || data?.id; 
+
+      if (onGroupJoined && groupId) {
+        onGroupJoined(String(groupId));
+      } else {
+        alert("Successfully joined the group!");
+      }
     } catch (err: any) {
       if (err.response?.status === 400) {
-        alert("you are already a group member!");
+        // If they are already a member, try to navigate anyway if backend returns the ID
+        const groupId = err.response?.data?.group_id;
+        if (onGroupJoined && groupId) {
+           onGroupJoined(String(groupId));
+        } else {
+           alert("You are already a group member!");
+        }
       } else if (err.response?.status === 404) {
-        alert("invalid invite link");
+        alert("Invalid invite link");
       } else {
         alert(err.message || "Failed to join group.");
       }
@@ -111,6 +127,7 @@ export default function MessageBubble({
       setJoinLoading(false);
     }
   };
+
 
   const renderContent = (text: string) => {
     const inviteRegex = /(http:\/\/join\/[a-zA-Z0-9_-]+)/g;

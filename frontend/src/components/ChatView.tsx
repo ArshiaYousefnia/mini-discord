@@ -26,9 +26,10 @@ interface Props {
   isMobile: boolean;
   onBack: () => void;
   onGroupExit?: (groupId: string) => void;
+  onGroupJoined?: (groupId: string) => void;
 }
 
-export default function ChatView({ chat, isMobile, onBack, onGroupExit }: Props) {
+export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJoined }: Props) {
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -842,6 +843,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit }: Props)
                     onEdit={handleEditMessage}
                     onDelete={handleDeleteMessage}
                     onAvatarClick={(userId) => handleUserClick(userId, "CHAT")} 
+                    onGroupJoined={onGroupJoined}
                   />
                 );
             })}
