@@ -953,8 +953,7 @@ class ChannelDeleteView(APIView):
             )
 
         is_owner = (conversation.owner == request.user)
-        can_delete = membership.role and getattr(membership.role, 'can_delete_channel', False)
-
+        can_delete = membership.role and membership.role.can_manage_roles
         if not (is_owner or can_delete):
             return Response(
                 {"detail": "You do not have permission to delete this channel."},

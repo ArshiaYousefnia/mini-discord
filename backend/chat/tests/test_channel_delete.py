@@ -28,8 +28,6 @@ class ChannelDeletionTests(APITestCase):
             name='Admin',
             can_manage_roles=True
         )
-        self.admin_role.can_delete_channel = True 
-        self.admin_role.save()
 
         self.basic_role = Role.objects.create(
             conversation=self.conversation,
