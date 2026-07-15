@@ -6,6 +6,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import EditProfilePage from "./pages/EditProfilePage";
 import HomePage from "./pages/HomePage";
 import CreateGroupPage from "./pages/CreateGroupPage";
+import CreateChannelPage from "./pages/CreateChannelPage";
 
 
 function Home() {
@@ -39,6 +40,7 @@ export default function App() {
       <Route path="/HomePage/" element={<HomePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
       <Route path="/groups/create" element={<CreateGroupPage />} />
+      <Route path="/channels/create" element={<CreateChannelPage />} />
 
     </Routes>
   );
