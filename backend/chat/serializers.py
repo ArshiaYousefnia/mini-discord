@@ -377,3 +377,6 @@ class ChannelMemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = ConversationMember
         fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'role_name']
+
+class ChannelMemberRoleUpdateSerializer(serializers.Serializer):
+    role_id = serializers.UUIDField(required=True)

@@ -17,7 +17,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember, Message, Role , Channel
 
-from .serializers import ChannelMemberSerializer,ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
+from .serializers import ChannelMemberRoleUpdateSerializer,ChannelMemberSerializer,ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
 
 
 User = get_user_model()
@@ -873,3 +873,71 @@ class ChannelRemoveMemberView(APIView):
                 {"detail": "User is not a member of this channel."},
                 status=status.HTTP_404_NOT_FOUND
             )
+        
+
+class ChannelMemberRoleUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, conversation_id, user_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL
+        )
+
+        try:
+            requester_membership = ConversationMember.objects.select_related('role').get(
+                conversation=conversation,
+                user=request.user
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        is_owner = (conversation.owner == request.user)
+        can_manage_roles = requester_membership.role and requester_membership.role.can_manage_roles
+
+        if not (is_owner or can_manage_roles):
+            return Response(
+                {"detail": "You do not have permission to manage roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if str(conversation.owner.id) == str(user_id):
+            return Response(
+                {"detail": "You cannot change the role of the channel owner."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            target_membership = ConversationMember.objects.get(
+                conversation=conversation,
+                user_id=user_id
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "Target user is not a member of this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ChannelMemberRoleUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        role_id = serializer.validated_data['role_id']
+
+        try:
+            role = Role.objects.get(id=role_id, conversation=conversation)
+        except Role.DoesNotExist:
+            return Response(
+                {"detail": "Role not found in this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        target_membership.role = role
+        target_membership.save(update_fields=['role'])
+
+        return Response(
+            {"detail": "Role updated successfully."},
+            status=status.HTTP_200_OK
+        )
