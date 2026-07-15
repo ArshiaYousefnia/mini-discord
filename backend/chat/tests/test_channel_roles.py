@@ -9,10 +9,10 @@ User = get_user_model()
 
 class ChannelRoleAssignmentTests(APITestCase):
     def setUp(self):
-        self.owner = User.objects.create_user(username='owner', password='password123')
-        self.admin = User.objects.create_user(username='admin', password='password123')
-        self.normal_member = User.objects.create_user(username='normal_member', password='password123')
-        self.outside_user = User.objects.create_user(username='outside_user', password='password123')
+        self.owner = User.objects.create_user(username='owner', email='owner@test.com', password='password123')
+        self.admin = User.objects.create_user(username='admin', email='admin@test.com', password='password123')
+        self.normal_member = User.objects.create_user(username='normal_member', email='member@test.com', password='password123')
+        self.outside_user = User.objects.create_user(username='outside_user', email='outside@test.com', password='password123')
 
         self.conversation = Conversation.objects.create(
             type=Conversation.Type.CHANNEL,
