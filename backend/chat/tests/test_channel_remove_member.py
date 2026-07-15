@@ -73,8 +73,8 @@ class ChannelRemoveMemberTests(APITestCase):
         self.assertEqual(response.data['detail'], "The channel owner cannot be removed.")
 
     def test_cannot_kick_self(self):
-        self.client.force_authenticate(user=self.owner)
-        response = self.client.delete(self.get_url(self.owner.id))
+        self.client.force_authenticate(user=self.moderator)
+        response = self.client.delete(self.get_url(self.moderator.id))
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], "You cannot kick yourself. Please use the leave option.")
