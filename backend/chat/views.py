@@ -237,24 +237,37 @@ class MessageViewSet(
     
 
     def destroy(self, request, *args, **kwargs):
-        message = self.get_object()
+            message = self.get_object()
+            conversation = message.conversation
 
-        if message.sender != request.user:
-            if (
-                message.conversation.type != Conversation.Type.GROUP
-                or message.conversation.owner != request.user
-            ):
-                return Response(
-                    {"detail": "You do not have permission to delete this message."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+            if message.sender == request.user:
+                pass
+            else:
+                is_owner = (conversation.owner == request.user)
+                
+                can_delete = False
+                if not is_owner:
+                    try:
+                        membership = ConversationMember.objects.select_related('role').get(
+                            conversation=conversation, 
+                            user=request.user
+                        )
+                        if membership.role and membership.role.can_delete_messages:
+                            can_delete = True
+                    except ConversationMember.DoesNotExist:
+                        pass
 
-        message.is_deleted = True
-        message.content = ""
-        message.save(update_fields=["is_deleted", "content", "updated_at"])
+                if not (is_owner or can_delete):
+                    return Response(
+                        {"detail": "You do not have permission to delete this message."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
 
-        return Response(status=status.HTTP_204_NO_CONTENT)
+            message.is_deleted = True
+            message.content = ""
+            message.save(update_fields=["is_deleted", "content", "updated_at"])
 
+            return Response(status=status.HTTP_204_NO_CONTENT)
     def search(self, request, conversation_pk=None):
         """
         Search messages in a conversation. Query param: q (min 3 chars).
