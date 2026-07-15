@@ -91,4 +91,5 @@ urlpatterns = [
     ChannelProfileView.as_view(),
     name="channel-profile",
     ),
+    
 ]
