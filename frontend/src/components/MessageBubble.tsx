@@ -333,7 +333,7 @@ export default function MessageBubble({
 
       {showSenderMeta && (
         <img
-          src={senderAvatarUrl || "/default-avatar.png"}
+          src={senderAvatarUrl || "/default-avatar.svg"}
           onClick={() => onAvatarClick && onAvatarClick(String(message.sender))}
           alt=""
           style={{
