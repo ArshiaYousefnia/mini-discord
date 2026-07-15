@@ -108,28 +108,24 @@ class ConversationViewSet(mixins.ListModelMixin,
     def leave(self, request, pk=None):
         conversation = self.get_object()  # ensures user is a member
 
-        # Optional: prevent leaving a DM (or allow; we'll restrict to groups for now)
-        if conversation.type != Conversation.Type.GROUP:
+        if conversation.type not in [Conversation.Type.GROUP, Conversation.Type.CHANNEL]:
             return Response(
-                {"detail": "You can only leave group conversations."},
+                {"detail": "You can only leave group or channel conversations."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Prevent owner from leaving
         if conversation.owner == request.user:
             return Response(
-                {"detail": "The group owner cannot leave the group. Transfer ownership first or delete the group."},
+                {"detail": "The owner cannot leave. Transfer ownership first or delete the conversation."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Remove the member
         ConversationMember.objects.filter(
             conversation=conversation,
             user=request.user
         ).delete()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
-
     @action(detail=True, methods=['post'], url_path='remove-member')
     def remove_member(self, request, pk=None):
         conversation = self.get_object()  # ensures user is a member of the conversation
