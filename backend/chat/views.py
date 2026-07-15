@@ -15,9 +15,9 @@ from django.db.models import OuterRef, Subquery, Count, Q, Value, Prefetch
 from django.db.models.functions import Coalesce
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from .models import Conversation, ConversationMember, Message, Role 
+from .models import Conversation, ConversationMember, Message, Role , Channel
 
-from .serializers import GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
+from .serializers import ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
 
 
 User = get_user_model()
@@ -594,3 +594,66 @@ class ChannelProfileView(APIView):
         )
 
         return Response(serializer.data)
+
+
+
+class ChannelJoinView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, invite_code):
+
+        try:
+            channel = Channel.objects.select_related('conversation').get(invite_code=invite_code)
+        except Channel.DoesNotExist:
+            return Response(
+                {"detail": "Invalid link."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        conversation = channel.conversation
+        return Response({
+            "name": conversation.name,
+            "avatar_url": conversation.avatar_url,
+            "description": conversation.description,
+        }, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    def post(self, request, invite_code):
+
+        try:
+            channel = Channel.objects.select_related('conversation').get(invite_code=invite_code)
+        except Channel.DoesNotExist:
+            return Response(
+                {"detail": "Invalid link."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        conversation = channel.conversation
+        user = request.user
+
+        if ConversationMember.objects.filter(conversation=conversation, user=user).exists():
+            return Response(
+                {"detail": "You are already a member of this channel."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        role, _ = Role.objects.get_or_create(
+            conversation=conversation,
+            name='Channel Member',
+            defaults={
+                'can_send_messages': False,
+                'can_send_media': False,
+                'can_delete_messages': False,
+                'can_manage_members': False,
+                'can_manage_roles': False,
+            }
+        )
+
+        ConversationMember.objects.create(
+            conversation=conversation,
+            user=user,
+            role=role
+        )
+
+        serializer = ChannelDetailSerializer(conversation, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
