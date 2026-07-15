@@ -100,3 +100,22 @@ export type GroupMember = {
 };
 
 export type GroupMembers = GroupMember[];
+
+export type CreateChannelRequest = {
+  name: string;
+  description?: string;
+  avatar?: File;
+  is_private?: boolean;
+  public_id?: string | null;
+};
+
+export type CreateChannelResponse = {
+  id: string;
+  name: string;
+  description: string;
+  avatar_url: string | null;
+  is_private: boolean;
+  public_id: string | null;
+  invite_link: string;
+  owner_id: string | number;
+};
