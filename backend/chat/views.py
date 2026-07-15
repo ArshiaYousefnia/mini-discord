@@ -657,3 +657,80 @@ class ChannelJoinView(APIView):
 
         serializer = ChannelDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+from .models import Channel, ConversationMember, Role
+from .serializers import ChannelDetailSerializer
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
+
+class ChannelPublicIdView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, public_id):
+
+        try:
+            channel = Channel.objects.select_related('conversation').get(
+                public_id=public_id, 
+                is_private=False
+            )
+        except Channel.DoesNotExist:
+            return Response(
+                {"detail": "Channel not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        conversation = channel.conversation
+        return Response({
+            "id": conversation.id,
+            "name": conversation.name,
+            "avatar_url": conversation.avatar_url,
+            "description": conversation.description,
+            "public_id": channel.public_id,
+        }, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    def post(self, request, public_id):
+
+        try:
+            channel = Channel.objects.select_related('conversation').get(
+                public_id=public_id, 
+                is_private=False
+            )
+        except Channel.DoesNotExist:
+            return Response(
+                {"detail": "Channel not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        conversation = channel.conversation
+        user = request.user
+
+        if ConversationMember.objects.filter(conversation=conversation, user=user).exists():
+            return Response(
+                {"detail": "You are already a member of this channel."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        role, _ = Role.objects.get_or_create(
+            conversation=conversation,
+            name='Channel Member',
+            defaults={
+                'can_send_messages': False,
+                'can_send_media': False,
+                'can_delete_messages': False,
+                'can_manage_members': False,
+                'can_manage_roles': False,
+            }
+        )
+
+        ConversationMember.objects.create(
+            conversation=conversation,
+            user=user,
+            role=role
+        )
+
+        serializer = ChannelDetailSerializer(conversation, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)

@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
-from .views import ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
+from .views import ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
     ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
 
@@ -95,6 +95,11 @@ urlpatterns = [
     'channels/join/<uuid:invite_code>/',
     ChannelJoinView.as_view(),
     name='channel-join'
+    ),
+    path(
+        'channels/public/<str:public_id>/',
+        ChannelPublicIdView.as_view(),
+        name='channel-public-join'
     ),
     
 ]
