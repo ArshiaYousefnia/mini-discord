@@ -2,9 +2,9 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
-from .views import GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
+from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
-    ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView
+    ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
 
 router = DefaultRouter()
 router.register(r'dm', SendDirectMessageView, basename='direct-message')
@@ -86,4 +86,26 @@ urlpatterns = [
         ChannelCreateView.as_view(),
         name='channel-create',
     ),
+    path(
+    "channels/<uuid:conversation_id>/profile/",
+    ChannelProfileView.as_view(),
+    name="channel-profile",
+    ),
+    path(
+    'channels/join/<uuid:invite_code>/',
+    ChannelJoinView.as_view(),
+    name='channel-join'
+    ),
+    path(
+        'channels/public/<str:public_id>/',
+        ChannelPublicIdView.as_view(),
+        name='channel-public-join'
+    ),
+
+    path(
+        "channels/<uuid:conversation_id>/edit/",
+        ChannelUpdateView.as_view(),
+        name="channel-update",
+    ),
+    
 ]
