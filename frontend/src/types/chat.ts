@@ -40,7 +40,7 @@ export type ChatListItem = {
   lastMessage: string;
   lastMessageAt: string | null;
   unreadCount: number;
-  otherUserId?: string | null; // <-- include it for DM use
+  other_user_id?: string | null; // <-- include it for DM use
 };
 
 export type UserProfile = {
@@ -63,4 +63,59 @@ export type SendConversationMessagePayload = {
   content: string;
   reply_to?: string | null;
   recipient_id?: string | null;
+};
+
+export type CreateGroupPayload = {
+  name: string;
+  description?: string;
+  avatar?: File | null;
+};
+
+export type CreatedGroupResponse = {
+  id: string;
+  name: string;
+  description?: string;
+  avatar?: string | null;
+};
+
+export type GroupProfile = {
+  id: string;
+  type: string;
+  name: string;
+  description: string;
+  avatar_url: string;
+  owner_id: string;
+  owner_display_name: string;
+  created_at: string;
+  invite_token: string; 
+  member_count: Number;
+}
+
+export type GroupMember = {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_online: boolean;
+  role_name: string;
+};
+
+export type GroupMembers = GroupMember[];
+
+export type CreateChannelRequest = {
+  name: string;
+  description?: string;
+  avatar?: File;
+  is_private?: boolean;
+  public_id?: string | null;
+};
+
+export type CreateChannelResponse = {
+  id: string;
+  name: string;
+  description: string;
+  avatar_url: string | null;
+  is_private: boolean;
+  public_id: string | null;
+  invite_link: string;
+  owner_id: string | number;
 };
