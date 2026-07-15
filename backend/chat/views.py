@@ -816,3 +816,60 @@ class ChannelMembersListView(APIView):
 
         serializer = ChannelMemberSerializer(members, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+
+class ChannelRemoveMemberView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, conversation_id, user_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL
+        )
+
+        try:
+            requester_membership = ConversationMember.objects.select_related('role').get(
+                conversation=conversation,
+                user=request.user
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        is_owner = (conversation.owner == request.user)
+        can_manage = requester_membership.role and requester_membership.role.can_manage_members
+
+        if not (is_owner or can_manage):
+            return Response(
+                {"detail": "You do not have permission to remove users."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if str(conversation.owner.id) == str(user_id):
+            return Response(
+                {"detail": "The channel owner cannot be removed."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if str(request.user.id) == str(user_id):
+            return Response(
+                {"detail": "You cannot kick yourself. Please use the leave option."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            target_membership = ConversationMember.objects.get(
+                conversation=conversation,
+                user_id=user_id
+            )
+            target_membership.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "User is not a member of this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
