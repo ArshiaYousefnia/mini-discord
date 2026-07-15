@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
-from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
+from .views import ChannelMembersListView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
     ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
 
@@ -106,6 +106,12 @@ urlpatterns = [
         "channels/<uuid:conversation_id>/edit/",
         ChannelUpdateView.as_view(),
         name="channel-update",
+    ),
+
+    path(
+        'channels/<uuid:conversation_id>/members/',
+        ChannelMembersListView.as_view(),
+        name='channel-members-list'
     ),
     
 ]

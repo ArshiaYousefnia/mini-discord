@@ -17,7 +17,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember, Message, Role , Channel
 
-from .serializers import ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
+from .serializers import ChannelMemberSerializer,ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
 
 
 User = get_user_model()
@@ -778,3 +778,41 @@ class ChannelUpdateView(APIView):
 
         detail_serializer = ChannelDetailSerializer(conversation, context={"request": request})
         return Response(detail_serializer.data, status=status.HTTP_200_OK)
+    
+
+class ChannelMembersListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+        )
+
+        try:
+            requesting_member = ConversationMember.objects.select_related('role').get(
+                conversation=conversation,
+                user=request.user
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        is_owner = (conversation.owner == request.user)
+        can_manage = requesting_member.role and requesting_member.role.can_manage_members
+
+        if not (is_owner or can_manage):
+            return Response(
+                {"detail": "You do not have permission to view the members list."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        members = ConversationMember.objects.filter(
+            conversation=conversation
+        ).select_related('user', 'role')
+
+        serializer = ChannelMemberSerializer(members, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
