@@ -333,3 +333,13 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
 
     def get_avatar_url(self, obj):
         return obj.avatar_url
+    
+class ChannelUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = ['name', 'description', 'avatar']
+
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Channel name cannot be empty.")
+        return value.strip()
