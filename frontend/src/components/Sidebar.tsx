@@ -94,6 +94,10 @@ export default function Sidebar({
     navigate("/groups/create");
   };
 
+  const goToCreateChannel = () => {
+    navigate("/channels/create");
+  };
+
   const isGlobalSearchQuery = search.trim().startsWith("@");
 
   const filteredChats = useMemo(() => {
@@ -268,6 +272,14 @@ export default function Sidebar({
           onClick={goToCreateGroup}
         >
           + Create Group
+        </button>
+        <button
+          type="button"
+          className="create-group-sidebar-btn create-channel-sidebar-btn"
+          onClick={goToCreateChannel}
+          style={{ marginTop: "10px" }}
+          >
+          + Create Channel
         </button>
       </div>
     </div>
