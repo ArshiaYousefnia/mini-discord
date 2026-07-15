@@ -1,6 +1,8 @@
 from django.db import transaction
 from rest_framework import serializers
 from .models import Conversation, ConversationMember, Message, Role, Channel
+    
+from django.urls import reverse
 
 
 class GroupDetailSerializer(serializers.ModelSerializer):
@@ -308,3 +310,58 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
         )
 
         return conversation
+
+
+class ChannelDetailSerializer(serializers.ModelSerializer):
+    owner_id = serializers.UUIDField(source="owner.id", read_only=True)
+    owner_display_name = serializers.CharField(source="owner.display_name", read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+    invite_link = serializers.SerializerMethodField() 
+
+    class Meta:
+        model = Conversation
+        fields = [
+            "id",
+            "name",
+            "description",
+            "avatar",
+            "avatar_url",
+            "owner_id",
+            "owner_display_name",
+            "created_at",
+            "invite_link", 
+        ]
+
+    def get_avatar_url(self, obj):
+        return obj.avatar_url
+
+    def get_invite_link(self, obj):
+        request = self.context.get('request')
+        if not request or not hasattr(obj, 'channel'):
+            return None
+        
+        user = request.user
+        
+        has_permission = (obj.owner == user)
+        
+        if not has_permission:
+            member = obj.members.filter(user=user).select_related('role').first()
+            if member and member.role and member.role.can_manage_members:
+                has_permission = True
+                
+        if has_permission:
+            invite_code = obj.channel.invite_code
+            path = reverse('channel-join', kwargs={'invite_code': invite_code})
+            return request.build_absolute_uri(path)
+            
+        return None
+    
+class ChannelUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = ['name', 'description', 'avatar']
+
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Channel name cannot be empty.")
+        return value.strip()
