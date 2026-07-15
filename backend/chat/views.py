@@ -17,7 +17,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember, Message, Role 
 
-from .serializers import GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer
+from .serializers import GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
 
 
 User = get_user_model()
@@ -567,3 +567,30 @@ class ChannelCreateView(APIView):
             },
             status=status.HTTP_201_CREATED
         )
+    
+class ChannelProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+        )
+
+        if not ConversationMember.objects.filter(
+            conversation=conversation,
+            user=request.user,
+        ).exists():
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = ChannelDetailSerializer(
+            conversation,
+            context={"request": request},
+        )
+
+        return Response(serializer.data)

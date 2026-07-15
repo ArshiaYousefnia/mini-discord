@@ -308,3 +308,28 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
         )
 
         return conversation
+    
+class ChannelDetailSerializer(serializers.ModelSerializer):
+    owner_id = serializers.UUIDField(source="owner.id", read_only=True)
+    owner_display_name = serializers.CharField(
+        source="owner.display_name",
+        read_only=True,
+    )
+
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Conversation
+        fields = [
+            "id",
+            "name",
+            "description",
+            "avatar",
+            "avatar_url",
+            "owner_id",
+            "owner_display_name",
+            "created_at",
+        ]
+
+    def get_avatar_url(self, obj):
+        return obj.avatar_url

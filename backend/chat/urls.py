@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
-    ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView
+    ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
 
 router = DefaultRouter()
 router.register(r'dm', SendDirectMessageView, basename='direct-message')
@@ -85,5 +85,10 @@ urlpatterns = [
         'channels/create/',
         ChannelCreateView.as_view(),
         name='channel-create',
+    ),
+    path(
+    "channels/<uuid:conversation_id>/profile/",
+    ChannelProfileView.as_view(),
+    name="channel-profile",
     ),
 ]
