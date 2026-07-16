@@ -1,4 +1,4 @@
-import  { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { GroupProfile, GroupMembers, ChannelProfile } from "../types/chat";
 import type { UserProfile } from "../types/user";
 
@@ -45,13 +45,14 @@ export default function ProfileOverlay({
   onDeleteGroupRequest,
   channelProfile
 }: ProfileOverlayProps) {
+  // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
   const [editGroupName, setEditGroupName] = useState("");
   const [editGroupDescription, setEditGroupDescription] = useState("");
   const [editGroupAvatar, setEditGroupAvatar] = useState<File | null>(null);
   const [editGroupLoading, setEditGroupLoading] = useState(false);
 
-  // Channel Edit States
+  // Channel Edit State
   const [isEditingChannel, setIsEditingChannel] = useState(false);
   const [editChannelName, setEditChannelName] = useState("");
   const [editChannelDescription, setEditChannelDescription] = useState("");
@@ -63,6 +64,7 @@ export default function ProfileOverlay({
 
   if (!show) return null;
 
+  // --- Group Edit Handlers ---
   const handleStartEdit = () => {
     if (!groupProfile) return;
     setEditGroupName(groupProfile.name);
@@ -79,6 +81,7 @@ export default function ProfileOverlay({
     setIsEditingGroup(false);
   };
 
+  // --- Channel Edit Handlers ---
   const handleStartChannelEdit = () => {
     if (!channelProfile) return;
     setEditChannelName(channelProfile.name);
@@ -87,23 +90,14 @@ export default function ProfileOverlay({
     setIsEditingChannel(true);
   };
 
-  const handleSaveChannelEditClick = async () => {
+  const handleSaveChannelEdit = async () => {
     if (!editChannelName.trim()) return alert("Channel name cannot be empty.");
     if (!onSaveChannelEdit) return;
     
     setEditChannelLoading(true);
-    try {
-      await onSaveChannelEdit(editChannelName, editChannelDescription, editChannelAvatar);
-      setIsEditingChannel(false);
-    } catch (error: any) {
-      if (error?.response?.status === 403) {
-        alert(error.response.data.detail || "You do not have permission to edit this channel.");
-      } else {
-        alert("An error occurred while saving channel info.");
-      }
-    } finally {
-      setEditChannelLoading(false);
-    }
+    await onSaveChannelEdit(editChannelName, editChannelDescription, editChannelAvatar);
+    setEditChannelLoading(false);
+    setIsEditingChannel(false);
   };
 
   const handleCopyInviteLink = () => {
@@ -124,14 +118,18 @@ export default function ProfileOverlay({
         ) : (
           <button className="back-button" onClick={onClose} type="button">← Close</button>
         )}
+        
         <h3>
           {profileViewType === "group" ? "Group Profile" : profileViewType === "channel" ? "Channel Profile" : "User Profile"}
         </h3>
-        {profileViewType === "group" && !isEditingGroup && groupProfile && isCurrentUserOwner && (
+        
+        {/* Group Edit Button */}
+        {profileViewType === "group" && !isEditingGroup && groupProfile && (
           <button className="edit-group-btn" onClick={handleStartEdit}>Edit</button>
         )}
-        {/* ADDED PERMISSION CHECK HERE */}
-        {profileViewType === "channel" && !isEditingChannel && channelProfile && channelProfile.user_permissions?.can_edit_channel_info && (
+
+        {/* Channel Edit Button (Access Control check) */}
+        {profileViewType === "channel" && !isEditingChannel && channelProfile?.user_permissions?.can_edit_channel_info && (
           <button className="edit-group-btn" onClick={handleStartChannelEdit}>Edit</button>
         )}
       </div>
@@ -165,7 +163,7 @@ export default function ProfileOverlay({
                 </div>
                 <div className="edit-actions">
                   <button className="cancel-edit-btn" onClick={() => setIsEditingChannel(false)} disabled={editChannelLoading}>Cancel</button>
-                  <button className="save-edit-btn" onClick={handleSaveChannelEditClick} disabled={editChannelLoading || !editChannelName.trim()}>
+                  <button className="save-edit-btn" onClick={handleSaveChannelEdit} disabled={editChannelLoading || !editChannelName.trim()}>
                     {editChannelLoading ? "Saving..." : "Save Changes"}
                   </button>
                 </div>
@@ -201,25 +199,6 @@ export default function ProfileOverlay({
                   <p>Created by: {channelProfile.owner_display_name}</p>
                   <p>Created at: {new Date(channelProfile.created_at).toLocaleDateString()}</p>
                 </div>
-
-                {/* {channelProfile.invite_link && (
-                  <div className="invite-link-section">
-                    <h4>Invite Link</h4>
-                    <div className="invite-input-wrapper">
-                      <input type="text" readOnly value={channelProfile.invite_link} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
-                      <button 
-                        onClick={() => {
-                          navigator.clipboard.writeText(channelProfile.invite_link!);
-                          setInviteCopied(true);
-                          setTimeout(() => setInviteCopied(false), 2000);
-                        }} 
-                        className={`copy-btn ${inviteCopied ? "copied" : ""}`}
-                      >
-                        {inviteCopied ? "Copied!" : "Copy"}
-                      </button>
-                    </div>
-                  </div>
-                )} */}
               </>
             )}
           </div>

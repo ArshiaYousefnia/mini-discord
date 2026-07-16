@@ -39,7 +39,7 @@ export async function getChannelProfile(id: string): Promise<ChannelProfile> {
 export interface UpdateChannelRequest {
   name?: string;
   description?: string;
-  avatar?: File;
+  avatar?: File | null;
 }
 
 export async function updateChannel(
