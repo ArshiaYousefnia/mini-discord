@@ -2,7 +2,9 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
-from .views import ChannelDeleteView,ChannelMemberRoleUpdateView,ChannelMembersListView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
+from .views import ChannelMemberRoleUpdateView,ChannelMembersListView,ChannelDeleteView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
+from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
+from .views import ChannelMyPermissionsView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
     ChannelRemoveMemberView,ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
 
@@ -87,14 +89,14 @@ urlpatterns = [
         name='channel-create',
     ),
     path(
-    "channels/<uuid:conversation_id>/profile/",
-    ChannelProfileView.as_view(),
-    name="channel-profile",
-    ),
+        "channels/<uuid:conversation_id>/profile/",
+        ChannelProfileView.as_view(),
+        name="channel-profile",
+        ),
     path(
-    'channels/join/<uuid:invite_code>/',
-    ChannelJoinView.as_view(),
-    name='channel-join'
+        'channels/join/<uuid:invite_code>/',
+        ChannelJoinView.as_view(),
+        name='channel-join'
     ),
     path(
         'channels/public/<str:public_id>/',
@@ -129,6 +131,29 @@ urlpatterns = [
         "channels/<uuid:conversation_id>/delete/",
         ChannelDeleteView.as_view(),
         name="channel-delete",
+    ),
+    path(
+        'channels/join/<uuid:invite_code>/',
+        ChannelJoinView.as_view(),
+        name='channel-join'
+        ),
+    path(
+        'channels/public/<str:public_id>/',
+        ChannelPublicIdView.as_view(),
+        name='channel-public-join'
+    ),
+
+    path(
+        "channels/<uuid:conversation_id>/edit/",
+        ChannelUpdateView.as_view(),
+        name="channel-update",
+    ),
+
+
+    path(
+        "channels/<uuid:conversation_id>/my-permissions/",
+        ChannelMyPermissionsView.as_view(),
+        name="channel-my-permissions",
     ),
     
 ]
