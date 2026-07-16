@@ -73,6 +73,10 @@ class Role(models.Model):
     can_delete_messages = models.BooleanField(default=False)
     can_manage_members = models.BooleanField(default=False)
     can_manage_roles = models.BooleanField(default=False)
+    
+    # فیلدهای جدیدی که اضافه شدند:
+    can_view_invite_link = models.BooleanField(default=False)
+    can_edit_channel_info = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.name} ({self.conversation_id})"
