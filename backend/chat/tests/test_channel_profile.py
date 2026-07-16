@@ -10,21 +10,24 @@ class ChannelProfileTests(APITestCase):
 
     def setUp(self):
         self.owner = User.objects.create_user(
-        username="owner",
-        email="owner@test.com",
-        password="pass1234",
+            username="owner",
+            email="owner@test.com",
+            password="pass1234",
+
         )
 
         self.member = User.objects.create_user(
             username="member",
             email="member@test.com",
             password="pass1234",
+
         )
 
         self.other = User.objects.create_user(
             username="other",
             email="other@test.com",
             password="pass1234",
+
         )
 
         self.channel = Conversation.objects.create(
