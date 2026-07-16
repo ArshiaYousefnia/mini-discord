@@ -27,13 +27,9 @@ class ChannelMembersListVisibilityTests(APITestCase):
         )
 
         ConversationMember.objects.create(conversation=self.conversation, user=self.owner)
-        member = ConversationMember.objects.create(
-            conversation=self.conversation, 
-            user=self.moderator
-        )
-        member.roles.add(self.mod_role)
-        normal_member = ConversationMember.objects.create(conversation=self.conversation, user=self.normal_user)
-        normal_member.roles.add(self.normal_role)
+        ConversationMember.objects.create(conversation=self.conversation, user=self.moderator, role=self.mod_role)
+        ConversationMember.objects.create(conversation=self.conversation, user=self.normal_user, role=self.normal_role)
+
         self.url = reverse('channel-members-list', kwargs={'conversation_id': self.conversation.id})
 
     def test_owner_can_view_members(self):

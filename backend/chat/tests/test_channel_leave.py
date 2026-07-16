@@ -1,3 +1,4 @@
+import uuid
 from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
@@ -5,8 +6,8 @@ from django.contrib.auth import get_user_model
 from chat.models import Conversation, Channel, ConversationMember
 
 User = get_user_model()
-class ChannelLeaveTests(APITestCase):
 
+class ChannelLeaveTests(APITestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username='channel_owner', email='owner@test.com', password='password123')
         self.member = User.objects.create_user(username='normal_member', email='member@test.com', password='password123')
@@ -35,6 +36,7 @@ class ChannelLeaveTests(APITestCase):
 
     def test_member_can_leave_channel_successfully(self):
         self.client.force_authenticate(user=self.member)
+        
         response = self.client.post(self.leave_url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
@@ -46,6 +48,7 @@ class ChannelLeaveTests(APITestCase):
 
     def test_owner_cannot_leave_channel(self):
         self.client.force_authenticate(user=self.owner)
+        
         response = self.client.post(self.leave_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(
@@ -61,6 +64,7 @@ class ChannelLeaveTests(APITestCase):
 
     def test_non_member_cannot_leave_channel(self):
         self.client.force_authenticate(user=self.non_member)
+        
         response = self.client.post(self.leave_url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
