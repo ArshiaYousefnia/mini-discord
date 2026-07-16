@@ -421,6 +421,8 @@ class GroupJoinView(APIView):
                 'can_delete_messages': False,
                 'can_manage_members': False,
                 'can_manage_roles': False,
+                'can_view_invite_link':True,    
+                'can_edit_channel_info':True,
             }
         )
 
@@ -655,6 +657,8 @@ class ChannelJoinView(APIView):
                 'can_delete_messages': False,
                 'can_manage_members': False,
                 'can_manage_roles': False,
+                'can_view_invite_link':False,    
+                'can_edit_channel_info':False
             }
         )
 
@@ -725,6 +729,8 @@ class ChannelPublicIdView(APIView):
                 'can_delete_messages': False,
                 'can_manage_members': False,
                 'can_manage_roles': False,
+                'can_view_invite_link':True,    
+                'can_edit_channel_info':True
             }
         )
 
@@ -768,7 +774,6 @@ class ChannelUpdateView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # آپدیت اطلاعات
         serializer = ChannelUpdateSerializer(
             conversation,
             data=request.data,
@@ -979,3 +984,55 @@ class ChannelDeleteView(APIView):
             {"detail": "Channel deleted successfully."},
             status=status.HTTP_204_NO_CONTENT
         )
+class ChannelMyPermissionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL
+        )
+
+        permissions = {
+            "can_send_messages": False,
+            "can_send_media": False,
+            "can_delete_messages": False,
+            "can_manage_members": False,
+            "can_manage_roles": False,
+            "can_view_invite_link": False,
+            "can_edit_channel_info": False,
+            'can_view_invite_link':True,    
+            'can_edit_channel_info':True
+
+        }
+
+        if conversation.owner == request.user:
+            for key in permissions.keys():
+                permissions[key] = True
+            return Response(permissions, status=status.HTTP_200_OK)
+
+        try:
+            member = ConversationMember.objects.select_related('role').get(
+                conversation=conversation,
+                user=request.user
+            )
+            
+            if member.role:
+                permissions = {
+                    "can_send_messages": member.role.can_send_messages,
+                    "can_send_media": member.role.can_send_media,
+                    "can_delete_messages": member.role.can_delete_messages,
+                    "can_manage_members": member.role.can_manage_members,
+                    "can_manage_roles": member.role.can_manage_roles,
+                    "can_view_invite_link": member.role.can_view_invite_link,
+                    "can_edit_channel_info": member.role.can_edit_channel_info,
+                }
+            
+            return Response(permissions, status=status.HTTP_200_OK)
+
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN
+            )
