@@ -1,4 +1,5 @@
 import type {
+  ChannelProfile,
   CreateChannelRequest,
   CreateChannelResponse,
 } from "../types/chat";
@@ -27,5 +28,10 @@ export async function createChannel(
     },
   });
 
+  return response.data;
+}
+
+export async function getChannelProfile(id: string): Promise<ChannelProfile> {
+  const response = await api.get(`/api/chat/channels/${id}/profile/`);
   return response.data;
 }

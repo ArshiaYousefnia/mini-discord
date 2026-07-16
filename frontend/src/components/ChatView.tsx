@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getConversationMessages, markConversationRead, sendConversationMessage, editMessage, deleteMessage } from "../services/chatService";
 import { getGroupProfile, getGroupMembers, removeGroupMember, updateGroupProfile, leaveGroup, deleteGroup } from "../services/groupService";
 import { getUserProfile } from "../services/users";
-import type { ChatListItem, Message, GroupProfile, GroupMembers } from "../types/chat";
+import type { ChatListItem, Message, GroupProfile, GroupMembers, ChannelProfile } from "../types/chat";
 import type { UserProfile } from "../types/user";
 
 import MessageBubble from "./MessageBubble";
@@ -11,6 +11,7 @@ import MessageSearchPanel from "./MessageSearchPanel";
 import ConfirmModal from "./ConfirmModal";
 import ChatHeader from "./ChatHeader";
 import ProfileOverlay from "./ProfileOverlay";
+import { getChannelProfile } from "../services/channelService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -28,7 +29,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const [localChatInfo, setLocalChatInfo] = useState<{ name: string; avatar: string } | null>(null);
 
   const [showProfile, setShowProfile] = useState(false);
-  const [profileViewType, setProfileViewType] = useState<"group" | "user" | null>(null);
+  const [profileViewType, setProfileViewType] = useState<"group" | "user" | "channel" | null>(null);
   const [groupProfile, setGroupProfile] = useState<GroupProfile | null>(null);
   const [groupMembers, setGroupMembers] = useState<GroupMembers | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -41,6 +42,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState(false);
   const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [channelProfile, setChannelProfile] = useState<ChannelProfile | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
@@ -166,8 +168,23 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     } else if (chatType === "DM") {
       const otherUserId = chat.other_user_id || (chat as any).otherUserId;
       if (otherUserId) handleUserClick(otherUserId);
-    }
+    } else if (chatType === "CHANNEL") {
+      setShowProfile(true); 
+      setProfileViewType("channel");
+      if (!channelProfile || channelProfile.id !== chat.id) {
+        setProfileLoading(true);
+        try {
+          const profileData = await getChannelProfile(chat.id);
+          setChannelProfile(profileData);
+        } catch (err) { 
+          console.error("Failed to load channel details", err); 
+        } finally { 
+          setProfileLoading(false); 
+        } // Added missing brace for finally
+      } // Added missing brace for if
+    } // Changed semicolon to brace for else if
   };
+
 
   const handleSaveGroupEdit = async (name: string, desc: string, avatar: File | null) => {
     if (!chat) return;
@@ -290,6 +307,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         profileSource={profileSource}
         profileLoading={profileLoading}
         groupProfile={groupProfile}
+        channelProfile={channelProfile}
         groupMembers={groupMembers}
         userProfile={userProfile}
         chatAvatar={chat.avatar}
@@ -336,3 +354,4 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     </div>
   );
 }
+

@@ -1,13 +1,14 @@
 import  { useRef, useState } from "react";
-import type { GroupProfile, GroupMembers } from "../types/chat";
+import type { GroupProfile, GroupMembers, ChannelProfile } from "../types/chat";
 import type { UserProfile } from "../types/user";
 
 interface ProfileOverlayProps {
   show: boolean;
-  profileViewType: "group" | "user" | null;
+  profileViewType: "group" | "user" | "channel" | null;
   profileSource: "CHAT" | "GROUP_PROFILE";
   profileLoading: boolean;
   groupProfile: GroupProfile | null;
+  channelProfile?: ChannelProfile | null;
   groupMembers: GroupMembers | null;
   userProfile: UserProfile | null;
   chatAvatar: string;
@@ -40,6 +41,7 @@ export default function ProfileOverlay({
   onRemoveMember,
   onLeaveGroupRequest,
   onDeleteGroupRequest,
+  channelProfile
 }: ProfileOverlayProps) {
   const [isEditingGroup, setIsEditingGroup] = useState(false);
   const [editGroupName, setEditGroupName] = useState("");
@@ -85,7 +87,9 @@ export default function ProfileOverlay({
         ) : (
           <button className="back-button" onClick={onClose} type="button">← Close</button>
         )}
-        <h3>{profileViewType === "group" ? "Group Profile" : "User Profile"}</h3>
+        <h3>
+          {profileViewType === "group" ? "Group Profile" : profileViewType === "channel" ? "Channel Profile" : "User Profile"}
+        </h3>
         {profileViewType === "group" && !isEditingGroup && groupProfile && (
           <button className="edit-group-btn" onClick={handleStartEdit}>Edit</button>
         )}
@@ -94,6 +98,58 @@ export default function ProfileOverlay({
       <div className="group-profile-content">
         {profileLoading ? (
           <div className="chat-placeholder">Loading profile...</div>
+        ) : profileViewType === "channel" && channelProfile ? (
+          <div className="group-profile-card">
+            <img src={channelProfile.avatar_url || chatAvatar} alt={channelProfile.name} className="group-profile-avatar-large" />
+            
+            {/* Added styling to support flex layouts for badges and public ID */}
+            <div style={{ textAlign: "center", marginBottom: "16px" }}>
+              <h2 className="group-profile-name" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", margin: "0" }}>
+                {channelProfile.name}
+                {channelProfile.is_private ? (
+                  <span style={{ fontSize: "10px", backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                    Private
+                  </span>
+                ) : (
+                  <span style={{ fontSize: "10px", backgroundColor: "rgba(20, 83, 45, 0.5)", color: "#4ade80", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                    Public
+                  </span>
+                )}
+              </h2>
+              
+              {!channelProfile.is_private && channelProfile.public_id && (
+                <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "4px", marginBottom: "0" }}>
+                  {channelProfile.public_id}
+                </p>
+              )}
+            </div>
+
+            {channelProfile.description && <div className="group-profile-description">{channelProfile.description}</div>}
+
+            <div className="group-profile-meta">
+              <p>Created by: {channelProfile.owner_display_name}</p>
+              <p>Created at: {new Date(channelProfile.created_at).toLocaleDateString()}</p>
+            </div>
+
+            {/* {channelProfile.invite_link && (
+              <div className="invite-link-section">
+                <h4>Invite Link</h4>
+                <div className="invite-input-wrapper">
+                  <input type="text" readOnly value={channelProfile.invite_link} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(channelProfile.invite_link!);
+                      setInviteCopied(true);
+                      setTimeout(() => setInviteCopied(false), 2000);
+                    }} 
+                    className={`copy-btn ${inviteCopied ? "copied" : ""}`}
+                  >
+                    {inviteCopied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            )} */}
+          </div>
         ) : profileViewType === "group" && groupProfile ? (
           <div className="group-profile-card">
             {isEditingGroup ? (

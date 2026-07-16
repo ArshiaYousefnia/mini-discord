@@ -319,8 +319,10 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
     owner_display_name = serializers.CharField(source="owner.display_name", read_only=True)
     avatar_url = serializers.SerializerMethodField()
     invite_link = serializers.SerializerMethodField() 
+
     is_private = serializers.BooleanField(source='channel.is_private', read_only=True)
     public_id = serializers.CharField(source='channel.public_id', read_only=True)
+
     class Meta:
         model = Conversation
         fields = [
@@ -333,9 +335,9 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
             "owner_display_name",
             "created_at",
             "invite_link",
-
             "is_private", # اضافه شد
             "public_id",  # اضافه شد
+
 
         ]
 
@@ -362,6 +364,18 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
             path = reverse('channel-join', kwargs={'invite_code': invite_code})
             return request.build_absolute_uri(path)
             
+        return None
+    
+    def get_is_private(self, obj):
+        if hasattr(obj, 'channel'):
+            return obj.channel.is_private
+        return True
+
+    def get_public_id(self, obj):
+        if hasattr(obj, 'channel'):
+            # Only return the public_id if the channel is NOT private
+            if not obj.channel.is_private:
+                return obj.channel.public_id
         return None
     
 class ChannelUpdateSerializer(serializers.ModelSerializer):
