@@ -130,5 +130,10 @@ urlpatterns = [
         ChannelDeleteView.as_view(),
         name="channel-delete",
     ),
+    path(
+        'channels/join/<uuid:invite_code>/',
+        ChannelJoinView.as_view(),
+        name='channel-join'
+        ),
     
 ]
