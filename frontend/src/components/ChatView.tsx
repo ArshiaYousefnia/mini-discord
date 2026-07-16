@@ -11,7 +11,7 @@ import MessageSearchPanel from "./MessageSearchPanel";
 import ConfirmModal from "./ConfirmModal";
 import ChatHeader from "./ChatHeader";
 import ProfileOverlay from "./ProfileOverlay";
-import { getChannelProfile } from "../services/channelService";
+import { getChannelProfile, updateChannel } from "../services/channelService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -197,6 +197,20 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
       alert("Failed to update group details.");
     }
   };
+  
+  const handleSaveChannelEdit = async (name: string, desc: string, avatar: File | null) => {
+    if (!chat) return;
+    try {
+      // Note: Make sure updateChannelProfile is imported from your channelService
+      const updatedProfile = await updateChannel(chat.id, { name, description: desc, avatar});
+      setChannelProfile(updatedProfile);
+      setLocalChatInfo({ name: updatedProfile.name, avatar: updatedProfile.avatar_url || chat.avatar });
+    } catch (error) {
+      console.error("Failed to update channel:", error);
+      throw error; // Throw so ProfileOverlay's try/catch can see the failure
+    }
+  };
+
 
   const confirmRemoveMember = async () => {
     if (!chat || !memberToRemove) return;
@@ -316,6 +330,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onClose={() => setShowProfile(false)}
         onBackToGroup={() => setProfileViewType("group")}
         onSaveGroupEdit={handleSaveGroupEdit}
+        onSaveChannelEdit={handleSaveChannelEdit}
         onUserClick={handleUserClick}
         onRemoveMember={setMemberToRemove}
         onLeaveGroupRequest={() => setShowLeaveConfirm(true)}
