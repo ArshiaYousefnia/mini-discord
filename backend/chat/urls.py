@@ -87,14 +87,14 @@ urlpatterns = [
         name='channel-create',
     ),
     path(
-    "channels/<uuid:conversation_id>/profile/",
-    ChannelProfileView.as_view(),
-    name="channel-profile",
-    ),
+        "channels/<uuid:conversation_id>/profile/",
+        ChannelProfileView.as_view(),
+        name="channel-profile",
+        ),
     path(
-    'channels/join/<uuid:invite_code>/',
-    ChannelJoinView.as_view(),
-    name='channel-join'
+        'channels/join/<uuid:invite_code>/',
+        ChannelJoinView.as_view(),
+        name='channel-join'
     ),
     path(
         'channels/public/<str:public_id>/',
