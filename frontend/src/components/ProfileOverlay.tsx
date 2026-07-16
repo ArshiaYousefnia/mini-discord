@@ -17,6 +17,7 @@ interface ProfileOverlayProps {
   onClose: () => void;
   onBackToGroup: () => void;
   onSaveGroupEdit: (name: string, desc: string, avatar: File | null) => Promise<void>;
+  onSaveChannelEdit?: (name: string, desc: string, avatar: File | null) => Promise<void>;
   onUserClick: (userId: string) => void;
   onRemoveMember: (member: any) => void;
   onLeaveGroupRequest: () => void;
@@ -37,6 +38,7 @@ export default function ProfileOverlay({
   onClose,
   onBackToGroup,
   onSaveGroupEdit,
+  onSaveChannelEdit,
   onUserClick,
   onRemoveMember,
   onLeaveGroupRequest,
@@ -48,6 +50,14 @@ export default function ProfileOverlay({
   const [editGroupDescription, setEditGroupDescription] = useState("");
   const [editGroupAvatar, setEditGroupAvatar] = useState<File | null>(null);
   const [editGroupLoading, setEditGroupLoading] = useState(false);
+
+  // Channel Edit States
+  const [isEditingChannel, setIsEditingChannel] = useState(false);
+  const [editChannelName, setEditChannelName] = useState("");
+  const [editChannelDescription, setEditChannelDescription] = useState("");
+  const [editChannelAvatar, setEditChannelAvatar] = useState<File | null>(null);
+  const [editChannelLoading, setEditChannelLoading] = useState(false);
+
   const [inviteCopied, setInviteCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -67,6 +77,33 @@ export default function ProfileOverlay({
     await onSaveGroupEdit(editGroupName, editGroupDescription, editGroupAvatar);
     setEditGroupLoading(false);
     setIsEditingGroup(false);
+  };
+
+  const handleStartChannelEdit = () => {
+    if (!channelProfile) return;
+    setEditChannelName(channelProfile.name);
+    setEditChannelDescription(channelProfile.description || "");
+    setEditChannelAvatar(null);
+    setIsEditingChannel(true);
+  };
+
+  const handleSaveChannelEditClick = async () => {
+    if (!editChannelName.trim()) return alert("Channel name cannot be empty.");
+    if (!onSaveChannelEdit) return;
+    
+    setEditChannelLoading(true);
+    try {
+      await onSaveChannelEdit(editChannelName, editChannelDescription, editChannelAvatar);
+      setIsEditingChannel(false);
+    } catch (error: any) {
+      if (error?.response?.status === 403) {
+        alert(error.response.data.detail || "You do not have permission to edit this channel.");
+      } else {
+        alert("An error occurred while saving channel info.");
+      }
+    } finally {
+      setEditChannelLoading(false);
+    }
   };
 
   const handleCopyInviteLink = () => {
@@ -90,8 +127,12 @@ export default function ProfileOverlay({
         <h3>
           {profileViewType === "group" ? "Group Profile" : profileViewType === "channel" ? "Channel Profile" : "User Profile"}
         </h3>
-        {profileViewType === "group" && !isEditingGroup && groupProfile && (
+        {profileViewType === "group" && !isEditingGroup && groupProfile && isCurrentUserOwner && (
           <button className="edit-group-btn" onClick={handleStartEdit}>Edit</button>
+        )}
+        {/* ADDED PERMISSION CHECK HERE */}
+        {profileViewType === "channel" && !isEditingChannel && channelProfile && channelProfile.user_permissions?.can_edit_channel_info && (
+          <button className="edit-group-btn" onClick={handleStartChannelEdit}>Edit</button>
         )}
       </div>
 
@@ -100,55 +141,87 @@ export default function ProfileOverlay({
           <div className="chat-placeholder">Loading profile...</div>
         ) : profileViewType === "channel" && channelProfile ? (
           <div className="group-profile-card">
-            <img src={channelProfile.avatar_url || chatAvatar} alt={channelProfile.name} className="group-profile-avatar-large" />
-            
-            {/* Added styling to support flex layouts for badges and public ID */}
-            <div style={{ textAlign: "center", marginBottom: "16px" }}>
-              <h2 className="group-profile-name" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", margin: "0" }}>
-                {channelProfile.name}
-                {channelProfile.is_private ? (
-                  <span style={{ fontSize: "10px", backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
-                    Private
-                  </span>
-                ) : (
-                  <span style={{ fontSize: "10px", backgroundColor: "rgba(20, 83, 45, 0.5)", color: "#4ade80", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
-                    Public
-                  </span>
-                )}
-              </h2>
-              
-              {!channelProfile.is_private && channelProfile.public_id && (
-                <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "4px", marginBottom: "0" }}>
-                  {channelProfile.public_id}
-                </p>
-              )}
-            </div>
-
-            {channelProfile.description && <div className="group-profile-description">{channelProfile.description}</div>}
-
-            <div className="group-profile-meta">
-              <p>Created by: {channelProfile.owner_display_name}</p>
-              <p>Created at: {new Date(channelProfile.created_at).toLocaleDateString()}</p>
-            </div>
-
-            {/* {channelProfile.invite_link && (
-              <div className="invite-link-section">
-                <h4>Invite Link</h4>
-                <div className="invite-input-wrapper">
-                  <input type="text" readOnly value={channelProfile.invite_link} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
-                  <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText(channelProfile.invite_link!);
-                      setInviteCopied(true);
-                      setTimeout(() => setInviteCopied(false), 2000);
-                    }} 
-                    className={`copy-btn ${inviteCopied ? "copied" : ""}`}
-                  >
-                    {inviteCopied ? "Copied!" : "Copy"}
+            {isEditingChannel ? (
+              <div className="edit-group-form">
+                <div className="edit-avatar-section">
+                  <img
+                    src={editChannelAvatar ? URL.createObjectURL(editChannelAvatar) : (channelProfile.avatar_url || chatAvatar)}
+                    alt="Channel Avatar"
+                    className="group-profile-avatar-large"
+                  />
+                  <input
+                    type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }}
+                    onChange={(e) => { if (e.target.files?.[0]) setEditChannelAvatar(e.target.files[0]); }}
+                  />
+                  <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>Change Avatar</button>
+                </div>
+                <div className="edit-field">
+                  <label>Channel Name <span style={{ color: "red" }}>*</span></label>
+                  <input type="text" value={editChannelName} onChange={(e) => setEditChannelName(e.target.value)} className="edit-input" />
+                </div>
+                <div className="edit-field">
+                  <label>Description</label>
+                  <textarea value={editChannelDescription} onChange={(e) => setEditChannelDescription(e.target.value)} className="edit-textarea" />
+                </div>
+                <div className="edit-actions">
+                  <button className="cancel-edit-btn" onClick={() => setIsEditingChannel(false)} disabled={editChannelLoading}>Cancel</button>
+                  <button className="save-edit-btn" onClick={handleSaveChannelEditClick} disabled={editChannelLoading || !editChannelName.trim()}>
+                    {editChannelLoading ? "Saving..." : "Save Changes"}
                   </button>
                 </div>
               </div>
-            )} */}
+            ) : (
+              <>
+                <img src={channelProfile.avatar_url || chatAvatar} alt={channelProfile.name} className="group-profile-avatar-large" />
+                
+                <div style={{ textAlign: "center", marginBottom: "16px" }}>
+                  <h2 className="group-profile-name" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", margin: "0" }}>
+                    {channelProfile.name}
+                    {channelProfile.is_private ? (
+                      <span style={{ fontSize: "10px", backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                        Private
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: "10px", backgroundColor: "rgba(20, 83, 45, 0.5)", color: "#4ade80", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                        Public
+                      </span>
+                    )}
+                  </h2>
+                  
+                  {!channelProfile.is_private && channelProfile.public_id && (
+                    <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "4px", marginBottom: "0" }}>
+                      {channelProfile.public_id}
+                    </p>
+                  )}
+                </div>
+
+                {channelProfile.description && <div className="group-profile-description">{channelProfile.description}</div>}
+
+                <div className="group-profile-meta">
+                  <p>Created by: {channelProfile.owner_display_name}</p>
+                  <p>Created at: {new Date(channelProfile.created_at).toLocaleDateString()}</p>
+                </div>
+
+                {/* {channelProfile.invite_link && (
+                  <div className="invite-link-section">
+                    <h4>Invite Link</h4>
+                    <div className="invite-input-wrapper">
+                      <input type="text" readOnly value={channelProfile.invite_link} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(channelProfile.invite_link!);
+                          setInviteCopied(true);
+                          setTimeout(() => setInviteCopied(false), 2000);
+                        }} 
+                        className={`copy-btn ${inviteCopied ? "copied" : ""}`}
+                      >
+                        {inviteCopied ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                )} */}
+              </>
+            )}
           </div>
         ) : profileViewType === "group" && groupProfile ? (
           <div className="group-profile-card">
