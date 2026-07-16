@@ -2,15 +2,9 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 from chat.models import Conversation, Channel, ConversationMember
-=======
-from .models import Conversation, Channel, ConversationMember
->>>>>>> bcc7909 (Add Join Channel)
-=======
-from chat.models import Conversation, Channel, ConversationMember
->>>>>>> f003155 (Fix Join Channel via Invite Link)
+
 
 User = get_user_model()
 
