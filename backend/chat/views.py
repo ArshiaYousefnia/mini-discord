@@ -17,7 +17,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember, Message, Role , Channel
 
-from .serializers import ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
+from .serializers import ChannelMemberRoleUpdateSerializer,ChannelMemberSerializer,ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
 
 
 User = get_user_model()
@@ -108,28 +108,24 @@ class ConversationViewSet(mixins.ListModelMixin,
     def leave(self, request, pk=None):
         conversation = self.get_object()  # ensures user is a member
 
-        # Optional: prevent leaving a DM (or allow; we'll restrict to groups for now)
-        if conversation.type != Conversation.Type.GROUP:
+        if conversation.type not in [Conversation.Type.GROUP, Conversation.Type.CHANNEL]:
             return Response(
-                {"detail": "You can only leave group conversations."},
+                {"detail": "You can only leave group or channel conversations."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Prevent owner from leaving
         if conversation.owner == request.user:
             return Response(
-                {"detail": "The group owner cannot leave the group. Transfer ownership first or delete the group."},
+                {"detail": "The owner cannot leave. Transfer ownership first or delete the conversation."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Remove the member
         ConversationMember.objects.filter(
             conversation=conversation,
             user=request.user
         ).delete()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
-
     @action(detail=True, methods=['post'], url_path='remove-member')
     def remove_member(self, request, pk=None):
         conversation = self.get_object()  # ensures user is a member of the conversation
@@ -237,24 +233,37 @@ class MessageViewSet(
     
 
     def destroy(self, request, *args, **kwargs):
-        message = self.get_object()
+            message = self.get_object()
+            conversation = message.conversation
 
-        if message.sender != request.user:
-            if (
-                message.conversation.type != Conversation.Type.GROUP
-                or message.conversation.owner != request.user
-            ):
-                return Response(
-                    {"detail": "You do not have permission to delete this message."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+            if message.sender == request.user:
+                pass
+            else:
+                is_owner = (conversation.owner == request.user)
+                
+                can_delete = False
+                if not is_owner:
+                    try:
+                        membership = ConversationMember.objects.select_related('role').get(
+                            conversation=conversation, 
+                            user=request.user
+                        )
+                        if membership.role and membership.role.can_delete_messages:
+                            can_delete = True
+                    except ConversationMember.DoesNotExist:
+                        pass
 
-        message.is_deleted = True
-        message.content = ""
-        message.save(update_fields=["is_deleted", "content", "updated_at"])
+                if not (is_owner or can_delete):
+                    return Response(
+                        {"detail": "You do not have permission to delete this message."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
 
-        return Response(status=status.HTTP_204_NO_CONTENT)
+            message.is_deleted = True
+            message.content = ""
+            message.save(update_fields=["is_deleted", "content", "updated_at"])
 
+            return Response(status=status.HTTP_204_NO_CONTENT)
     def search(self, request, conversation_pk=None):
         """
         Search messages in a conversation. Query param: q (min 3 chars).
@@ -658,13 +667,6 @@ class ChannelJoinView(APIView):
         serializer = ChannelDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
     
-from .models import Channel, ConversationMember, Role
-from .serializers import ChannelDetailSerializer
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
-from django.db import transaction
 
 class ChannelPublicIdView(APIView):
     permission_classes = [IsAuthenticated]
@@ -778,3 +780,202 @@ class ChannelUpdateView(APIView):
 
         detail_serializer = ChannelDetailSerializer(conversation, context={"request": request})
         return Response(detail_serializer.data, status=status.HTTP_200_OK)
+    
+
+class ChannelMembersListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+        )
+
+        try:
+            requesting_member = ConversationMember.objects.select_related('role').get(
+                conversation=conversation,
+                user=request.user
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        is_owner = (conversation.owner == request.user)
+        can_manage = requesting_member.role and requesting_member.role.can_manage_members
+
+        if not (is_owner or can_manage):
+            return Response(
+                {"detail": "You do not have permission to view the members list."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        members = ConversationMember.objects.filter(
+            conversation=conversation
+        ).select_related('user', 'role')
+
+        serializer = ChannelMemberSerializer(members, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+
+class ChannelRemoveMemberView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, conversation_id, user_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL
+        )
+
+        try:
+            requester_membership = ConversationMember.objects.select_related('role').get(
+                conversation=conversation,
+                user=request.user
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        is_owner = (conversation.owner == request.user)
+        can_manage = requester_membership.role and requester_membership.role.can_manage_members
+
+        if not (is_owner or can_manage):
+            return Response(
+                {"detail": "You do not have permission to remove users."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if str(conversation.owner.id) == str(user_id):
+            return Response(
+                {"detail": "The channel owner cannot be removed."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if str(request.user.id) == str(user_id):
+            return Response(
+                {"detail": "You cannot kick yourself. Please use the leave option."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            target_membership = ConversationMember.objects.get(
+                conversation=conversation,
+                user_id=user_id
+            )
+            target_membership.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "User is not a member of this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+
+class ChannelMemberRoleUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, conversation_id, user_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL
+        )
+
+        try:
+            requester_membership = ConversationMember.objects.select_related('role').get(
+                conversation=conversation,
+                user=request.user
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        is_owner = (conversation.owner == request.user)
+        can_manage_roles = requester_membership.role and requester_membership.role.can_manage_roles
+
+        if not (is_owner or can_manage_roles):
+            return Response(
+                {"detail": "You do not have permission to manage roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if str(conversation.owner.id) == str(user_id):
+            return Response(
+                {"detail": "You cannot change the role of the channel owner."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            target_membership = ConversationMember.objects.get(
+                conversation=conversation,
+                user_id=user_id
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "Target user is not a member of this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ChannelMemberRoleUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        role_id = serializer.validated_data['role_id']
+
+        try:
+            role = Role.objects.get(id=role_id, conversation=conversation)
+        except Role.DoesNotExist:
+            return Response(
+                {"detail": "Role not found in this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        target_membership.role = role
+        target_membership.save(update_fields=['role'])
+
+        return Response(
+            {"detail": "Role updated successfully."},
+            status=status.HTTP_200_OK
+        )
+    
+class ChannelDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL
+        )
+
+        try:
+            membership = ConversationMember.objects.select_related('role').get(
+                conversation=conversation,
+                user=request.user
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        is_owner = (conversation.owner == request.user)
+        can_delete = membership.role and membership.role.can_manage_roles
+        if not (is_owner or can_delete):
+            return Response(
+                {"detail": "You do not have permission to delete this channel."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        conversation.delete()
+
+        return Response(
+            {"detail": "Channel deleted successfully."},
+            status=status.HTTP_204_NO_CONTENT
+        )
