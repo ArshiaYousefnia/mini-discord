@@ -140,7 +140,7 @@ export type ChannelProfile = {
   owner_id: string;
   owner_display_name: string;
   created_at: string;
-  invite_link: string; 
+  invite_link: string | null; 
   is_private: boolean;        
   public_id: string | null;
   user_permissions: UserPermissions;

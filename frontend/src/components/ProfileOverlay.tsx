@@ -76,9 +76,14 @@ export default function ProfileOverlay({
   const handleSaveEdit = async () => {
     if (!editGroupName.trim()) return alert("Group name cannot be empty.");
     setEditGroupLoading(true);
-    await onSaveGroupEdit(editGroupName, editGroupDescription, editGroupAvatar);
-    setEditGroupLoading(false);
-    setIsEditingGroup(false);
+    try {
+      await onSaveGroupEdit(editGroupName, editGroupDescription, editGroupAvatar);
+      setIsEditingGroup(false);
+    } catch (error) {
+      console.error("Failed to save group edit:", error);
+    } finally {
+      setEditGroupLoading(false);
+    }
   };
 
   // --- Channel Edit Handlers ---
@@ -95,14 +100,27 @@ export default function ProfileOverlay({
     if (!onSaveChannelEdit) return;
     
     setEditChannelLoading(true);
-    await onSaveChannelEdit(editChannelName, editChannelDescription, editChannelAvatar);
-    setEditChannelLoading(false);
-    setIsEditingChannel(false);
+    try {
+      await onSaveChannelEdit(editChannelName, editChannelDescription, editChannelAvatar);
+      setIsEditingChannel(false);
+    } catch (error) {
+      console.error("Failed to save channel edit:", error);
+    } finally {
+      setEditChannelLoading(false); 
+    }
   };
 
+  // Support both group and channel invite copying
   const handleCopyInviteLink = () => {
-    if (groupProfile?.invite_token) {
-      navigator.clipboard.writeText(`http://join/${groupProfile.invite_token}`);
+    let linkToCopy = "";
+    if (profileViewType === "channel" && channelProfile?.invite_link) {
+      linkToCopy = channelProfile.invite_link;
+    } else if (profileViewType === "group" && groupProfile?.invite_token) {
+      linkToCopy = `http://join/${groupProfile.invite_token}`;
+    }
+
+    if (linkToCopy) {
+      navigator.clipboard.writeText(linkToCopy);
       setInviteCopied(true);
       setTimeout(() => setInviteCopied(false), 2000);
     }
@@ -128,7 +146,7 @@ export default function ProfileOverlay({
           <button className="edit-group-btn" onClick={handleStartEdit}>Edit</button>
         )}
 
-        {/* Channel Edit Button (Access Control check) */}
+        {/* Channel Edit Button */}
         {profileViewType === "channel" && !isEditingChannel && channelProfile?.user_permissions?.can_edit_channel_info && (
           <button className="edit-group-btn" onClick={handleStartChannelEdit}>Edit</button>
         )}
@@ -199,11 +217,23 @@ export default function ProfileOverlay({
                   <p>Created by: {channelProfile.owner_display_name}</p>
                   <p>Created at: {new Date(channelProfile.created_at).toLocaleDateString()}</p>
                 </div>
+
+                {/* Updated Channel Invite Link Section */}
+                {channelProfile.invite_link && channelProfile.user_permissions?.can_view_invite_link && (
+                  <div className="invite-link-section">
+                    <h4>Invite Link</h4>
+                    <div className="invite-input-wrapper">
+                      <input type="text" readOnly value={channelProfile.invite_link} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                      <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
         ) : profileViewType === "group" && groupProfile ? (
           <div className="group-profile-card">
+            {/* Group view remains unchanged from previous step */}
             {isEditingGroup ? (
               <div className="edit-group-form">
                 <div className="edit-avatar-section">
