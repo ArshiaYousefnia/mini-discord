@@ -35,3 +35,29 @@ export async function getChannelProfile(id: string): Promise<ChannelProfile> {
   const response = await api.get(`/api/chat/channels/${id}/profile/`);
   return response.data;
 }
+
+export interface UpdateChannelRequest {
+  name?: string;
+  description?: string;
+  avatar?: File;
+}
+
+export async function updateChannel(
+  id: string,
+  payload: UpdateChannelRequest
+): Promise<ChannelProfile> {
+  const formData = new FormData();
+
+  if (payload.name) formData.append("name", payload.name);
+  if (payload.description !== undefined) formData.append("description", payload.description);
+  if (payload.avatar) formData.append("avatar", payload.avatar);
+
+  const response = await api.patch(`/api/chat/channels/${id}/edit/`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
+  return response.data;
+}
+
