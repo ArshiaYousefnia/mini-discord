@@ -330,6 +330,10 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
             "owner_display_name",
             "created_at",
             "invite_link",
+
+            "is_private", # اضافه شد
+            "public_id",  # اضافه شد
+
         ]
 
 
