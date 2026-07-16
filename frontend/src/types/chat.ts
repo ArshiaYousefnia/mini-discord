@@ -119,3 +119,17 @@ export type CreateChannelResponse = {
   invite_link: string;
   owner_id: string | number;
 };
+
+export type ChannelProfile = {
+  id: string;
+  name: string;
+  description: string;
+  avatar: string;
+  avatar_url: string;
+  owner_id: string;
+  owner_display_name: string;
+  created_at: string;
+  invite_link: string; 
+  is_private: boolean;        
+  public_id: string | null;
+}
