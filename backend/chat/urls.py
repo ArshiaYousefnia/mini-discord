@@ -2,9 +2,9 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
-from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
+from .views import ChannelDeleteView,ChannelMemberRoleUpdateView,ChannelMembersListView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
-    ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
+    ChannelRemoveMemberView,ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
 
 router = DefaultRouter()
 router.register(r'dm', SendDirectMessageView, basename='direct-message')
@@ -106,6 +106,29 @@ urlpatterns = [
         "channels/<uuid:conversation_id>/edit/",
         ChannelUpdateView.as_view(),
         name="channel-update",
+    ),
+
+    path(
+        'channels/<uuid:conversation_id>/members/',
+        ChannelMembersListView.as_view(),
+        name='channel-members-list'
+    ),
+
+    path(
+        'channels/<uuid:conversation_id>/members/<uuid:user_id>/',
+        ChannelRemoveMemberView.as_view(),
+        name='channel-remove-member'
+    ),
+
+    path(
+        'channels/<uuid:conversation_id>/members/<uuid:user_id>/role/',
+        ChannelMemberRoleUpdateView.as_view(),
+        name='channel-member-role-update'
+    ),
+    path(
+        "channels/<uuid:conversation_id>/delete/",
+        ChannelDeleteView.as_view(),
+        name="channel-delete",
     ),
     
 ]

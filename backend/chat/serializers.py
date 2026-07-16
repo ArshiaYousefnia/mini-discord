@@ -310,7 +310,7 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
         )
 
         return conversation
-
+    
 
 class ChannelDetailSerializer(serializers.ModelSerializer):
     owner_id = serializers.UUIDField(source="owner.id", read_only=True)
@@ -329,8 +329,9 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
             "owner_id",
             "owner_display_name",
             "created_at",
-            "invite_link", 
+            "invite_link",
         ]
+
 
     def get_avatar_url(self, obj):
         return obj.avatar_url
@@ -365,3 +366,17 @@ class ChannelUpdateSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Channel name cannot be empty.")
         return value.strip()
+    
+class ChannelMemberSerializer(serializers.ModelSerializer):
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+    display_name = serializers.CharField(source='user.display_name', read_only=True)
+    avatar_url = serializers.CharField(source='user.avatar_url', read_only=True, default=None) 
+    role_name = serializers.CharField(source='role.name', read_only=True, default="Member")
+
+    class Meta:
+        model = ConversationMember
+        fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'role_name']
+
+class ChannelMemberRoleUpdateSerializer(serializers.Serializer):
+    role_id = serializers.UUIDField(required=True)
