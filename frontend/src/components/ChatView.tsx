@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getConversationMessages, markConversationRead, sendConversationMessage, editMessage, deleteMessage } from "../services/chatService";
 import { getGroupProfile, getGroupMembers, removeGroupMember, updateGroupProfile, leaveGroup, deleteGroup } from "../services/groupService";
 import { getUserProfile } from "../services/users";
-import type { ChatListItem, Message, GroupProfile, GroupMembers, ChannelProfile } from "../types/chat";
+import type { ChatListItem, Message, GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions } from "../types/chat";
 import type { UserProfile } from "../types/user";
 
 import MessageBubble from "./MessageBubble";
@@ -11,7 +11,7 @@ import MessageSearchPanel from "./MessageSearchPanel";
 import ConfirmModal from "./ConfirmModal";
 import ChatHeader from "./ChatHeader";
 import ProfileOverlay from "./ProfileOverlay";
-import { getChannelProfile, updateChannel } from "../services/channelService";
+import { getChannelProfile, getPermissions, updateChannel } from "../services/channelService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -43,6 +43,8 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [channelProfile, setChannelProfile] = useState<ChannelProfile | null>(null);
+  const [channelPermissions, setChannelPermissions] = useState<ChannelPermissions | null>(null);
+
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
@@ -58,28 +60,54 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   }, [chat]);
 
   useEffect(() => {
-    if (!chat) { setMessages([]); return; }
+    if (!chat) {
+      setMessages([]);
+      setChannelProfile(null);
+      setChannelPermissions(null);
+      return;
+    }
+
     let isMounted = true;
-    setShowProfile(false); setProfileViewType(null); setShowLeaveConfirm(false); setShowDeleteGroupConfirm(false); setShowSearch(false);
+    setShowProfile(false);
+    setProfileViewType(null);
+    setShowLeaveConfirm(false);
+    setShowDeleteGroupConfirm(false);
+    setShowSearch(false);
+    setChannelProfile(null);
+    setChannelPermissions(null);
 
     const loadMessages = async () => {
       try {
-        setLoading(true); setError("");
+        setLoading(true);
+        setError("");
         const data = await getConversationMessages(chat.id);
         if (!isMounted) return;
-        const sortedMessages = [...data].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        shouldScrollToBottomRef.current = true; scrollBehaviorRef.current = "auto";
+        const sortedMessages = [...data].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        shouldScrollToBottomRef.current = true;
+        scrollBehaviorRef.current = "auto";
         setMessages(sortedMessages);
-        if (sortedMessages.length) await markConversationRead(chat.id, sortedMessages[sortedMessages.length - 1].id);
+        if (sortedMessages.length) {
+          await markConversationRead(chat.id, sortedMessages[sortedMessages.length - 1].id);
+        }
       } catch (err) {
-        if (isMounted) setError(err instanceof Error ? err.message : "Failed to load messages");
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : "Failed to load messages");
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
     };
-    loadMessages(); setActiveReplyTo(null);
-    return () => { isMounted = false; };
+
+    loadMessages();
+    setActiveReplyTo(null);
+
+    return () => {
+      isMounted = false;
+    };
   }, [chat]);
+
 
   // Polling loops remained exactly the same...
   useEffect(() => {
@@ -155,35 +183,51 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const handleHeaderClick = async () => {
     if (!chat) return;
     const chatType = chat.type.toUpperCase();
+
     if (chatType === "GROUP") {
-      setShowProfile(true); setProfileViewType("group");
+      setShowProfile(true);
+      setProfileViewType("group");
+
       if (!groupProfile || groupProfile.id !== chat.id) {
         setProfileLoading(true);
         try {
-          const [profileData, membersData] = await Promise.all([getGroupProfile(chat.id), getGroupMembers(chat.id)]);
-          setGroupProfile(profileData); setGroupMembers(membersData);
-        } catch (err) { console.error("Failed to load group details", err); } 
-        finally { setProfileLoading(false); }
+          const [profileData, membersData] = await Promise.all([
+            getGroupProfile(chat.id),
+            getGroupMembers(chat.id),
+          ]);
+          setGroupProfile(profileData);
+          setGroupMembers(membersData);
+        } catch (err) {
+          console.error("Failed to load group details", err);
+        } finally {
+          setProfileLoading(false);
+        }
       }
     } else if (chatType === "DM") {
       const otherUserId = chat.other_user_id || (chat as any).otherUserId;
       if (otherUserId) handleUserClick(otherUserId);
     } else if (chatType === "CHANNEL") {
-      setShowProfile(true); 
+      setShowProfile(true);
       setProfileViewType("channel");
-      if (!channelProfile || channelProfile.id !== chat.id) {
+
+      if (!channelProfile || channelProfile.id !== chat.id || !channelPermissions) {
         setProfileLoading(true);
         try {
-          const profileData = await getChannelProfile(chat.id);
+          const [profileData, permissionsData] = await Promise.all([
+            getChannelProfile(chat.id),
+            getPermissions(chat.id),
+          ]);
           setChannelProfile(profileData);
-        } catch (err) { 
-          console.error("Failed to load channel details", err); 
-        } finally { 
-          setProfileLoading(false); 
-        } // Added missing brace for finally
-      } // Added missing brace for if
-    } // Changed semicolon to brace for else if
+          setChannelPermissions(permissionsData);
+        } catch (err) {
+          console.error("Failed to load channel details", err);
+        } finally {
+          setProfileLoading(false);
+        }
+      }
+    }
   };
+
 
 
   const handleSaveGroupEdit = async (name: string, desc: string, avatar: File | null) => {
@@ -322,6 +366,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         profileLoading={profileLoading}
         groupProfile={groupProfile}
         channelProfile={channelProfile}
+        channelPermissions={channelPermissions}
         groupMembers={groupMembers}
         userProfile={userProfile}
         chatAvatar={chat.avatar}
@@ -336,6 +381,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onLeaveGroupRequest={() => setShowLeaveConfirm(true)}
         onDeleteGroupRequest={() => setShowDeleteGroupConfirm(true)}
       />
+
 
       <div className="chat-view-body">
         {loading && <div className="chat-placeholder">Loading messages...</div>}

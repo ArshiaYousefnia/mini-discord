@@ -1,4 +1,5 @@
 import type {
+  ChannelPermissions,
   ChannelProfile,
   CreateChannelRequest,
   CreateChannelResponse,
@@ -58,6 +59,11 @@ export async function updateChannel(
     },
   });
 
+  return response.data;
+}
+
+export async function getPermissions (id: string): Promise<ChannelPermissions>{
+  const response = await api.get(`/api/chat/channels/${id}/my-permissions/`)
   return response.data;
 }
 
