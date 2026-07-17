@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { GroupProfile, GroupMembers, ChannelProfile } from "../types/chat";
+import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions } from "../types/chat";
 import type { UserProfile } from "../types/user";
 
 interface ProfileOverlayProps {
@@ -9,6 +9,7 @@ interface ProfileOverlayProps {
   profileLoading: boolean;
   groupProfile: GroupProfile | null;
   channelProfile?: ChannelProfile | null;
+  channelPermissions?: ChannelPermissions | null;
   groupMembers: GroupMembers | null;
   userProfile: UserProfile | null;
   chatAvatar: string;
@@ -43,7 +44,8 @@ export default function ProfileOverlay({
   onRemoveMember,
   onLeaveGroupRequest,
   onDeleteGroupRequest,
-  channelProfile
+  channelProfile,
+  channelPermissions,
 }: ProfileOverlayProps) {
   // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -147,7 +149,7 @@ export default function ProfileOverlay({
         )}
 
         {/* Channel Edit Button */}
-        {profileViewType === "channel" && !isEditingChannel && channelProfile?.user_permissions?.can_edit_channel_info && (
+        {profileViewType === "channel" && !isEditingChannel && channelPermissions?.can_edit_channel_info && (
           <button className="edit-group-btn" onClick={handleStartChannelEdit}>Edit</button>
         )}
       </div>
@@ -219,7 +221,7 @@ export default function ProfileOverlay({
                 </div>
 
                 {/* Updated Channel Invite Link Section */}
-                {channelProfile.invite_link && channelProfile.user_permissions?.can_view_invite_link && (
+                {channelProfile.invite_link && channelPermissions?.can_edit_channel_info && (
                   <div className="invite-link-section">
                     <h4>Invite Link</h4>
                     <div className="invite-input-wrapper">

@@ -120,7 +120,7 @@ export type CreateChannelResponse = {
   owner_id: string | number;
 };
 
-export interface UserPermissions {
+export type ChannelPermissions = {
     is_owner: boolean;
     can_send_messages: boolean;
     can_send_media: boolean;
@@ -143,5 +143,4 @@ export type ChannelProfile = {
   invite_link: string | null; 
   is_private: boolean;        
   public_id: string | null;
-  user_permissions: UserPermissions;
 }

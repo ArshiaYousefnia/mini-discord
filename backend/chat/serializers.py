@@ -300,8 +300,8 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
             can_delete_messages=True,
             can_manage_members=True,
             can_manage_roles=True,
+            can_view_invite_link=True,
             can_edit_channel_info=True,
-            can_view_invite_link = True,
         )
 
         # Add creator as member with that role
@@ -321,8 +321,10 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
     invite_link = serializers.SerializerMethodField() 
 
 
+
     is_private = serializers.BooleanField(source='channel.is_private', read_only=True)
     public_id = serializers.CharField(source='channel.public_id', read_only=True)
+
 
 
     class Meta:
@@ -339,8 +341,6 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
             "invite_link",
             "is_private", # اضافه شد
             "public_id",  # اضافه شد
-
-
         ]
 
 
@@ -367,62 +367,6 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(path)
             
         return None
-    
-    def get_is_private(self, obj):
-        if hasattr(obj, 'channel'):
-            return obj.channel.is_private
-        return True
-
-    def get_public_id(self, obj):
-        if hasattr(obj, 'channel'):
-            # Only return the public_id if the channel is NOT private
-            if not obj.channel.is_private:
-                return obj.channel.public_id
-        return None
-    
-    def get_user_permissions(self, obj):
-        request = self.context.get('request')
-        if not request or not request.user.is_authenticated:
-            return None
-
-        user = request.user
-        is_owner = (obj.owner == user)
-
-        # 1. By default, the owner has full permissions
-        permissions = {
-            "is_owner": is_owner,
-            "can_send_messages": is_owner,
-            "can_send_media": is_owner,
-            "can_delete_messages": is_owner,
-            "can_manage_members": is_owner,
-            "can_manage_roles": is_owner,
-            "can_edit_channel_info": is_owner,
-            "can_view_invite_link": is_owner,
-        }
-
-        # 2. If not the owner, fetch the specific member role
-        if not is_owner:
-            # Assuming 'members' is the related_name on Conversation for the ConversationMember model
-            member = obj.members.filter(user=user).select_related('role').first()
-            
-            if member and member.role:
-                role = member.role
-                permissions.update({
-                    "can_send_messages": role.can_send_messages,
-                    "can_send_media": role.can_send_media,
-                    "can_delete_messages": role.can_delete_messages,
-                    "can_manage_members": role.can_manage_members,
-                    "can_manage_roles": role.can_manage_roles,
-                    "can_edit_channel_info": role.can_edit_channel_info,
-                    "can_view_invite_link": role.can_view_invite_link,
-                })
-            elif member:
-                # Fallback defaults if a member somehow exists without a specific role assigned
-                permissions["can_send_messages"] = True
-                permissions["can_send_media"] = True
-
-        return permissions
-
     
 class ChannelUpdateSerializer(serializers.ModelSerializer):
     class Meta:
