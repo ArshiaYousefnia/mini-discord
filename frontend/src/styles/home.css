@@ -545,3 +545,572 @@
   border-radius: 8px;
 }
 
+/* ==========================================
+   SIDEBAR BOTTOM ACTION
+   ========================================== */
+.sidebar-bottom {
+  padding: 14px 16px 18px;
+  border-top: 1px solid var(--md-sys-color-outline);
+  background: var(--md-sys-color-surface);
+  flex-shrink: 0;
+}
+
+.create-group-sidebar-btn {
+  width: 100%;
+  border: none;
+  border-radius: 16px;
+  background: var(--md-sys-color-primary);
+  color: #ffffff;
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0px 6px 16px rgba(59, 130, 246, 0.22);
+}
+
+.create-group-sidebar-btn:hover {
+  opacity: 0.96;
+  transform: translateY(-1px);
+}
+
+.create-group-sidebar-btn:active {
+  transform: scale(0.98);
+}
+
+.create-group-sidebar-btn:focus {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(59, 130, 246, 0.18),
+    0px 6px 16px rgba(59, 130, 246, 0.22);
+}
+
+
+/* Ensure the chat-view acts as relative bound for the absolute overlay */
+.chat-view {
+  position: relative;
+  overflow: hidden; 
+}
+
+/* Chat Header Info wrapper */
+.chat-header-info {
+  display: flex;
+  flex-direction: row; /* Forces items to be side-by-side */
+  align-items: center;
+  gap: 12px; 
+}
+
+.chat-header-info.clickable {
+  cursor: pointer;
+}
+
+
+/* ==========================================
+   GROUP PROFILE OVERLAY
+   ========================================== */
+.group-profile-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--md-sys-color-surface);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.group-profile-header {
+  height: 76px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--md-sys-color-outline);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-elevation-1);
+}
+
+.group-profile-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--md-sys-color-text-primary);
+  font-weight: 600;
+}
+
+.group-profile-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--md-sys-color-surface-variant);
+}
+
+.group-profile-card {
+  width: 100%;
+  height: 100%;
+  background: var(--md-sys-color-surface);
+  padding: 32px 24px;
+  border-radius: 24px;
+  box-shadow: var(--md-elevation-1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.group-profile-avatar-large {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid var(--md-sys-color-surface-variant);
+  box-shadow: var(--md-elevation-2);
+  margin-bottom: 16px;
+}
+
+.group-profile-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--md-sys-color-text-primary);
+  margin: 0 0 8px;
+}
+
+.group-profile-member-count {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
+  padding: 4px 12px;
+  border-radius: 16px;
+  margin-bottom: 16px;
+}
+
+.group-profile-description {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--md-sys-color-text-secondary);
+  margin-bottom: 24px;
+  padding: 0 16px;
+}
+
+.group-profile-meta {
+  width: 100%;
+  border-top: 1px solid var(--md-sys-color-outline);
+  padding-top: 16px;
+  font-size: 13px;
+  color: var(--md-sys-color-text-tertiary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* --- Clickable Avatars --- */
+.clickable-avatar {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.clickable-avatar:hover {
+  opacity: 0.8;
+}
+
+/* --- Group Members Section --- */
+.group-members-section {
+  margin-top: 24px;
+  background: #f9fafb; /* Light gray background */
+  border: 1px solid #e5e7eb; /* Subtle border for definition */
+  border-radius: 8px;
+  padding: 16px;
+  width: 100%; /* Ensure the section takes full width */
+  box-sizing: border-box;
+}
+.group-members-section h4 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #6b7280; /* Muted dark gray for headers */
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 350px;
+  overflow-y: auto;
+  width: 100%; /* Stretch list to full width */
+  
+  /* Scrollbar styles for the members list (lighter) */
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.members-list::-webkit-scrollbar {
+  width: 6px;
+}
+.members-list::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
+/* --- Individual Member Row --- */
+.member-row {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%; /* Row matches parent width */
+  box-sizing: border-box; /* Includes padding in width calculation */
+  transition: background-color 0.2s ease;
+}
+.member-row:hover {
+  background-color: rgba(0, 0, 0, 0.06); /* Darker hover effect for light theme */
+}
+
+.member-avatar-wrapper {
+  position: relative;
+  margin-right: 12px;
+}
+.member-avatar-wrapper img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.status-indicator.online {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  background-color: #1ed760; /* NeoSpotify Green */
+  border: 2px solid #f9fafb; /* Matches the new light background */
+  border-radius: 50%;
+}
+.member-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827; /* Near-black text for light theme */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.badge.owner-badge {
+  background-color: #1ed760; /* NeoSpotify Green */
+  color: #ffffff; /* White text for contrast against green */
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+/* --- Back to Group Button --- */
+.back-to-group-btn {
+  background: transparent;
+  color: #4b5563; /* Darker gray text */
+  border: 1px solid #d1d5db; /* Light gray border */
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+.back-to-group-btn:hover {
+  color: #111827; /* Darken text on hover */
+  border-color: #9ca3af; /* Darken border on hover */
+  background-color: rgba(0, 0, 0, 0.02); /* Very subtle background on hover */
+}
+
+
+/* Invite Link Section */
+.invite-link-section {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.invite-link-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 0.9rem;
+  color: #374151; /* Or your dark theme equivalent, e.g., #e5e7eb */
+}
+
+.invite-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #f3f4f6; /* Light gray background */
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.invite-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #4b5563;
+  padding: 8px;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: text;
+}
+
+.copy-btn {
+  background-color: #10b981; /* Green color similar to Spotify/Discord highlights */
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.copy-btn:hover {
+  background-color: #059669;
+}
+
+.copy-btn.copied {
+  background-color: #3b82f6; /* Turns blue briefly when copied */
+}
+
+
+/* --- Remove Member Button (List) --- */
+.remove-member-btn {
+  font-size: 0.75rem;
+  color: #ef4444; 
+  background: transparent;
+  border: 1px solid #ef4444;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0; /* Hidden by default */
+  transition: all 0.2s ease-in-out;
+  margin-left: auto; /* Push to the right edge */
+}
+
+/* Show button when hovering over the row */
+.member-row:hover .remove-member-btn {
+  opacity: 1;
+}
+
+.remove-member-btn:hover {
+  background-color: #ef4444;
+  color: white;
+}
+
+
+/* --- Confirmation Modal Overlay --- */
+.remove-modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000; /* Ensure it stays on top */
+  backdrop-filter: blur(2px);
+}
+
+.remove-modal-box {
+  background-color: #1f2937;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  max-width: 350px;
+  width: 90%;
+  color: white;
+}
+
+.remove-modal-box h3 {
+  font-size: 1.125rem;
+  font-weight: bold;
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.remove-modal-box p {
+  color: #d1d5db;
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+.remove-modal-box p span {
+  font-weight: 600;
+  color: white;
+}
+
+.remove-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.remove-modal-actions button {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.remove-modal-actions .cancel-btn {
+  background-color: #4b5563;
+  color: white;
+}
+
+.remove-modal-actions .cancel-btn:hover {
+  background-color: #6b7280;
+}
+
+.remove-modal-actions .confirm-btn {
+  background-color: #dc2626;
+  color: white;
+}
+
+.remove-modal-actions .confirm-btn:hover {
+  background-color: #ef4444;
+}
+
+
+/* Edit Group Form */
+.group-profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.edit-group-btn {
+  background: var(--spotify-green);
+  color: black;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: transform 0.1s ease;
+}
+
+.edit-group-btn:hover {
+  transform: scale(1.05);
+}
+
+.edit-group-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.edit-avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.change-avatar-btn {
+  background: transparent;
+  color: #9ca3af;
+  border: 1px solid #4b5563;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.change-avatar-btn:hover {
+  background: #374151;
+  color: white;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.edit-field label {
+  font-size: 0.85rem;
+  color: #9ca3af;
+  font-weight: 600;
+}
+
+.edit-input,
+.edit-textarea {
+  background: #ffffff;
+  border: 1px solid #d1d5db; /* Lighter border to match the white background */
+  border-radius: 6px;
+  padding: 10px;
+  color: #000000;
+  font-size: 0.95rem;
+}
+
+
+.edit-input:focus,
+.edit-textarea:focus {
+  outline: none;
+  border-color: var(--spotify-green);
+}
+
+.edit-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.cancel-edit-btn,
+.save-edit-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+
+.cancel-edit-btn {
+  background: transparent;
+  color: #f3f4f6;
+}
+
+.cancel-edit-btn:hover {
+  text-decoration: underline;
+}
+
+.save-edit-btn {
+  background: var(--spotify-green);
+  color: black;
+}
+
+.save-edit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

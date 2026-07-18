@@ -1,6 +1,33 @@
 from rest_framework import serializers
-from .models import Conversation, ConversationMember, Message
+from .models import Conversation, ConversationMember, Message, Role
 
+
+
+class GroupDetailSerializer(serializers.ModelSerializer):
+    owner_id = serializers.UUIDField(source='owner.id', read_only=True)
+    owner_display_name = serializers.CharField(source='owner.display_name', read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+    invite_token = serializers.UUIDField(read_only=True)
+    member_count = serializers.SerializerMethodField()
+    
+
+
+    class Meta:
+        model = Conversation
+        fields = [
+            'id', 'type', 'name', 'description',
+            'avatar', 'avatar_url',
+            'owner_id', 'owner_display_name',
+            'created_at', 'invite_token', 'member_count',
+        ]
+        read_only_fields = ['id', 'type', 'created_at', 'invite_token']
+
+    def get_avatar_url(self, obj):
+        return obj.avatar_url
+    
+    def get_member_count(self, obj):
+        return obj.members.count()
+    
 
 class MinimalMessageSerializer(serializers.ModelSerializer):
     sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
@@ -31,6 +58,7 @@ class MessageSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'conversation', # <-- ADDED THIS
             'sender',
             'is_edited',
             'is_deleted',
@@ -38,11 +66,15 @@ class MessageSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
 
-
     def validate(self, data):
         if data.get('reply_to'):
-            if data['reply_to'].conversation_id != data['conversation'].id:
-                raise serializers.ValidationError("Reply message does not belong to this conversation.")
+            # Since 'conversation' is read-only, it won't be in 'data'. 
+            # We get the conversation ID from the URL parameters via the view context.
+            view = self.context.get('view')
+            if view and 'conversation_id' in view.kwargs:
+                url_convo_id = str(view.kwargs['conversation_id'])
+                if str(data['reply_to'].conversation_id) != url_convo_id:
+                    raise serializers.ValidationError("Reply message does not belong to this conversation.")
         return data
 
     def validate_content(self, value):
@@ -85,9 +117,11 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
     def get_other_user_id(self, obj):
         user = self.context['request'].user
+        other = None  
         if obj.type == Conversation.Type.DM:
             other = obj.get_other_user(user)
         return other.id if other else None
+
 
 
     def get_display_name(self, obj):
@@ -115,5 +149,82 @@ class ConversationListSerializer(serializers.ModelSerializer):
 class ConversationMarkReadSerializer(serializers.Serializer):
     last_read_message_id = serializers.UUIDField(required=True)
 
+class GroupCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = ['id', 'name', 'description', 'avatar']
+
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Group name is required.")
+        return value.strip()
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        # Set conversation type and owner
+        validated_data['type'] = Conversation.Type.GROUP
+        validated_data['owner'] = user
+
+        conversation = super().create(validated_data)
+
+        # Create default Group Owner role
+        role = Role.objects.create(
+            conversation=conversation,
+            name='Group Owner',
+            can_send_messages=True,
+            can_send_media=True,
+            can_delete_messages=True,
+            can_manage_members=True,
+            can_manage_roles=True,
+        )
+
+        # Add the creator as a member with that role
+        ConversationMember.objects.create(
+            conversation=conversation,
+            user=user,
+            role=role,
+        )
+
+        return conversation
 
 
+class GroupMemberSerializer(serializers.ModelSerializer):
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    display_name = serializers.CharField(source='user.display_name', read_only=True)
+    avatar_url = serializers.CharField(source='user.avatar_url', read_only=True)
+    is_online = serializers.BooleanField(source='user.is_online', read_only=True)
+    role_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConversationMember
+        fields = [
+            'user_id',
+            'display_name',
+            'avatar_url',
+            'is_online',
+            'role_name',
+        ]
+
+    def get_role_name(self, obj):
+        if obj.role:
+            if obj.role.can_manage_members:
+                return "Owner"
+            return obj.role.name
+
+        return "Member"
+
+class GroupUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = (
+            "name",
+            "description",
+            "avatar",
+        )
+
+    def validate_name(self, value):
+        if not value.strip():
+            raise serializers.ValidationError(
+                "Group name is required."
+            )
+        return value

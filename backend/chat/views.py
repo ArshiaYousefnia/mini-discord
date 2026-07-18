@@ -1,13 +1,13 @@
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 
 from rest_framework.views import APIView
 
-from .models import Conversation, ConversationMember, Message
-from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer
+from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
+    MinimalMessageSerializer
 
 from django.contrib.auth import get_user_model
 
@@ -15,11 +15,13 @@ from django.db.models import OuterRef, Subquery, Count, Q, Value, Prefetch
 from django.db.models.functions import Coalesce
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from .models import Conversation, ConversationMember, Message
-from .serializers import ConversationListSerializer
+from .models import Conversation, ConversationMember, Message, Role 
+
+from .serializers import GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer
 
 
 User = get_user_model()
+
 
 
 class SendDirectMessageView(viewsets.GenericViewSet):
@@ -80,7 +82,7 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Save with sender = request.user
-        message = serializer.save(sender=request.user)
+        message = serializer.save(sender=request.user, conversation=conversation)
 
         # update last_read_message for sender (so they mark own message as read)
         # Not required for the story, but useful later
@@ -102,9 +104,83 @@ class ConversationViewSet(mixins.ListModelMixin,
             members__user=self.request.user
         ).distinct()
 
+    @action(detail=True, methods=['post'], url_path='leave')
+    def leave(self, request, pk=None):
+        conversation = self.get_object()  # ensures user is a member
+
+        # Optional: prevent leaving a DM (or allow; we'll restrict to groups for now)
+        if conversation.type != Conversation.Type.GROUP:
+            return Response(
+                {"detail": "You can only leave group conversations."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prevent owner from leaving
+        if conversation.owner == request.user:
+            return Response(
+                {"detail": "The group owner cannot leave the group. Transfer ownership first or delete the group."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Remove the member
+        ConversationMember.objects.filter(
+            conversation=conversation,
+            user=request.user
+        ).delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'], url_path='remove-member')
+    def remove_member(self, request, pk=None):
+        conversation = self.get_object()  # ensures user is a member of the conversation
+
+        # Only allow for groups
+        if conversation.type != Conversation.Type.GROUP:
+            return Response(
+                {"detail": "Member removal is only available for groups."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check that the requester is the owner
+        if conversation.owner != request.user:
+            return Response(
+                {"detail": "Only the group owner can remove members."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        target_user_id = request.data.get('user_id')
+        if not target_user_id:
+            return Response(
+                {"detail": "user_id is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate that the target user is actually a member of this group
+        membership = ConversationMember.objects.filter(
+            conversation=conversation,
+            user_id=target_user_id
+        ).first()
+
+        if not membership:
+            return Response(
+                {"detail": "This user is not a member of the group."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Prevent owner from removing themselves (they must use leave or delete group)
+        if str(target_user_id) == str(request.user.id):
+            return Response(
+                {"detail": "You cannot remove yourself. Use the leave action instead."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        membership.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class MessageViewSet(
     mixins.ListModelMixin,
+    mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet
@@ -121,7 +197,24 @@ class MessageViewSet(
             is_deleted=False
         ).order_by("created_at")
     
+    def perform_create(self, serializer):
+        conversation_id = self.kwargs.get("conversation_pk")
+        
+        # Verify the conversation exists and the user is a member
+        conversation = get_object_or_404(
+            Conversation, 
+            id=conversation_id, 
+            members__user=self.request.user
+        )
+        
+        # Save the message with the sender and conversation
+        message = serializer.save(sender=self.request.user, conversation=conversation)
 
+        member = ConversationMember.objects.get(
+            conversation=conversation, user=self.request.user
+        )
+        member.last_read_message = message
+        member.save(update_fields=['last_read_message'])
 
     def partial_update(self, request, *args, **kwargs):
         message = self.get_object()
@@ -144,21 +237,51 @@ class MessageViewSet(
     
 
     def destroy(self, request, *args, **kwargs):
-
         message = self.get_object()
 
         if message.sender != request.user:
-            return Response(
-                {"detail": "You can only delete your own messages."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            if (
+                message.conversation.type != Conversation.Type.GROUP
+                or message.conversation.owner != request.user
+            ):
+                return Response(
+                    {"detail": "You do not have permission to delete this message."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         message.is_deleted = True
         message.content = ""
         message.save(update_fields=["is_deleted", "content", "updated_at"])
 
-
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def search(self, request, conversation_pk=None):
+        """
+        Search messages in a conversation. Query param: q (min 3 chars).
+        """
+        query = request.query_params.get('q', '').strip()
+        if len(query) < 3:
+            return Response(
+                {"detail": "Search query must be at least 3 characters."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Ensure user is a member
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_pk,
+            members__user=request.user
+        )
+
+        messages = Message.objects.filter(
+            conversation=conversation,
+            is_deleted=False,
+            content__icontains=query
+        ).order_by('-created_at')  # most recent first
+
+        # Use MinimalMessageSerializer to return id, content, sender_display_name, created_at
+        serializer = MinimalMessageSerializer(messages, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class ConversationListView(ListAPIView):
@@ -238,3 +361,175 @@ class ConversationMarkReadView(APIView):
         member.save(update_fields=['last_read_message'])
         return Response({"detail": "Read status updated."}, status=status.HTTP_200_OK)
 
+
+class GroupCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = GroupCreateSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        conversation = serializer.save()
+
+        detail_serializer = GroupDetailSerializer(conversation)
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+    
+    
+
+class GroupJoinView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, invite_token):
+        try:
+            conversation = Conversation.objects.get(
+                invite_token=invite_token,
+                type=Conversation.Type.GROUP
+            )
+        except Conversation.DoesNotExist:
+            return Response(
+                {"detail": "This invite link is invalid or has expired."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        user = request.user
+
+        if ConversationMember.objects.filter(conversation=conversation, user=user).exists():
+            return Response(
+                {"detail": "You are already a member of this group."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        role, _ = Role.objects.get_or_create(
+            conversation=conversation,
+            name='Member',
+            defaults={
+                'can_send_messages': True,
+                'can_send_media': True,
+                'can_delete_messages': False,
+                'can_manage_members': False,
+                'can_manage_roles': False,
+            }
+        )
+
+        ConversationMember.objects.create(
+            conversation=conversation,
+            user=user,
+            role=role
+        )
+
+        serializer = GroupDetailSerializer(conversation, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class GroupProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.GROUP,
+            members__user=request.user
+        )
+
+        serializer = GroupDetailSerializer(
+            conversation,
+            context={'request': request}
+        )
+
+        return Response(serializer.data)
+    
+class GroupMembersView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.GROUP
+        )
+
+        # فقط اعضای گروه اجازه مشاهده دارند
+        is_member = ConversationMember.objects.filter(
+            conversation=conversation,
+            user=request.user
+        ).exists()
+
+        if not is_member:
+            return Response(
+                {"detail": "You are not a member of this group."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        members = ConversationMember.objects.filter(
+            conversation=conversation
+        ).select_related(
+            'user',
+            'role'
+        )
+
+        serializer = GroupMemberSerializer(
+            members,
+            many=True
+        )
+
+        return Response(serializer.data)
+
+
+class GroupUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, conversation_id):
+
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.GROUP,
+        )
+
+        if not ConversationMember.objects.filter(
+            conversation=conversation,
+            user=request.user,
+        ).exists():
+            return Response(
+                {"detail": "You are not a member of this group."},
+                status=403,
+            )
+
+        serializer = GroupUpdateSerializer(
+            conversation,
+            data=request.data,
+            partial=True,
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            GroupDetailSerializer(conversation).data
+        )
+    
+class GroupDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, conversation_id):
+
+        group = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.GROUP,
+        )
+
+        if group.owner != request.user:
+            return Response(
+                {"detail": "Only the group owner can delete the group."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        group.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
