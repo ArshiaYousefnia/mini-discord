@@ -319,8 +319,14 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
     owner_display_name = serializers.CharField(source="owner.display_name", read_only=True)
     avatar_url = serializers.SerializerMethodField()
     invite_link = serializers.SerializerMethodField() 
+
+
+
     is_private = serializers.BooleanField(source='channel.is_private', read_only=True)
     public_id = serializers.CharField(source='channel.public_id', read_only=True)
+
+
+
     class Meta:
         model = Conversation
         fields = [
@@ -333,10 +339,8 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
             "owner_display_name",
             "created_at",
             "invite_link",
-
             "is_private", # اضافه شد
             "public_id",  # اضافه شد
-
         ]
 
 

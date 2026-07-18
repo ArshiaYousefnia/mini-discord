@@ -18,7 +18,7 @@ export default function ChatHeader({
   onToggleSearch,
 }: ChatHeaderProps) {
   const chatType = chat.type.toUpperCase();
-  const isClickable = chatType === "GROUP" || chatType === "DM";
+  const isClickable = chatType === "GROUP" || chatType === "DM" || chatType === "CHANNEL";
 
   return (
     <div className="chat-view-header">
