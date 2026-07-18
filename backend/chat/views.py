@@ -1036,3 +1036,35 @@ class ChannelMyPermissionsView(APIView):
                 {"detail": "You are not a member of this channel."},
                 status=status.HTTP_403_FORBIDDEN
             )
+class ChannelPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, invite_code):
+        try:
+            channel = Channel.objects.select_related('conversation').get(invite_code=invite_code)
+        except Channel.DoesNotExist:
+            return Response(
+                {"detail": "Invalid invite link or channel does not exist."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        conversation = channel.conversation
+
+        messages = Message.objects.filter(
+            conversation=conversation,
+            is_deleted=False
+        ).select_related('sender').order_by('created_at')
+
+        message_serializer = MessageSerializer(messages, many=True, context={'request': request})
+
+        preview_data = {
+            "id": conversation.id,
+            "name": conversation.name,
+            "description": conversation.description,
+            "avatar_url": conversation.avatar_url,
+            "is_private": channel.is_private,
+            "public_id": channel.public_id,
+            "messages": message_serializer.data,  
+        }
+
+        return Response(preview_data, status=status.HTTP_200_OK)
