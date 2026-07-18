@@ -393,3 +393,13 @@ class ChannelMemberSerializer(serializers.ModelSerializer):
 class ChannelMemberRoleUpdateSerializer(serializers.Serializer):
     role_id = serializers.UUIDField(required=True)
 
+class RoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = [
+            'id', 'name',
+            'can_send_messages', 'can_send_media', 'can_delete_messages',
+            'can_manage_members', 'can_manage_roles',
+            'can_view_invite_link', 'can_edit_channel_info',
+        ]
+        read_only_fields = ['id']

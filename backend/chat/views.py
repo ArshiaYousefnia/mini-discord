@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
-    MinimalMessageSerializer, ChannelCreateSerializer
+    MinimalMessageSerializer, ChannelCreateSerializer, RoleSerializer
 
 from django.contrib.auth import get_user_model
 
@@ -1036,3 +1036,45 @@ class ChannelMyPermissionsView(APIView):
                 {"detail": "You are not a member of this channel."},
                 status=status.HTTP_403_FORBIDDEN
             )
+
+class ChannelRolesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+        )
+        if conversation.owner != request.user:
+            return Response(
+                {"detail": "Only the channel owner can manage roles."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        roles = conversation.roles.all()
+        serializer = RoleSerializer(roles, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+        )
+        if conversation.owner != request.user:
+            return Response(
+                {"detail": "Only the channel owner can manage roles."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        name = request.data.get('name')
+        if not name or not name.strip():
+            return Response(
+                {"name": "Role name is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create role with default permissions
+        role = Role.objects.create(conversation=conversation, name=name.strip())
+        serializer = RoleSerializer(role)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
