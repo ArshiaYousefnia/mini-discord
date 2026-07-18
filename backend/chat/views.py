@@ -623,6 +623,7 @@ class ChannelJoinView(APIView):
         
         conversation = channel.conversation
         return Response({
+            "id": conversation.id,
             "name": conversation.name,
             "avatar_url": conversation.avatar_url,
             "description": conversation.description,

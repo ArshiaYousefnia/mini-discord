@@ -67,3 +67,7 @@ export async function getPermissions (id: string): Promise<ChannelPermissions>{
   return response.data;
 }
 
+export const joinGroupByInviteLink = async (invite_code: string): Promise<any> => {
+  const response = await api.post(`/api/chat/conversations/channels/join/${invite_code}/`);
+  return response.data;
+};

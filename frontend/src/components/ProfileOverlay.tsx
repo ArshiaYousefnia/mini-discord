@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions } from "../types/chat";
 import type { UserProfile } from "../types/user";
+import { formatJoinLink } from "../utils/linkFormat";
 
 interface ProfileOverlayProps {
   show: boolean;
@@ -116,9 +117,9 @@ export default function ProfileOverlay({
   const handleCopyInviteLink = () => {
     let linkToCopy = "";
     if (profileViewType === "channel" && channelProfile?.invite_link) {
-      linkToCopy = channelProfile.invite_link;
+      linkToCopy = formatJoinLink(channelProfile.invite_link);
     } else if (profileViewType === "group" && groupProfile?.invite_token) {
-      linkToCopy = `http://join/${groupProfile.invite_token}`;
+      linkToCopy = `http://groups/join/${groupProfile.invite_token}`;
     }
 
     if (linkToCopy) {
@@ -225,7 +226,7 @@ export default function ProfileOverlay({
                   <div className="invite-link-section">
                     <h4>Invite Link</h4>
                     <div className="invite-input-wrapper">
-                      <input type="text" readOnly value={channelProfile.invite_link} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                      <input type="text" readOnly value={formatJoinLink(channelProfile.invite_link)} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
                       <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
                     </div>
                   </div>
@@ -281,7 +282,7 @@ export default function ProfileOverlay({
                   <div className="invite-link-section">
                     <h4>Invite Link</h4>
                     <div className="invite-input-wrapper">
-                      <input type="text" readOnly value={`http://join/${groupProfile.invite_token}`} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                      <input type="text" readOnly value={`http://groups/join/${groupProfile.invite_token}`} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
                       <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
                     </div>
                   </div>
