@@ -409,11 +409,17 @@ class RoleSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 class ChannelMessageSerializer(MessageSerializer):
-    topic_id = serializers.UUIDField(source='topic.id', read_only=True)
-    topic_name = serializers.CharField(source='topic.name', read_only=True)
+    topic_id = serializers.SerializerMethodField()
+    topic_name = serializers.SerializerMethodField()
 
     class Meta(MessageSerializer.Meta):
         fields = MessageSerializer.Meta.fields + ['topic_id', 'topic_name']
+
+    def get_topic_id(self, obj):
+        return str(obj.topic.id) if obj.topic else None
+
+    def get_topic_name(self, obj):
+        return obj.topic.name if obj.topic else None
 
 class TopicCreateSerializer(serializers.ModelSerializer):
     class Meta:

@@ -8,7 +8,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
-    MinimalMessageSerializer, ChannelCreateSerializer, RoleSerializer, TopicSerializer, TopicUpdateSerializer
+    MinimalMessageSerializer, ChannelCreateSerializer, RoleSerializer, TopicSerializer, TopicUpdateSerializer, \
+    TopicCreateSerializer, ChannelMessageSerializer
 
 from django.contrib.auth import get_user_model
 
@@ -185,11 +186,15 @@ class MessageViewSet(
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
+        # For create/update, use the basic serializer (input validation)
+        if self.action in ('create', 'update', 'partial_update'):
+            return MessageSerializer
+        # For list/retrieve, decide based on conversation type
         conversation_id = self.kwargs.get('conversation_pk')
         if conversation_id:
             try:
-                conversation = Conversation.objects.get(id=conversation_id)
-                if conversation.type == Conversation.Type.CHANNEL:
+                conv = Conversation.objects.get(id=conversation_id)
+                if conv.type == Conversation.Type.CHANNEL:
                     return ChannelMessageSerializer
             except Conversation.DoesNotExist:
                 pass
@@ -197,17 +202,23 @@ class MessageViewSet(
 
     def get_queryset(self):
         conversation_id = self.kwargs.get("conversation_pk")
-        qs = Message.objects.filter(
-            conversation_id=conversation_id,
-            conversation__members__user=self.request.user,
-            is_deleted=False
-        ).order_by("created_at")
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return Message.objects.none()
 
-        # If this is a channel, prefetch topic data for efficiency
-        conversation = Conversation.objects.filter(id=conversation_id).first()
-        if conversation and conversation.type == Conversation.Type.CHANNEL:
-            qs = qs.select_related('channelmessage__topic')
-        return qs
+        if conv.type == Conversation.Type.CHANNEL:
+            return ChannelMessage.objects.filter(
+                conversation_id=conversation_id,
+                conversation__members__user=self.request.user,
+                is_deleted=False
+            ).select_related('topic').order_by("created_at")
+        else:
+            return Message.objects.filter(
+                conversation_id=conversation_id,
+                conversation__members__user=self.request.user,
+                is_deleted=False
+            ).order_by("created_at")
 
     def perform_create(self, serializer):
         conversation_id = self.kwargs.get("conversation_pk")
@@ -217,18 +228,16 @@ class MessageViewSet(
             members__user=self.request.user
         )
 
-        topic = None
         if conversation.type == Conversation.Type.CHANNEL:
             member = ConversationMember.objects.get(
                 conversation=conversation,
                 user=self.request.user
             )
             if member.role is None or not member.role.can_send_messages:
-                raise PermissionDenied(
-                    "You do not have permission to send messages in this channel."
-                )
+                raise PermissionDenied("You do not have permission to send messages in this channel.")
 
             topic_id = self.request.data.get('topic_id')
+            topic = None
             if topic_id:
                 topic = get_object_or_404(Topic, id=topic_id, conversation=conversation)
 
@@ -240,12 +249,8 @@ class MessageViewSet(
                 topic=topic,
             )
         else:
-            # DM or Group – use the serializer's default save
-            message = serializer.save(
-                sender=self.request.user, conversation=conversation
-            )
+            message = serializer.save(sender=self.request.user, conversation=conversation)
 
-        # Mark own message as read
         member = ConversationMember.objects.get(
             conversation=conversation,
             user=self.request.user
@@ -259,29 +264,25 @@ class MessageViewSet(
         serializer.is_valid(raise_exception=True)
         message = self.perform_create(serializer)
 
-        # Use the correct output serializer (ChannelMessageSerializer if applicable)
-        output_serializer = self.get_serializer(instance=message)
-        headers = self.get_success_headers(output_serializer.data)
-        return Response(
-            output_serializer.data,
-            status=status.HTTP_201_CREATED,
-            headers=headers
-        )
+        # Explicitly choose output serializer based on conversation type
+        conversation_id = self.kwargs.get('conversation_pk')
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+            if conv.type == Conversation.Type.CHANNEL:
+                out_serializer = ChannelMessageSerializer(message, context=self.get_serializer_context())
+            else:
+                out_serializer = MessageSerializer(message, context=self.get_serializer_context())
+        except Conversation.DoesNotExist:
+            out_serializer = MessageSerializer(message, context=self.get_serializer_context())
+
+        headers = self.get_success_headers(out_serializer.data)
+        return Response(out_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def partial_update(self, request, *args, **kwargs):
         message = self.get_object()
-
         if message.sender != request.user:
-            return Response(
-                {"detail": "You can only edit your own messages."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        serializer = self.get_serializer(
-            message,
-            data=request.data,
-            partial=True
-        )
+            return Response({"detail": "You can only edit your own messages."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = self.get_serializer(message, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save(is_edited=True)
         return Response(serializer.data)
@@ -303,7 +304,6 @@ class MessageViewSet(
                         can_delete = True
                 except ConversationMember.DoesNotExist:
                     pass
-
             if not (is_owner or can_delete):
                 return Response(
                     {"detail": "You do not have permission to delete this message."},
@@ -318,23 +318,11 @@ class MessageViewSet(
     def search(self, request, conversation_pk=None):
         query = request.query_params.get('q', '').strip()
         if len(query) < 3:
-            return Response(
-                {"detail": "Search query must be at least 3 characters."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_pk,
-            members__user=request.user
-        )
-
+            return Response({"detail": "Search query must be at least 3 characters."}, status=status.HTTP_400_BAD_REQUEST)
+        conversation = get_object_or_404(Conversation, id=conversation_pk, members__user=request.user)
         messages = Message.objects.filter(
-            conversation=conversation,
-            is_deleted=False,
-            content__icontains=query
+            conversation=conversation, is_deleted=False, content__icontains=query
         ).order_by('-created_at')
-
         serializer = MinimalMessageSerializer(messages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
