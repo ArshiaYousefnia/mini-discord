@@ -3,7 +3,7 @@ from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
 import uuid
 
-from chat.models import Conversation, ConversationMember, Role
+from chat.models import Conversation, ConversationMember
 
 User = get_user_model()
 
