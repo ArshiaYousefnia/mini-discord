@@ -24,6 +24,7 @@ interface ProfileOverlayProps {
   onRemoveMember: (member: any) => void;
   onLeaveGroupRequest: () => void;
   onDeleteGroupRequest: () => void;
+  onLeaveChannelRequest?: () => void; // Added for channel leave story
 }
 
 export default function ProfileOverlay({
@@ -45,6 +46,7 @@ export default function ProfileOverlay({
   onRemoveMember,
   onLeaveGroupRequest,
   onDeleteGroupRequest,
+  onLeaveChannelRequest,
   channelProfile,
   channelPermissions,
 }: ProfileOverlayProps) {
@@ -231,6 +233,13 @@ export default function ProfileOverlay({
                     </div>
                   </div>
                 )}
+
+                {/* Added Channel Danger Zone for Leaving */}
+                <div className="group-danger-zone" style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {!isCurrentUserOwner && onLeaveChannelRequest && (
+                    <button type="button" onClick={onLeaveChannelRequest} className="leave-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Leave Channel</button>
+                  )}
+                </div>
               </>
             )}
           </div>
