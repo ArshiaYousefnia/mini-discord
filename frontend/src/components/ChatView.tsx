@@ -38,6 +38,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
 
   const [memberToRemove, setMemberToRemove] = useState<any>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showLeaveChannelConfirm, setShowLeaveChannelConfirm] = useState(false);
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState(false);
   const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
@@ -151,6 +152,19 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     }
   }, [messages.length, loading, chat?.id]);
 
+  useEffect(() => {
+    if (!chat || chat.type.toUpperCase() !== "CHANNEL") return;
+    let isMounted = true;
+    
+    getPermissions(chat.id)
+      .then(permissions => {
+        if (isMounted) setChannelPermissions(permissions);
+      })
+      .catch(console.error);
+
+    return () => { isMounted = false; };
+  }, [chat]);
+  
   const handleSendMessage = async (text: string) => {
     if (!chat) return;
     try {
@@ -275,6 +289,24 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     finally { setLeaveLoading(false); }
   };
 
+  const handleLeaveChannel = async () => {
+    if (!chat) return;
+    try {
+      setLeaveLoading(true); 
+      // Replace leaveChannel with leaveGroup if your backend uses the exact same endpoint for both
+      await leaveGroup(chat.id); 
+      setShowLeaveChannelConfirm(false); 
+      setShowProfile(false); 
+      onGroupExit?.(chat.id); // Reusing onGroupExit to remove it from the sidebar list
+    } catch (error) { 
+      console.error("Failed to leave channel:", error); 
+      alert("Failed to leave the channel."); 
+    } finally { 
+      setLeaveLoading(false); 
+    }
+  };
+
+
   const handleDeleteGroup = async () => {
     if (!chat) return;
     try {
@@ -348,6 +380,17 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onCancel={() => setShowDeleteGroupConfirm(false)}
       />
 
+      <ConfirmModal
+        isOpen={showLeaveChannelConfirm}
+        title="Leave Channel"
+        message="Are you sure you want to leave this channel? You'll stop receiving updates from it."
+        confirmText={leaveLoading ? "Leaving..." : "Leave Channel"}
+        isLoading={leaveLoading}
+        onConfirm={handleLeaveChannel}
+        onCancel={() => setShowLeaveChannelConfirm(false)}
+      />
+
+
       <ChatHeader
         chat={chat}
         localChatInfo={localChatInfo}
@@ -380,6 +423,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onRemoveMember={setMemberToRemove}
         onLeaveGroupRequest={() => setShowLeaveConfirm(true)}
         onDeleteGroupRequest={() => setShowDeleteGroupConfirm(true)}
+        onLeaveChannelRequest={() => setShowLeaveChannelConfirm(true)}
       />
 
 
@@ -411,7 +455,14 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         )}
       </div>
 
-      <MessageInput activeReplyTo={activeReplyTo} onCancelReply={() => setActiveReplyTo(null)} onSendMessage={handleSendMessage} disabled={loading} />
+      <MessageInput 
+        activeReplyTo={activeReplyTo} 
+        onCancelReply={() => setActiveReplyTo(null)} 
+        onSendMessage={handleSendMessage} 
+        disabled={loading} 
+        canSendMessages={chatType === "CHANNEL" ? (channelPermissions?.can_send_messages ?? false) : true}
+      />
+
     </div>
   );
 }
