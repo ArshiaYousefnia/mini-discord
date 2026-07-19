@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions } from "../types/chat";
 import type { UserProfile } from "../types/user";
+import { formatJoinLink } from "../utils/linkFormat";
 
 interface ProfileOverlayProps {
   show: boolean;
@@ -23,6 +24,7 @@ interface ProfileOverlayProps {
   onRemoveMember: (member: any) => void;
   onLeaveGroupRequest: () => void;
   onDeleteGroupRequest: () => void;
+  onLeaveChannelRequest?: () => void; // Added for channel leave story
 }
 
 export default function ProfileOverlay({
@@ -44,6 +46,7 @@ export default function ProfileOverlay({
   onRemoveMember,
   onLeaveGroupRequest,
   onDeleteGroupRequest,
+  onLeaveChannelRequest,
   channelProfile,
   channelPermissions,
 }: ProfileOverlayProps) {
@@ -116,9 +119,9 @@ export default function ProfileOverlay({
   const handleCopyInviteLink = () => {
     let linkToCopy = "";
     if (profileViewType === "channel" && channelProfile?.invite_link) {
-      linkToCopy = channelProfile.invite_link;
+      linkToCopy = formatJoinLink(channelProfile.invite_link);
     } else if (profileViewType === "group" && groupProfile?.invite_token) {
-      linkToCopy = `http://join/${groupProfile.invite_token}`;
+      linkToCopy = `http://groups/join/${groupProfile.invite_token}`;
     }
 
     if (linkToCopy) {
@@ -225,11 +228,18 @@ export default function ProfileOverlay({
                   <div className="invite-link-section">
                     <h4>Invite Link</h4>
                     <div className="invite-input-wrapper">
-                      <input type="text" readOnly value={channelProfile.invite_link} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                      <input type="text" readOnly value={formatJoinLink(channelProfile.invite_link)} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
                       <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
                     </div>
                   </div>
                 )}
+
+                {/* Added Channel Danger Zone for Leaving */}
+                <div className="group-danger-zone" style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {!isCurrentUserOwner && onLeaveChannelRequest && (
+                    <button type="button" onClick={onLeaveChannelRequest} className="leave-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Leave Channel</button>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -281,7 +291,7 @@ export default function ProfileOverlay({
                   <div className="invite-link-section">
                     <h4>Invite Link</h4>
                     <div className="invite-input-wrapper">
-                      <input type="text" readOnly value={`http://join/${groupProfile.invite_token}`} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                      <input type="text" readOnly value={`http://groups/join/${groupProfile.invite_token}`} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
                       <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
                     </div>
                   </div>
