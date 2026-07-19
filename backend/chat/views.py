@@ -2,12 +2,14 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from rest_framework.views import APIView
 
 from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
-    MinimalMessageSerializer, ChannelCreateSerializer
+    MinimalMessageSerializer, ChannelCreateSerializer, RoleSerializer, TopicSerializer, TopicUpdateSerializer, \
+    TopicCreateSerializer, ChannelMessageSerializer
 
 from django.contrib.auth import get_user_model
 
@@ -15,7 +17,7 @@ from django.db.models import OuterRef, Subquery, Count, Q, Value, Prefetch
 from django.db.models.functions import Coalesce
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from .models import Conversation, ConversationMember, Message, Role , Channel
+from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, ChannelMessage
 
 from .serializers import ChannelMemberRoleUpdateSerializer,ChannelMemberSerializer,ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
 
@@ -182,113 +184,145 @@ class MessageViewSet(
     viewsets.GenericViewSet
 ):
     permission_classes = [IsAuthenticated]
-    serializer_class = MessageSerializer
+
+    def get_serializer_class(self):
+        # For create/update, use the basic serializer (input validation)
+        if self.action in ('create', 'update', 'partial_update'):
+            return MessageSerializer
+        # For list/retrieve, decide based on conversation type
+        conversation_id = self.kwargs.get('conversation_pk')
+        if conversation_id:
+            try:
+                conv = Conversation.objects.get(id=conversation_id)
+                if conv.type == Conversation.Type.CHANNEL:
+                    return ChannelMessageSerializer
+            except Conversation.DoesNotExist:
+                pass
+        return MessageSerializer
 
     def get_queryset(self):
         conversation_id = self.kwargs.get("conversation_pk")
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return Message.objects.none()
 
-        return Message.objects.filter(
-            conversation_id=conversation_id,
-            conversation__members__user=self.request.user,
-            is_deleted=False
-        ).order_by("created_at")
-    
+        if conv.type == Conversation.Type.CHANNEL:
+            return ChannelMessage.objects.filter(
+                conversation_id=conversation_id,
+                conversation__members__user=self.request.user,
+                is_deleted=False
+            ).select_related('topic').order_by("created_at")
+        else:
+            return Message.objects.filter(
+                conversation_id=conversation_id,
+                conversation__members__user=self.request.user,
+                is_deleted=False
+            ).order_by("created_at")
+
     def perform_create(self, serializer):
         conversation_id = self.kwargs.get("conversation_pk")
-        
-        # Verify the conversation exists and the user is a member
         conversation = get_object_or_404(
-            Conversation, 
-            id=conversation_id, 
+            Conversation,
+            id=conversation_id,
             members__user=self.request.user
         )
-        
-        # Save the message with the sender and conversation
-        message = serializer.save(sender=self.request.user, conversation=conversation)
+
+        if conversation.type == Conversation.Type.CHANNEL:
+            member = ConversationMember.objects.get(
+                conversation=conversation,
+                user=self.request.user
+            )
+            if member.role is None or not member.role.can_send_messages:
+                raise PermissionDenied("You do not have permission to send messages in this channel.")
+
+            topic_id = self.request.data.get('topic_id')
+            topic = None
+            if topic_id:
+                topic = get_object_or_404(Topic, id=topic_id, conversation=conversation)
+
+            message = ChannelMessage.objects.create(
+                conversation=conversation,
+                sender=self.request.user,
+                content=serializer.validated_data.get('content'),
+                reply_to=serializer.validated_data.get('reply_to'),
+                topic=topic,
+            )
+        else:
+            message = serializer.save(sender=self.request.user, conversation=conversation)
 
         member = ConversationMember.objects.get(
-            conversation=conversation, user=self.request.user
+            conversation=conversation,
+            user=self.request.user
         )
         member.last_read_message = message
         member.save(update_fields=['last_read_message'])
+        return message
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = self.perform_create(serializer)
+
+        # Explicitly choose output serializer based on conversation type
+        conversation_id = self.kwargs.get('conversation_pk')
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+            if conv.type == Conversation.Type.CHANNEL:
+                out_serializer = ChannelMessageSerializer(message, context=self.get_serializer_context())
+            else:
+                out_serializer = MessageSerializer(message, context=self.get_serializer_context())
+        except Conversation.DoesNotExist:
+            out_serializer = MessageSerializer(message, context=self.get_serializer_context())
+
+        headers = self.get_success_headers(out_serializer.data)
+        return Response(out_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def partial_update(self, request, *args, **kwargs):
         message = self.get_object()
-
-        # ownership check
         if message.sender != request.user:
-            return Response(
-                {"detail": "You can only edit your own messages."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        serializer = self.get_serializer(
-            message,
-            data=request.data,
-            partial=True
-        )
+            return Response({"detail": "You can only edit your own messages."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = self.get_serializer(message, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save(is_edited=True)
         return Response(serializer.data)
-    
 
     def destroy(self, request, *args, **kwargs):
-            message = self.get_object()
-            conversation = message.conversation
+        message = self.get_object()
+        conversation = message.conversation
 
-            if message.sender == request.user:
-                pass
-            else:
-                is_owner = (conversation.owner == request.user)
-                
-                can_delete = False
-                if not is_owner:
-                    try:
-                        membership = ConversationMember.objects.select_related('role').get(
-                            conversation=conversation, 
-                            user=request.user
-                        )
-                        if membership.role and membership.role.can_delete_messages:
-                            can_delete = True
-                    except ConversationMember.DoesNotExist:
-                        pass
-
-                if not (is_owner or can_delete):
-                    return Response(
-                        {"detail": "You do not have permission to delete this message."},
-                        status=status.HTTP_403_FORBIDDEN,
+        if message.sender != request.user:
+            is_owner = (conversation.owner == request.user)
+            can_delete = False
+            if not is_owner:
+                try:
+                    membership = ConversationMember.objects.select_related('role').get(
+                        conversation=conversation,
+                        user=request.user
                     )
+                    if membership.role and membership.role.can_delete_messages:
+                        can_delete = True
+                except ConversationMember.DoesNotExist:
+                    pass
+            if not (is_owner or can_delete):
+                return Response(
+                    {"detail": "You do not have permission to delete this message."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
-            message.is_deleted = True
-            message.content = ""
-            message.save(update_fields=["is_deleted", "content", "updated_at"])
+        message.is_deleted = True
+        message.content = ""
+        message.save(update_fields=["is_deleted", "content", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
-            return Response(status=status.HTTP_204_NO_CONTENT)
     def search(self, request, conversation_pk=None):
-        """
-        Search messages in a conversation. Query param: q (min 3 chars).
-        """
         query = request.query_params.get('q', '').strip()
         if len(query) < 3:
-            return Response(
-                {"detail": "Search query must be at least 3 characters."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Ensure user is a member
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_pk,
-            members__user=request.user
-        )
-
+            return Response({"detail": "Search query must be at least 3 characters."}, status=status.HTTP_400_BAD_REQUEST)
+        conversation = get_object_or_404(Conversation, id=conversation_pk, members__user=request.user)
         messages = Message.objects.filter(
-            conversation=conversation,
-            is_deleted=False,
-            content__icontains=query
-        ).order_by('-created_at')  # most recent first
-
-        # Use MinimalMessageSerializer to return id, content, sender_display_name, created_at
+            conversation=conversation, is_deleted=False, content__icontains=query
+        ).order_by('-created_at')
         serializer = MinimalMessageSerializer(messages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -1036,3 +1070,150 @@ class ChannelMyPermissionsView(APIView):
                 {"detail": "You are not a member of this channel."},
                 status=status.HTTP_403_FORBIDDEN
             )
+
+class ChannelRolesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+        )
+        if conversation.owner != request.user:
+            return Response(
+                {"detail": "Only the channel owner can manage roles."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        roles = conversation.roles.all()
+        serializer = RoleSerializer(roles, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+        )
+        if conversation.owner != request.user:
+            return Response(
+                {"detail": "Only the channel owner can manage roles."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        name = request.data.get('name')
+        if not name or not name.strip():
+            return Response(
+                {"name": "Role name is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create role with default permissions
+        role = Role.objects.create(conversation=conversation, name=name.strip())
+        serializer = RoleSerializer(role)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class ChannelRoleDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_role(self, conversation_id, role_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+        )
+        if conversation.owner != self.request.user:
+            raise PermissionDenied("Only the channel owner can manage roles.")
+        role = get_object_or_404(Role, id=role_id, conversation=conversation)
+        return role
+
+    def get(self, request, conversation_id, role_id):
+        role = self.get_role(conversation_id, role_id)
+        serializer = RoleSerializer(role)
+        return Response(serializer.data)
+
+    def patch(self, request, conversation_id, role_id):
+        role = self.get_role(conversation_id, role_id)
+        serializer = RoleSerializer(role, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, conversation_id, role_id):
+        role = self.get_role(conversation_id, role_id)
+        # Prevent deleting the "Channel Owner" role
+        if role.name == 'Channel Owner':
+            return Response(
+                {"detail": "Cannot delete the Channel Owner role."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        role.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class TopicListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+            members__user=request.user,
+        )
+        topics = conversation.topics.all().order_by('created_at')
+        serializer = TopicSerializer(topics, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+            members__user=request.user,
+        )
+        member = ConversationMember.objects.get(conversation=conversation, user=request.user)
+        if member.role is None or not member.role.can_create_topic:
+            raise PermissionDenied("You do not have permission to create topics.")
+
+        serializer = TopicCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        topic = serializer.save(conversation=conversation, creator=request.user)
+        output = TopicSerializer(topic)
+        return Response(output.data, status=status.HTTP_201_CREATED)
+
+
+class TopicDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_topic(self, conversation_id, topic_id):
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            type=Conversation.Type.CHANNEL,
+            members__user=self.request.user,
+        )
+        return get_object_or_404(Topic, id=topic_id, conversation=conversation)
+
+    def get(self, request, conversation_id, topic_id):
+        topic = self.get_topic(conversation_id, topic_id)
+        serializer = TopicSerializer(topic)
+        return Response(serializer.data)
+
+    def patch(self, request, conversation_id, topic_id):
+        topic = self.get_topic(conversation_id, topic_id)
+        member = ConversationMember.objects.get(conversation=topic.conversation, user=request.user)
+        if topic.creator != request.user and not (member.role and member.role.can_manage_others_topics):
+            raise PermissionDenied("You do not have permission to edit this topic.")
+
+        serializer = TopicUpdateSerializer(topic, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        topic = serializer.save()
+        return Response(TopicSerializer(topic).data)
+
+    def delete(self, request, conversation_id, topic_id):
+        topic = self.get_topic(conversation_id, topic_id)
+        member = ConversationMember.objects.get(conversation=topic.conversation, user=request.user)
+        if topic.creator != request.user and not (member.role and member.role.can_manage_others_topics):
+            raise PermissionDenied("You do not have permission to delete this topic.")
+        topic.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

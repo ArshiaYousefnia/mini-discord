@@ -2,7 +2,9 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
-from .views import ChannelMemberRoleUpdateView,ChannelMembersListView,ChannelDeleteView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
+from .views import ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelDeleteView, ChannelPublicIdView, \
+    ChannelJoinView, GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
+    ChannelRolesView, ChannelRoleDetailView, TopicListCreateView, TopicDetailView
 from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
 from .views import ChannelMyPermissionsView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
@@ -155,5 +157,24 @@ urlpatterns = [
         ChannelMyPermissionsView.as_view(),
         name="channel-my-permissions",
     ),
-    
+    path(
+        'channels/<uuid:conversation_id>/roles/',
+        ChannelRolesView.as_view(),
+        name='channel-roles',
+    ),
+    path(
+        'channels/<uuid:conversation_id>/roles/<uuid:role_id>/',
+        ChannelRoleDetailView.as_view(),
+        name='channel-role-detail',
+    ),
+    path(
+        'channels/<uuid:conversation_id>/topics/',
+        TopicListCreateView.as_view(),
+        name='topic-list-create',
+    ),
+    path(
+        'channels/<uuid:conversation_id>/topics/<uuid:topic_id>/',
+        TopicDetailView.as_view(),
+        name='topic-detail',
+    ),
 ]
