@@ -152,6 +152,19 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     }
   }, [messages.length, loading, chat?.id]);
 
+  useEffect(() => {
+    if (!chat || chat.type.toUpperCase() !== "CHANNEL") return;
+    let isMounted = true;
+    
+    getPermissions(chat.id)
+      .then(permissions => {
+        if (isMounted) setChannelPermissions(permissions);
+      })
+      .catch(console.error);
+
+    return () => { isMounted = false; };
+  }, [chat]);
+  
   const handleSendMessage = async (text: string) => {
     if (!chat) return;
     try {
@@ -442,7 +455,14 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         )}
       </div>
 
-      <MessageInput activeReplyTo={activeReplyTo} onCancelReply={() => setActiveReplyTo(null)} onSendMessage={handleSendMessage} disabled={loading} />
+      <MessageInput 
+        activeReplyTo={activeReplyTo} 
+        onCancelReply={() => setActiveReplyTo(null)} 
+        onSendMessage={handleSendMessage} 
+        disabled={loading} 
+        canSendMessages={chatType === "CHANNEL" ? (channelPermissions?.can_send_messages ?? false) : true}
+      />
+
     </div>
   );
 }
