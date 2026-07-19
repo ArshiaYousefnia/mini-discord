@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
-from .models import Conversation, ConversationMember, Message, Role, Channel
-    
+from .models import Conversation, ConversationMember, Message, Role, Channel, Topic
+
 from django.urls import reverse
 
 
@@ -300,6 +300,11 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
             can_delete_messages=True,
             can_manage_members=True,
             can_manage_roles=True,
+            can_view_invite_link=True,
+            can_edit_channel_info=True,
+            can_delete_channel=True,
+            can_create_topic=True,
+            can_manage_others_topics=True,
         )
 
         # Add creator as member with that role
@@ -317,8 +322,14 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
     owner_display_name = serializers.CharField(source="owner.display_name", read_only=True)
     avatar_url = serializers.SerializerMethodField()
     invite_link = serializers.SerializerMethodField() 
+
+
+
     is_private = serializers.BooleanField(source='channel.is_private', read_only=True)
     public_id = serializers.CharField(source='channel.public_id', read_only=True)
+
+
+
     class Meta:
         model = Conversation
         fields = [
@@ -331,10 +342,8 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
             "owner_display_name",
             "created_at",
             "invite_link",
-
             "is_private", # اضافه شد
             "public_id",  # اضافه شد
-
         ]
 
 
@@ -387,3 +396,58 @@ class ChannelMemberSerializer(serializers.ModelSerializer):
 class ChannelMemberRoleUpdateSerializer(serializers.Serializer):
     role_id = serializers.UUIDField(required=True)
 
+class RoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = [
+            'id', 'name',
+            'can_send_messages', 'can_send_media', 'can_delete_messages',
+            'can_manage_members', 'can_manage_roles',
+            'can_view_invite_link', 'can_edit_channel_info', 'can_delete_channel',
+            'can_create_topic', 'can_manage_others_topics',
+        ]
+        read_only_fields = ['id']
+
+class ChannelMessageSerializer(MessageSerializer):
+    topic_id = serializers.SerializerMethodField()
+    topic_name = serializers.SerializerMethodField()
+
+    class Meta(MessageSerializer.Meta):
+        fields = MessageSerializer.Meta.fields + ['topic_id', 'topic_name']
+
+    def get_topic_id(self, obj):
+        return str(obj.topic.id) if obj.topic else None
+
+    def get_topic_name(self, obj):
+        return obj.topic.name if obj.topic else None
+
+class TopicCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Topic
+        fields = ['name']
+
+    def validate_name(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Topic name cannot be empty.")
+        return value.strip()
+
+
+class TopicUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Topic
+        fields = ['name']
+
+    def validate_name(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Topic name cannot be empty.")
+        return value.strip()
+
+
+class TopicSerializer(serializers.ModelSerializer):
+    creator_display_name = serializers.CharField(source='creator.display_name', read_only=True)
+    creator_id = serializers.UUIDField(source='creator.id', read_only=True)
+
+    class Meta:
+        model = Topic
+        fields = ['id', 'name', 'creator_id', 'creator_display_name', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'creator_id', 'creator_display_name', 'created_at', 'updated_at']
