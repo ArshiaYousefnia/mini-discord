@@ -264,7 +264,7 @@ export default function ProfileOverlay({
                     
                     {!channelProfile.is_private && channelProfile.public_id && (
                       <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "4px", marginBottom: "0" }}>
-                        {channelProfile.public_id}
+                        @{channelProfile.public_id}
                       </p>
                     )}
                   </div>
