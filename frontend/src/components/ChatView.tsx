@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getConversationMessages, markConversationRead, sendConversationMessage, editMessage, deleteMessage } from "../services/chatService";
 import { getGroupProfile, getGroupMembers, removeGroupMember, updateGroupProfile, leaveGroup, deleteGroup } from "../services/groupService";
 import { getUserProfile } from "../services/users";
-import type { ChatListItem, Message, GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions } from "../types/chat";
+import type { ChatListItem, Message, GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
 import type { UserProfile } from "../types/user";
 
 import MessageBubble from "./MessageBubble";
@@ -11,7 +11,7 @@ import MessageSearchPanel from "./MessageSearchPanel";
 import ConfirmModal from "./ConfirmModal";
 import ChatHeader from "./ChatHeader";
 import ProfileOverlay from "./ProfileOverlay";
-import { getChannelProfile, getPermissions, updateChannel, deleteChannel } from "../services/channelService";
+import { getChannelProfile, getPermissions, updateChannel, deleteChannel, getChannelMembers} from "../services/channelService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -47,6 +47,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const [showSearch, setShowSearch] = useState(false);
   const [channelProfile, setChannelProfile] = useState<ChannelProfile | null>(null);
   const [channelPermissions, setChannelPermissions] = useState<ChannelPermissions | null>(null);
+  const [channelMembers, setChannelMembers] = useState<ChannelMembers | null>(null); // Added state
 
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -80,6 +81,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     setShowSearch(false);
     setChannelProfile(null);
     setChannelPermissions(null);
+    setChannelMembers(null);
 
     const loadMessages = async () => {
       try {
@@ -237,6 +239,12 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
           ]);
           setChannelProfile(profileData);
           setChannelPermissions(permissionsData);
+
+          // Added logic: Fetch members if user is owner or has manage_members permission
+          if (permissionsData.is_owner || permissionsData.can_manage_members) {
+             const membersData = await getChannelMembers(chat.id);
+             setChannelMembers(membersData);
+          }
         } catch (err) {
           console.error("Failed to load channel details", err);
         } finally {
@@ -439,6 +447,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         groupProfile={groupProfile}
         channelProfile={channelProfile}
         channelPermissions={channelPermissions}
+        channelMembers={channelMembers}
         groupMembers={groupMembers}
         userProfile={userProfile}
         chatAvatar={chat.avatar}

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions } from "../types/chat";
+import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
 import type { UserProfile } from "../types/user";
 import { formatJoinLink } from "../utils/linkFormat";
 
@@ -11,6 +11,7 @@ interface ProfileOverlayProps {
   groupProfile: GroupProfile | null;
   channelProfile?: ChannelProfile | null;
   channelPermissions?: ChannelPermissions | null;
+  channelMembers?: ChannelMembers | null;
   groupMembers: GroupMembers | null;
   userProfile: UserProfile | null;
   chatAvatar: string;
@@ -25,7 +26,7 @@ interface ProfileOverlayProps {
   onLeaveGroupRequest: () => void;
   onDeleteGroupRequest: () => void;
   onLeaveChannelRequest?: () => void; 
-  onDeleteChannelRequest?: () => void; // Added for channel delete story
+  onDeleteChannelRequest?: () => void;
 }
 
 export default function ProfileOverlay({
@@ -51,6 +52,7 @@ export default function ProfileOverlay({
   onDeleteChannelRequest,
   channelProfile,
   channelPermissions,
+  channelMembers,
 }: ProfileOverlayProps) {
   // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -234,6 +236,31 @@ export default function ProfileOverlay({
                     </div>
                   </div>
                 )}
+
+                {/* --- Added Channel Members Section --- */}
+                {channelMembers && channelMembers.length > 0 && (
+                  <div className="group-members-section">
+                    <h4>Members</h4>
+                    <div className="members-list">
+                      {channelMembers.map((member) => (
+                        <div 
+                          key={member.user_id} 
+                          className="member-row group" 
+                          onClick={() => onUserClick && onUserClick(member.user_id)}
+                        >
+                          <div className="member-avatar-wrapper">
+                            <img src={member.avatar_url || "/default-avatar.svg"} alt={member.display_name} />
+                          </div>
+                          <span className="member-name flex-1">{member.display_name}</span>
+                          <span className="badge mr-2" style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}>
+                            {member.role_name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* --- End Added Channel Members Section --- */}
 
                 {/* Updated Danger Zone for Channel */}
                 <div className="group-danger-zone" style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
