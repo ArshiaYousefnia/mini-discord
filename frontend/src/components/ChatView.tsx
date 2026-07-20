@@ -11,7 +11,7 @@ import MessageSearchPanel from "./MessageSearchPanel";
 import ConfirmModal from "./ConfirmModal";
 import ChatHeader from "./ChatHeader";
 import ProfileOverlay from "./ProfileOverlay";
-import { getChannelProfile, getPermissions, updateChannel } from "../services/channelService";
+import { getChannelProfile, getPermissions, updateChannel, deleteChannel } from "../services/channelService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -42,6 +42,8 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState(false);
   const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
+  const [showDeleteChannelConfirm, setShowDeleteChannelConfirm] = useState(false);
+  const [deleteChannelLoading, setDeleteChannelLoading] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [channelProfile, setChannelProfile] = useState<ChannelProfile | null>(null);
   const [channelPermissions, setChannelPermissions] = useState<ChannelPermissions | null>(null);
@@ -73,6 +75,8 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     setProfileViewType(null);
     setShowLeaveConfirm(false);
     setShowDeleteGroupConfirm(false);
+    setShowLeaveChannelConfirm(false);
+    setShowDeleteChannelConfirm(false);
     setShowSearch(false);
     setChannelProfile(null);
     setChannelPermissions(null);
@@ -259,13 +263,12 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const handleSaveChannelEdit = async (name: string, desc: string, avatar: File | null) => {
     if (!chat) return;
     try {
-      // Note: Make sure updateChannelProfile is imported from your channelService
       const updatedProfile = await updateChannel(chat.id, { name, description: desc, avatar});
       setChannelProfile(updatedProfile);
       setLocalChatInfo({ name: updatedProfile.name, avatar: updatedProfile.avatar_url || chat.avatar });
     } catch (error) {
       console.error("Failed to update channel:", error);
-      throw error; // Throw so ProfileOverlay's try/catch can see the failure
+      throw error; 
     }
   };
 
@@ -293,11 +296,10 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     if (!chat) return;
     try {
       setLeaveLoading(true); 
-      // Replace leaveChannel with leaveGroup if your backend uses the exact same endpoint for both
       await leaveGroup(chat.id); 
       setShowLeaveChannelConfirm(false); 
       setShowProfile(false); 
-      onGroupExit?.(chat.id); // Reusing onGroupExit to remove it from the sidebar list
+      onGroupExit?.(chat.id); 
     } catch (error) { 
       console.error("Failed to leave channel:", error); 
       alert("Failed to leave the channel."); 
@@ -314,6 +316,22 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
       setShowDeleteGroupConfirm(false); setShowProfile(false); onGroupExit?.(chat.id);
     } catch (error) { console.error("Failed to delete group:", error); alert("Failed to delete the group."); } 
     finally { setDeleteGroupLoading(false); }
+  };
+
+  const handleDeleteChannel = async () => {
+    if (!chat) return;
+    try {
+      setDeleteChannelLoading(true); 
+      await deleteChannel(chat.id);
+      setShowDeleteChannelConfirm(false); 
+      setShowProfile(false); 
+      onGroupExit?.(chat.id);
+    } catch (error) { 
+      console.error("Failed to delete channel:", error); 
+      alert("Failed to delete the channel."); 
+    } finally { 
+      setDeleteChannelLoading(false); 
+    }
   };
 
   const scrollToMessage = async (targetMessage: Message) => {
@@ -389,6 +407,17 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onConfirm={handleLeaveChannel}
         onCancel={() => setShowLeaveChannelConfirm(false)}
       />
+      
+      <ConfirmModal
+        isOpen={showDeleteChannelConfirm}
+        title="Delete Channel"
+        message="This will permanently delete this channel and all its messages and media for every member. This action cannot be undone."
+        confirmText={deleteChannelLoading ? "Deleting..." : "Delete Channel"}
+        isLoading={deleteChannelLoading}
+        isDanger={true}
+        onConfirm={handleDeleteChannel}
+        onCancel={() => setShowDeleteChannelConfirm(false)}
+      />
 
 
       <ChatHeader
@@ -424,6 +453,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onLeaveGroupRequest={() => setShowLeaveConfirm(true)}
         onDeleteGroupRequest={() => setShowDeleteGroupConfirm(true)}
         onLeaveChannelRequest={() => setShowLeaveChannelConfirm(true)}
+        onDeleteChannelRequest={() => setShowDeleteChannelConfirm(true)}
       />
 
 
@@ -466,4 +496,3 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     </div>
   );
 }
-

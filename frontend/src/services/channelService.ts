@@ -71,3 +71,7 @@ export const joinChannelByInviteLink = async (token: string): Promise<any> => {
   const response = await api.post(`/api/chat/channels/join/${token}/`);
   return response.data;
 };
+
+export const deleteChannel = async (id: string): Promise<void> => {
+  await api.delete(`api/chat/channels/${id}/delete/`);
+}
