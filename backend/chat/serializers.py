@@ -303,10 +303,8 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
             can_view_invite_link=True,
             can_edit_channel_info=True,
             can_delete_channel=True,
-
             can_create_topic=True,
             can_manage_others_topics=True,
-
         )
 
         # Add creator as member with that role
