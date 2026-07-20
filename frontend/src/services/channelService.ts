@@ -81,3 +81,8 @@ export async function getChannelMembers(id: string): Promise<ChannelMembers> {
   const response = await api.get(`/api/chat/channels/${id}/members/`);
   return response.data;
 }
+
+// Add this to your exported functions in channelService.ts
+export const removeChannelMember = async (channelId: string, userId: string): Promise<void> => {
+  await api.delete(`/api/chat/channels/${channelId}/members/${userId}/`);
+};
