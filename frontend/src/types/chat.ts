@@ -131,7 +131,7 @@ export type ChannelPermissions = {
     can_view_invite_link: boolean;
     can_delete_channel: boolean;
     can_create_topic: boolean;
-    can_manage_others_topic: boolean;
+    can_manage_others_topics: boolean;
 }
 
 export type ChannelProfile = {
