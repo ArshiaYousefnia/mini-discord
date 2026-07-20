@@ -1,4 +1,5 @@
 import type {
+  ChannelMembers,
   ChannelPermissions,
   ChannelProfile,
   CreateChannelRequest,
@@ -74,4 +75,9 @@ export const joinChannelByInviteLink = async (token: string): Promise<any> => {
 
 export const deleteChannel = async (id: string): Promise<void> => {
   await api.delete(`api/chat/channels/${id}/delete/`);
+}
+
+export async function getChannelMembers(id: string): Promise<ChannelMembers> {
+  const response = await api.get(`/api/chat/channels/${id}/members/`);
+  return response.data;
 }

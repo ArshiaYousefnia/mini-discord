@@ -145,3 +145,15 @@ export type ChannelProfile = {
   is_private: boolean;        
   public_id: string | null;
 }
+
+export type ChannelMember = {
+  id: string;
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  role_name: string;
+};
+
+export type ChannelMembers = ChannelMember[];
+
