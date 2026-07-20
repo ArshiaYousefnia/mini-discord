@@ -99,3 +99,40 @@ export const createChannelRole = async (channelId: string, name: string): Promis
   const response = await api.post(`/api/chat/channels/${channelId}/roles/`, { name });
   return response.data;
 };
+
+
+export interface RolePermissions {
+  can_send_messages: boolean;
+  can_send_media: boolean;
+  can_delete_messages: boolean;
+  can_manage_members: boolean;
+  can_manage_roles: boolean;
+  can_view_invite_link: boolean;
+  can_edit_channel_info: boolean;
+  can_delete_channel: boolean;
+  can_create_topic: boolean;
+  can_manage_others_topics: boolean;
+}
+
+export interface ChannelRole extends RolePermissions {
+  id: string;
+  name: string;
+}
+
+// Update an existing role (permissions or name)
+export const updateChannelRole = async (
+  channelId: string, 
+  roleId: string, 
+  data: Partial<ChannelRole>
+): Promise<ChannelRole> => {
+  const response = await api.patch(`/api/chat/channels/${channelId}/roles/${roleId}/`, data);
+  return response.data;
+};
+
+// Delete a custom role
+export const deleteChannelRole = async (
+  channelId: string, 
+  roleId: string
+): Promise<void> => {
+  await api.delete(`/api/chat/channels/${channelId}/roles/${roleId}/`);
+};

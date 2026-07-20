@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
 import type { UserProfile } from "../types/user";
 import { formatJoinLink } from "../utils/linkFormat";
+import RoleManagement from "./RoleManagement";
 
 interface ProfileOverlayProps {
   show: boolean;
@@ -12,7 +13,7 @@ interface ProfileOverlayProps {
   channelProfile?: ChannelProfile | null;
   channelPermissions?: ChannelPermissions | null;
   channelMembers?: ChannelMembers | null;
-  channelRoles?: any[]; // <-- Added for Role Management
+  channelRoles?: any[] | null;
   groupMembers: GroupMembers | null;
   userProfile: UserProfile | null;
   chatAvatar: string;
@@ -25,11 +26,12 @@ interface ProfileOverlayProps {
   onUserClick: (userId: string) => void;
   onRemoveMember: (member: any) => void;
   onRemoveChannelMember?: (member: any) => void;
-  onCreateRole?: (name: string) => Promise<void>; // <-- Added for Role Management
+  onCreateRole?: (name: string) => Promise<void>; 
   onLeaveGroupRequest: () => void;
   onDeleteGroupRequest: () => void;
   onLeaveChannelRequest?: () => void; 
   onDeleteChannelRequest?: () => void;
+  
 }
 
 export default function ProfileOverlay({
@@ -58,7 +60,8 @@ export default function ProfileOverlay({
   channelProfile,
   channelPermissions,
   channelMembers,
-  channelRoles,
+  channelRoles
+  
 }: ProfileOverlayProps) {
   // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -353,17 +356,12 @@ export default function ProfileOverlay({
                   </button>
                 </div>
 
-                <div className="roles-list">
-                  {channelRoles && Array.isArray(channelRoles) &&channelRoles.length > 0 ? (
-                    channelRoles.map((role) => (
-                      <div key={role.id} className="role-row">
-                        <span className="role-name">{role.name}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="no-roles-msg">No custom roles created yet.</p>
-                  )}
-                </div>
+                {/* Render the RoleManagement Component */}
+                <RoleManagement 
+                  channelId={channelProfile.id} 
+                  roles={channelRoles || []} 
+                  isOwner={isCurrentUserOwner} 
+                />
               </div>
             )}
           </div>
