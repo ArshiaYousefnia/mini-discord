@@ -11,7 +11,7 @@ import MessageSearchPanel from "./MessageSearchPanel";
 import ConfirmModal from "./ConfirmModal";
 import ChatHeader from "./ChatHeader";
 import ProfileOverlay from "./ProfileOverlay";
-import { getChannelProfile, getPermissions, updateChannel, deleteChannel, getChannelMembers} from "../services/channelService";
+import { getChannelProfile, getPermissions, updateChannel, deleteChannel, getChannelMembers, removeChannelMember} from "../services/channelService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -47,7 +47,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const [showSearch, setShowSearch] = useState(false);
   const [channelProfile, setChannelProfile] = useState<ChannelProfile | null>(null);
   const [channelPermissions, setChannelPermissions] = useState<ChannelPermissions | null>(null);
-  const [channelMembers, setChannelMembers] = useState<ChannelMembers | null>(null); // Added state
+  const [channelMembers, setChannelMembers] = useState<ChannelMembers | null>(null);
 
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -116,7 +116,6 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   }, [chat]);
 
 
-  // Polling loops remained exactly the same...
   useEffect(() => {
     if (!chat || chat.type.toUpperCase() !== "GROUP") return;
     let isMounted = true;
@@ -240,7 +239,6 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
           setChannelProfile(profileData);
           setChannelPermissions(permissionsData);
 
-          // Added logic: Fetch members if user is owner or has manage_members permission
           if (permissionsData.is_owner || permissionsData.can_manage_members) {
              const membersData = await getChannelMembers(chat.id);
              setChannelMembers(membersData);
@@ -253,8 +251,6 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
       }
     }
   };
-
-
 
   const handleSaveGroupEdit = async (name: string, desc: string, avatar: File | null) => {
     if (!chat) return;
@@ -280,7 +276,6 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     }
   };
 
-
   const confirmRemoveMember = async () => {
     if (!chat || !memberToRemove) return;
     try {
@@ -289,6 +284,24 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
       setGroupProfile(prev => prev ? { ...prev, member_count: Number(prev.member_count) - 1 } : null);
       setMemberToRemove(null);
     } catch (error) { console.error("Failed to remove member:", error); alert("Failed to remove group member."); }
+  };
+
+  const handleRemoveChannelMember = async (member: any) => {
+    if (!chat) return;
+    
+    const isConfirmed = window.confirm(`Are you sure you want to remove ${member.display_name} from the channel?`);
+    if (!isConfirmed) return;
+  
+    try {
+      await removeChannelMember(chat.id, member.user_id);
+      
+      if (channelMembers) {
+        setChannelMembers(channelMembers.filter((m) => m.user_id !== member.user_id));
+      }
+    } catch (error) {
+      console.error("Failed to remove channel member:", error);
+      alert("Failed to remove member. You might not have the correct permissions.");
+    }
   };
 
   const handleLeaveGroup = async () => {
@@ -316,7 +329,6 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     }
   };
 
-
   const handleDeleteGroup = async () => {
     if (!chat) return;
     try {
@@ -341,6 +353,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
       setDeleteChannelLoading(false); 
     }
   };
+
 
   const scrollToMessage = async (targetMessage: Message) => {
     if (!chat) return;
@@ -459,6 +472,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onSaveChannelEdit={handleSaveChannelEdit}
         onUserClick={handleUserClick}
         onRemoveMember={setMemberToRemove}
+        onRemoveChannelMember={handleRemoveChannelMember}
         onLeaveGroupRequest={() => setShowLeaveConfirm(true)}
         onDeleteGroupRequest={() => setShowDeleteGroupConfirm(true)}
         onLeaveChannelRequest={() => setShowLeaveChannelConfirm(true)}

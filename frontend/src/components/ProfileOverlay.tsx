@@ -23,6 +23,7 @@ interface ProfileOverlayProps {
   onSaveChannelEdit?: (name: string, desc: string, avatar: File | null) => Promise<void>;
   onUserClick: (userId: string) => void;
   onRemoveMember: (member: any) => void;
+  onRemoveChannelMember?: (member: any) => void;
   onLeaveGroupRequest: () => void;
   onDeleteGroupRequest: () => void;
   onLeaveChannelRequest?: () => void; 
@@ -46,6 +47,7 @@ export default function ProfileOverlay({
   onSaveChannelEdit,
   onUserClick,
   onRemoveMember,
+  onRemoveChannelMember,
   onLeaveGroupRequest,
   onDeleteGroupRequest,
   onLeaveChannelRequest,
@@ -255,6 +257,19 @@ export default function ProfileOverlay({
                           <span className="badge mr-2" style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}>
                             {member.role_name}
                           </span>
+                          
+                          {/* Channel Remove Member Button */}
+                          {channelPermissions?.can_manage_members && String(member.user_id) !== String(currentUserId) && onRemoveChannelMember && (
+                            <button 
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                onRemoveChannelMember(member); 
+                              }} 
+                              className="remove-member-btn"
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
