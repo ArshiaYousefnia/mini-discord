@@ -11,7 +11,7 @@ import MessageSearchPanel from "./MessageSearchPanel";
 import ConfirmModal from "./ConfirmModal";
 import ChatHeader from "./ChatHeader";
 import ProfileOverlay from "./ProfileOverlay";
-import { getChannelProfile, getPermissions, updateChannel, deleteChannel, getChannelMembers, removeChannelMember} from "../services/channelService";
+import { getChannelProfile, getPermissions, updateChannel, deleteChannel, getChannelMembers, removeChannelMember, getChannelRoles, createChannelRole } from "../services/channelService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -45,10 +45,11 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const [showDeleteChannelConfirm, setShowDeleteChannelConfirm] = useState(false);
   const [deleteChannelLoading, setDeleteChannelLoading] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  
   const [channelProfile, setChannelProfile] = useState<ChannelProfile | null>(null);
   const [channelPermissions, setChannelPermissions] = useState<ChannelPermissions | null>(null);
   const [channelMembers, setChannelMembers] = useState<ChannelMembers | null>(null);
-
+  const [channelRoles, setChannelRoles] = useState<any[] | null>(null); // Added for roles
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
@@ -57,7 +58,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
 
   const currentUserId = localStorage.getItem("Id");
   const currentUsername = localStorage.getItem("username");
-  const isCurrentUserOwner = String(groupProfile?.owner_id) === String(currentUserId);
+  const isCurrentUserOwner = String(groupProfile?.owner_id) === String(currentUserId) || (chat?.type.toUpperCase() === "CHANNEL" && channelPermissions?.is_owner === true);
 
   useEffect(() => {
     if (chat) setLocalChatInfo({ name: chat.name, avatar: chat.avatar });
@@ -68,6 +69,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
       setMessages([]);
       setChannelProfile(null);
       setChannelPermissions(null);
+      setChannelRoles(null);
       return;
     }
 
@@ -82,6 +84,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     setChannelProfile(null);
     setChannelPermissions(null);
     setChannelMembers(null);
+    setChannelRoles(null); // Reset roles on chat change
 
     const loadMessages = async () => {
       try {
@@ -114,7 +117,6 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
       isMounted = false;
     };
   }, [chat]);
-
 
   useEffect(() => {
     if (!chat || chat.type.toUpperCase() !== "GROUP") return;
@@ -243,6 +245,13 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
              const membersData = await getChannelMembers(chat.id);
              setChannelMembers(membersData);
           }
+
+          // Fetch roles if user is the channel owner
+          if (permissionsData.is_owner) {
+             const rolesData = await getChannelRoles(chat.id);
+             setChannelRoles(rolesData);
+          }
+
         } catch (err) {
           console.error("Failed to load channel details", err);
         } finally {
@@ -301,6 +310,17 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     } catch (error) {
       console.error("Failed to remove channel member:", error);
       alert("Failed to remove member. You might not have the correct permissions.");
+    }
+  };
+
+  const handleCreateRole = async (name: string) => {
+    if (!chat) return;
+    try {
+      const newRole = await createChannelRole(chat.id, name);
+      setChannelRoles(prev => prev ? [...prev, newRole] : [newRole]);
+    } catch (error) {
+      console.error("Failed to create role:", error);
+      throw error;
     }
   };
 
@@ -461,6 +481,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         channelProfile={channelProfile}
         channelPermissions={channelPermissions}
         channelMembers={channelMembers}
+        channelRoles={channelRoles || undefined}
         groupMembers={groupMembers}
         userProfile={userProfile}
         chatAvatar={chat.avatar}
@@ -473,6 +494,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onUserClick={handleUserClick}
         onRemoveMember={setMemberToRemove}
         onRemoveChannelMember={handleRemoveChannelMember}
+        onCreateRole={handleCreateRole}
         onLeaveGroupRequest={() => setShowLeaveConfirm(true)}
         onDeleteGroupRequest={() => setShowDeleteGroupConfirm(true)}
         onLeaveChannelRequest={() => setShowLeaveChannelConfirm(true)}

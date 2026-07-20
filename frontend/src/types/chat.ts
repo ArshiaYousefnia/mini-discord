@@ -130,6 +130,8 @@ export type ChannelPermissions = {
     can_edit_channel_info: boolean;
     can_view_invite_link: boolean;
     can_delete_channel: boolean;
+    //can_create_topic: boolean;
+    //can_manage_others_topic: boolean;
 }
 
 export type ChannelProfile = {

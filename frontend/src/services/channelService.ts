@@ -86,3 +86,16 @@ export async function getChannelMembers(id: string): Promise<ChannelMembers> {
 export const removeChannelMember = async (channelId: string, userId: string): Promise<void> => {
   await api.delete(`/api/chat/channels/${channelId}/members/${userId}/`);
 };
+
+
+// Fetch all roles for a specific channel
+export const getChannelRoles = async (channelId: string): Promise<any[]> => {
+  const response = await api.get(`/channels/${channelId}/roles/`);
+  return response.data;
+};
+
+// Create a new custom role
+export const createChannelRole = async (channelId: string, name: string): Promise<any> => {
+  const response = await api.post(`/channels/${channelId}/roles/`, { name });
+  return response.data;
+};

@@ -1114,3 +1114,109 @@
   cursor: not-allowed;
 }
 
+/* ==========================================
+   PROFILE TABS & ROLES (CHANNEL OWNER)
+   ========================================== */
+.profile-tabs {
+  display: flex;
+  width: 100%;
+  border-bottom: 1px solid var(--md-sys-color-outline);
+  margin-bottom: 24px;
+}
+
+.profile-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--md-sys-color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.profile-tab-btn:hover {
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-text-primary);
+}
+
+.profile-tab-btn.active {
+  color: var(--md-sys-color-primary);
+  border-bottom-color: var(--md-sys-color-primary);
+}
+
+/* Roles Section */
+.roles-management-section {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.create-role-wrapper {
+  display: flex;
+  gap: 8px;
+}
+
+.create-role-wrapper .edit-input {
+  flex: 1;
+}
+
+.create-role-btn {
+  background: var(--md-sys-color-primary);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.create-role-btn:hover:not(:disabled) {
+  background: var(--md-sys-color-on-primary-container);
+}
+
+.create-role-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.roles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--md-sys-color-outline);
+  background: var(--md-sys-color-surface-variant);
+  padding: 8px;
+}
+
+.role-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--md-sys-color-surface);
+  border-radius: 6px;
+  box-shadow: var(--md-elevation-1);
+}
+
+.role-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--md-sys-color-text-primary);
+}
+
+.no-roles-msg {
+  text-align: center;
+  color: var(--md-sys-color-text-tertiary);
+  font-size: 13px;
+  padding: 16px 0;
+}
