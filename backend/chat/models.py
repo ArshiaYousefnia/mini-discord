@@ -79,6 +79,9 @@ class Role(models.Model):
     can_create_topic = models.BooleanField(default=False)
     can_manage_others_topics = models.BooleanField(default=False)
 
+    # added this:
+    can_delete_channel = models.BooleanField(default=False)
+
     def __str__(self):
         return f"{self.name} ({self.conversation_id})"
 

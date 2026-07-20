@@ -24,7 +24,8 @@ interface ProfileOverlayProps {
   onRemoveMember: (member: any) => void;
   onLeaveGroupRequest: () => void;
   onDeleteGroupRequest: () => void;
-  onLeaveChannelRequest?: () => void; // Added for channel leave story
+  onLeaveChannelRequest?: () => void; 
+  onDeleteChannelRequest?: () => void; // Added for channel delete story
 }
 
 export default function ProfileOverlay({
@@ -47,6 +48,7 @@ export default function ProfileOverlay({
   onLeaveGroupRequest,
   onDeleteGroupRequest,
   onLeaveChannelRequest,
+  onDeleteChannelRequest,
   channelProfile,
   channelPermissions,
 }: ProfileOverlayProps) {
@@ -223,7 +225,6 @@ export default function ProfileOverlay({
                   <p>Created at: {new Date(channelProfile.created_at).toLocaleDateString()}</p>
                 </div>
 
-                {/* Updated Channel Invite Link Section */}
                 {channelProfile.invite_link && channelPermissions?.can_edit_channel_info && (
                   <div className="invite-link-section">
                     <h4>Invite Link</h4>
@@ -234,10 +235,13 @@ export default function ProfileOverlay({
                   </div>
                 )}
 
-                {/* Added Channel Danger Zone for Leaving */}
+                {/* Updated Danger Zone for Channel */}
                 <div className="group-danger-zone" style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
                   {!isCurrentUserOwner && onLeaveChannelRequest && (
                     <button type="button" onClick={onLeaveChannelRequest} className="leave-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Leave Channel</button>
+                  )}
+                  {channelPermissions?.can_delete_channel && onDeleteChannelRequest && (
+                    <button type="button" onClick={onDeleteChannelRequest} className="delete-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontWeight: 600 }}>Delete Channel</button>
                   )}
                 </div>
               </>
@@ -245,7 +249,6 @@ export default function ProfileOverlay({
           </div>
         ) : profileViewType === "group" && groupProfile ? (
           <div className="group-profile-card">
-            {/* Group view remains unchanged from previous step */}
             {isEditingGroup ? (
               <div className="edit-group-form">
                 <div className="edit-avatar-section">
