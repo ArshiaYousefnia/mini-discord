@@ -692,7 +692,8 @@ class ChannelJoinView(APIView):
                 'can_manage_members': False,
                 'can_manage_roles': False,
                 'can_view_invite_link':False,    
-                'can_edit_channel_info':False
+                'can_edit_channel_info':False,
+                'can_delete_channel':False,
             }
         )
 
@@ -1005,7 +1006,8 @@ class ChannelDeleteView(APIView):
             )
 
         is_owner = (conversation.owner == request.user)
-        can_delete = membership.role and membership.role.can_manage_roles
+        can_delete = membership.role and (membership.role.can_delete_channel or membership.role.can_manage_roles)
+
         if not (is_owner or can_delete):
             return Response(
                 {"detail": "You do not have permission to delete this channel."},
@@ -1029,6 +1031,7 @@ class ChannelMyPermissionsView(APIView):
         )
 
         permissions = {
+            "is_owner": False,
             "can_send_messages": False,
             "can_send_media": False,
             "can_delete_messages": False,
@@ -1036,9 +1039,9 @@ class ChannelMyPermissionsView(APIView):
             "can_manage_roles": False,
             "can_view_invite_link": False,
             "can_edit_channel_info": False,
-            'can_view_invite_link':True,    
-            'can_edit_channel_info':True
-
+            "can_delete_channel": False,
+            "can_create_topic": False,
+            "can_manage_others_topics": False,
         }
 
         if conversation.owner == request.user:
@@ -1054,6 +1057,7 @@ class ChannelMyPermissionsView(APIView):
             
             if member.role:
                 permissions = {
+                    "is_owner": False,
                     "can_send_messages": member.role.can_send_messages,
                     "can_send_media": member.role.can_send_media,
                     "can_delete_messages": member.role.can_delete_messages,
@@ -1061,6 +1065,9 @@ class ChannelMyPermissionsView(APIView):
                     "can_manage_roles": member.role.can_manage_roles,
                     "can_view_invite_link": member.role.can_view_invite_link,
                     "can_edit_channel_info": member.role.can_edit_channel_info,
+                    "can_delete_channel": member.role.can_delete_channel,
+                    "can_create_topic": member.role.can_create_topic,
+                    "can_manage_others_topics": member.role.can_manage_others_topics,
                 }
             
             return Response(permissions, status=status.HTTP_200_OK)
