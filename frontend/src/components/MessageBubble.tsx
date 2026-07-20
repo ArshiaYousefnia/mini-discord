@@ -12,6 +12,7 @@ type Props = {
   isGroupOwner?: boolean;
   isGroupChat?: boolean;
   senderAvatarUrl?: string;
+  canReply?: boolean;
   onReply: (message: Message) => void;
   onEdit: (messageId: string, newText: string) => Promise<void>;
   onDelete: (messageId: string) => Promise<void>;
@@ -29,6 +30,7 @@ export default function MessageBubble({
   isGroupOwner = false,
   isGroupChat = false,
   senderAvatarUrl,
+  canReply = true,
   onReply,
   onEdit,
   onDelete,
@@ -345,13 +347,15 @@ export default function MessageBubble({
     >
       {!isEditing && !message.is_deleted && (
         <div className="message-actions">
-          <button
-            className="action-btn"
-            onClick={() => onReply(message)}
-            type="button"
-          >
-            Reply
-          </button>
+          {canReply && (
+            <button
+              className="action-btn"
+              onClick={() => onReply(message)}
+              type="button"
+            >
+              Reply
+            </button>
+          )}
 
           {isMe && (
             <button
