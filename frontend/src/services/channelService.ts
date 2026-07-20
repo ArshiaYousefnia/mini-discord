@@ -90,12 +90,12 @@ export const removeChannelMember = async (channelId: string, userId: string): Pr
 
 // Fetch all roles for a specific channel
 export const getChannelRoles = async (channelId: string): Promise<any[]> => {
-  const response = await api.get(`/channels/${channelId}/roles/`);
+  const response = await api.get(`/api/chat/channels/${channelId}/roles/`);
   return response.data;
 };
 
 // Create a new custom role
 export const createChannelRole = async (channelId: string, name: string): Promise<any> => {
-  const response = await api.post(`/channels/${channelId}/roles/`, { name });
+  const response = await api.post(`/api/chat/channels/${channelId}/roles/`, { name });
   return response.data;
 };
