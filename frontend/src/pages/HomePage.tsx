@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom"; // <-- 1. Import useSearchParams
+import { useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
 import {
@@ -34,7 +34,6 @@ export default function HomePage() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [currentUsername, setCurrentUsername] = useState("");
   
-  // <-- 2. Initialize search params
   const [searchParams, setSearchParams] = useSearchParams(); 
 
   useEffect(() => {
@@ -44,10 +43,13 @@ export default function HomePage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const loadChats = async () => {
+  // NEW: Added isBackgroundRefresh parameter to prevent UI flickering on polls
+  const loadChats = async (isBackgroundRefresh = false, targetGroupId?: string) => {
     try {
-      setLoading(true);
-      setPageError("");
+      if (!isBackgroundRefresh) {
+        setLoading(true);
+        setPageError("");
+      }
 
       const conversations: Conversation[] = await getConversations();
 
@@ -63,38 +65,82 @@ export default function HomePage() {
 
       let sorted = sortChatsByRecent(mappedChats);
 
-      // <-- 3. Check URL for a specific chat to auto-select
+      // Prioritize the directly passed targetGroupId, fallback to URL parameter
       const chatIdFromUrl = searchParams.get("chat");
+      const idToSelect = targetGroupId || chatIdFromUrl;
       
-      if (chatIdFromUrl) {
-        const chatToSelect = sorted.find((c) => c.id === chatIdFromUrl);
+      if (idToSelect) {
+        const chatToSelect = sorted.find((c) => c.id === idToSelect);
         
         if (chatToSelect) {
           const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
-          setSelectedChat(readChat);
           
-          // Apply read status to the list item too
+          // Auto-select if it's the initial load OR if an explicit targetGroupId was provided
+          if (!isBackgroundRefresh || targetGroupId) {
+            setSelectedChat(readChat);
+          }
+          
           sorted = sorted.map((c) =>
-            c.id === chatIdFromUrl ? readChat : c
+            c.id === idToSelect ? readChat : c
           );
 
-          // Clean up the URL parameter quietly so refreshing doesn't force re-selection
-          searchParams.delete("chat");
-          setSearchParams(searchParams, { replace: true });
+          // Only delete the URL parameter if we actually used it
+          if (!targetGroupId && chatIdFromUrl) {
+            searchParams.delete("chat");
+            setSearchParams(searchParams, { replace: true });
+          }
         }
       }
 
+      // If a chat is already selected, make sure we update it with new backend data (like a new avatar/name)
+      // If a chat is already selected, make sure we update it with new backend data
+      // Inside your loadChats or fetchConversations function:
+      if (selectedChat) {
+        // Check if the currently open chat still exists in the fresh data from the backend
+        const updatedSelectedChat = sorted.find(c => c.id === selectedChat.id);
+        
+        if (!updatedSelectedChat) {
+          // The chat was deleted or the user was kicked out.
+          // This will unmount ChatView and show the blank "Select a chat" screen.
+          setSelectedChat(null);
+          
+          // Also clear the URL parameter so it doesn't try to reload it on refresh
+          if (searchParams.get("chat") === selectedChat.id) {
+            searchParams.delete("chat");
+            setSearchParams(searchParams, { replace: true });
+          }
+        } else if (
+          updatedSelectedChat.name !== selectedChat.name || 
+          updatedSelectedChat.avatar !== selectedChat.avatar
+        ) {
+          // Update name/avatar if they changed
+          setSelectedChat({ ...updatedSelectedChat, unreadCount: selectedChat.unreadCount });
+        }
+      }
+
+// Update the sidebar items
+setChatItems(sorted);
+
+
+      setChatItems(sorted);
+
+
       setChatItems(sorted);
     } catch (err) {
-      setPageError("Failed to fetch conversations.");
+      if (!isBackgroundRefresh) {
+        setPageError("Failed to fetch conversations.");
+      }
     } finally {
-      setLoading(false);
+      if (!isBackgroundRefresh) {
+        setLoading(false);
+      }
     }
   };
 
+
   useEffect(() => {
-    loadChats();
-  }, []); // Note: leaving dependency array empty so it runs once on mount
+    loadChats(); // Initial load
+  }, []); 
 
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
@@ -141,6 +187,8 @@ export default function HomePage() {
           onSelectChat={handleSelectChat}
           currentUsername={currentUsername}
           onStartDirectMessage={handleStartDirectMessage}
+          // NEW: Pass the loadChats function, specifically tagging it as a background refresh
+          onRefresh={() => loadChats(true)} 
         />
       )}
 
@@ -156,6 +204,12 @@ export default function HomePage() {
               isMobile={isMobile}
               onBack={() => setSelectedChat(null)}
               onGroupExit={handleGroupExit}
+              onGroupJoined={async (groupId) => {
+              // 1. Set the URL param so loadChats knows which chat to auto-select
+              setSearchParams({ chat: groupId });
+              // 2. Fetch the updated list of conversations (including the newly joined one)
+              await loadChats(false, groupId);
+            }}
             />
           )}
         </div>
