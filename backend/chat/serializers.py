@@ -257,13 +257,22 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'public_id': "Public ID is required for public channels."
                 })
-            # Check uniqueness of public_id
-            if Channel.objects.filter(public_id=public_id.strip()).exists():
+            
+            clean_public_id = public_id.strip()
+            
+            # ۱. بررسی تکراری نبودن در کانال‌ها (Case-Insensitive)
+            if Channel.objects.filter(public_id__iexact=clean_public_id).exists():
                 raise serializers.ValidationError({
-                    'public_id': "This public ID is already taken."
+                    'public_id': "This public ID is already taken by another channel."
+                })
+                
+            # ۲. بررسی تکراری نبودن در یوزرنیم کاربران (Case-Insensitive)
+            User = get_user_model()
+            if User.objects.filter(username__iexact=clean_public_id).exists():
+                raise serializers.ValidationError({
+                    'public_id': "This public ID is already taken by a user."
                 })
         else:
-            # If private, ensure public_id is null (ignore any given value)
             data['public_id'] = None
 
         return data
