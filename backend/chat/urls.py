@@ -166,7 +166,7 @@ urlpatterns = [
         ChannelPreviewView.as_view(),
         name='channel-preview'
     ),
-    
+    path(
         'channels/<uuid:conversation_id>/roles/',
         ChannelRolesView.as_view(),
         name='channel-roles',
