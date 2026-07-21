@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
-import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions } from "../types/chat";
+import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
 import type { UserProfile } from "../types/user";
+import { formatJoinLink } from "../utils/linkFormat";
+import RoleManagement from "./RoleManagement";
 
 interface ProfileOverlayProps {
   show: boolean;
@@ -10,6 +12,8 @@ interface ProfileOverlayProps {
   groupProfile: GroupProfile | null;
   channelProfile?: ChannelProfile | null;
   channelPermissions?: ChannelPermissions | null;
+  channelMembers?: ChannelMembers | null;
+  channelRoles?: any[] | null;
   groupMembers: GroupMembers | null;
   userProfile: UserProfile | null;
   chatAvatar: string;
@@ -21,8 +25,13 @@ interface ProfileOverlayProps {
   onSaveChannelEdit?: (name: string, desc: string, avatar: File | null) => Promise<void>;
   onUserClick: (userId: string) => void;
   onRemoveMember: (member: any) => void;
+  onRemoveChannelMember?: (member: any) => void;
+  onCreateRole?: (name: string) => Promise<void>; 
   onLeaveGroupRequest: () => void;
   onDeleteGroupRequest: () => void;
+  onLeaveChannelRequest?: () => void; 
+  onDeleteChannelRequest?: () => void;
+  
 }
 
 export default function ProfileOverlay({
@@ -42,10 +51,17 @@ export default function ProfileOverlay({
   onSaveChannelEdit,
   onUserClick,
   onRemoveMember,
+  onRemoveChannelMember,
+  onCreateRole,
   onLeaveGroupRequest,
   onDeleteGroupRequest,
+  onLeaveChannelRequest,
+  onDeleteChannelRequest,
   channelProfile,
   channelPermissions,
+  channelMembers,
+  channelRoles
+  
 }: ProfileOverlayProps) {
   // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -60,6 +76,11 @@ export default function ProfileOverlay({
   const [editChannelDescription, setEditChannelDescription] = useState("");
   const [editChannelAvatar, setEditChannelAvatar] = useState<File | null>(null);
   const [editChannelLoading, setEditChannelLoading] = useState(false);
+
+  // Role Management State
+  const [activeTab, setActiveTab] = useState<"info" | "roles">("info");
+  const [newRoleName, setNewRoleName] = useState("");
+  const [isCreatingRole, setIsCreatingRole] = useState(false);
 
   const [inviteCopied, setInviteCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -112,13 +133,28 @@ export default function ProfileOverlay({
     }
   };
 
+  // --- Role Management Handlers ---
+  const handleCreateRole = async () => {
+    if (!newRoleName.trim() || !onCreateRole) return;
+    setIsCreatingRole(true);
+    try {
+      await onCreateRole(newRoleName);
+      setNewRoleName(""); // Clear input on success
+    } catch (error) {
+      console.error("Failed to create role:", error);
+      alert("Failed to create role.");
+    } finally {
+      setIsCreatingRole(false);
+    }
+  };
+
   // Support both group and channel invite copying
   const handleCopyInviteLink = () => {
     let linkToCopy = "";
     if (profileViewType === "channel" && channelProfile?.invite_link) {
-      linkToCopy = channelProfile.invite_link;
+      linkToCopy = formatJoinLink(channelProfile.invite_link);
     } else if (profileViewType === "group" && groupProfile?.invite_token) {
-      linkToCopy = `http://join/${groupProfile.invite_token}`;
+      linkToCopy = `http://groups/join/${groupProfile.invite_token}`;
     }
 
     if (linkToCopy) {
@@ -148,8 +184,8 @@ export default function ProfileOverlay({
           <button className="edit-group-btn" onClick={handleStartEdit}>Edit</button>
         )}
 
-        {/* Channel Edit Button */}
-        {profileViewType === "channel" && !isEditingChannel && channelPermissions?.can_edit_channel_info && (
+        {/* Channel Edit Button - Only show if on 'info' tab */}
+        {profileViewType === "channel" && !isEditingChannel && activeTab === "info" && channelPermissions?.can_edit_channel_info && (
           <button className="edit-group-btn" onClick={handleStartChannelEdit}>Edit</button>
         )}
       </div>
@@ -159,83 +195,178 @@ export default function ProfileOverlay({
           <div className="chat-placeholder">Loading profile...</div>
         ) : profileViewType === "channel" && channelProfile ? (
           <div className="group-profile-card">
-            {isEditingChannel ? (
-              <div className="edit-group-form">
-                <div className="edit-avatar-section">
-                  <img
-                    src={editChannelAvatar ? URL.createObjectURL(editChannelAvatar) : (channelProfile.avatar_url || chatAvatar)}
-                    alt="Channel Avatar"
-                    className="group-profile-avatar-large"
-                  />
+            
+            {/* Tabs for Channel Owner */}
+            {isCurrentUserOwner && (
+              <div className="profile-tabs">
+                <button 
+                  className={`profile-tab-btn ${activeTab === "info" ? "active" : ""}`}
+                  onClick={() => setActiveTab("info")}
+                >
+                  Info
+                </button>
+                <button 
+                  className={`profile-tab-btn ${activeTab === "roles" ? "active" : ""}`}
+                  onClick={() => setActiveTab("roles")}
+                >
+                  Roles
+                </button>
+              </div>
+            )}
+
+            {activeTab === "info" ? (
+              isEditingChannel ? (
+                <div className="edit-group-form">
+                  <div className="edit-avatar-section">
+                    <img
+                      src={editChannelAvatar ? URL.createObjectURL(editChannelAvatar) : (channelProfile.avatar_url || chatAvatar)}
+                      alt="Channel Avatar"
+                      className="group-profile-avatar-large"
+                    />
+                    <input
+                      type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }}
+                      onChange={(e) => { if (e.target.files?.[0]) setEditChannelAvatar(e.target.files[0]); }}
+                    />
+                    <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>Change Avatar</button>
+                  </div>
+                  <div className="edit-field">
+                    <label>Channel Name <span style={{ color: "red" }}>*</span></label>
+                    <input type="text" value={editChannelName} onChange={(e) => setEditChannelName(e.target.value)} className="edit-input" />
+                  </div>
+                  <div className="edit-field">
+                    <label>Description</label>
+                    <textarea value={editChannelDescription} onChange={(e) => setEditChannelDescription(e.target.value)} className="edit-textarea" />
+                  </div>
+                  <div className="edit-actions">
+                    <button className="cancel-edit-btn" onClick={() => setIsEditingChannel(false)} disabled={editChannelLoading}>Cancel</button>
+                    <button className="save-edit-btn" onClick={handleSaveChannelEdit} disabled={editChannelLoading || !editChannelName.trim()}>
+                      {editChannelLoading ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <img src={channelProfile.avatar_url || chatAvatar} alt={channelProfile.name} className="group-profile-avatar-large" />
+                  
+                  <div style={{ textAlign: "center", marginBottom: "16px" }}>
+                    <h2 className="group-profile-name" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", margin: "0" }}>
+                      {channelProfile.name}
+                      {channelProfile.is_private ? (
+                        <span style={{ fontSize: "10px", backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                          Private
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: "10px", backgroundColor: "rgba(20, 83, 45, 0.5)", color: "#4ade80", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                          Public
+                        </span>
+                      )}
+                    </h2>
+                    
+                    {!channelProfile.is_private && channelProfile.public_id && (
+                      <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "4px", marginBottom: "0" }}>
+                        @{channelProfile.public_id}
+                      </p>
+                    )}
+                  </div>
+
+                  {channelProfile.description && <div className="group-profile-description">{channelProfile.description}</div>}
+
+                  <div className="group-profile-meta">
+                    <p>Created by: {channelProfile.owner_display_name}</p>
+                    <p>Created at: {new Date(channelProfile.created_at).toLocaleDateString()}</p>
+                  </div>
+
+                  {channelProfile.invite_link && channelPermissions?.can_edit_channel_info && (
+                    <div className="invite-link-section">
+                      <h4>Invite Link</h4>
+                      <div className="invite-input-wrapper">
+                        <input type="text" readOnly value={formatJoinLink(channelProfile.invite_link)} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                        <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {channelMembers && channelMembers.length > 0 && (
+                    <div className="group-members-section">
+                      <h4>Members</h4>
+                      <div className="members-list">
+                        {channelMembers.map((member) => (
+                          <div 
+                            key={member.user_id} 
+                            className="member-row group" 
+                            onClick={() => onUserClick && onUserClick(member.user_id)}
+                          >
+                            <div className="member-avatar-wrapper">
+                              <img src={member.avatar_url || "/default-avatar.svg"} alt={member.display_name} />
+                            </div>
+                            <span className="member-name flex-1">{member.display_name}</span>
+                            <span className="badge mr-2" style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}>
+                              {member.role_name}
+                            </span>
+                            
+                            {/* Channel Remove Member Button */}
+                            {channelPermissions?.can_manage_members && String(member.user_id) !== String(currentUserId) && onRemoveChannelMember && (
+                              <button 
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  onRemoveChannelMember(member); 
+                                }} 
+                                className="remove-member-btn"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Updated Danger Zone for Channel */}
+                  <div className="group-danger-zone" style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
+                    {!isCurrentUserOwner && onLeaveChannelRequest && (
+                      <button type="button" onClick={onLeaveChannelRequest} className="leave-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Leave Channel</button>
+                    )}
+                    {channelPermissions?.can_delete_channel && onDeleteChannelRequest && (
+                      <button type="button" onClick={onDeleteChannelRequest} className="delete-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontWeight: 600 }}>Delete Channel</button>
+                    )}
+                  </div>
+                </>
+              )
+            ) : (
+              /* --- NEW ROLES VIEW --- */
+              <div className="roles-management-section">
+                <h3 style={{ marginTop: 0 }}>Channel Roles</h3>
+                
+                <div className="create-role-wrapper">
                   <input
-                    type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }}
-                    onChange={(e) => { if (e.target.files?.[0]) setEditChannelAvatar(e.target.files[0]); }}
+                    type="text"
+                    value={newRoleName}
+                    onChange={(e) => setNewRoleName(e.target.value)}
+                    placeholder="New Role Name"
+                    className="edit-input"
+                    disabled={isCreatingRole}
                   />
-                  <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>Change Avatar</button>
-                </div>
-                <div className="edit-field">
-                  <label>Channel Name <span style={{ color: "red" }}>*</span></label>
-                  <input type="text" value={editChannelName} onChange={(e) => setEditChannelName(e.target.value)} className="edit-input" />
-                </div>
-                <div className="edit-field">
-                  <label>Description</label>
-                  <textarea value={editChannelDescription} onChange={(e) => setEditChannelDescription(e.target.value)} className="edit-textarea" />
-                </div>
-                <div className="edit-actions">
-                  <button className="cancel-edit-btn" onClick={() => setIsEditingChannel(false)} disabled={editChannelLoading}>Cancel</button>
-                  <button className="save-edit-btn" onClick={handleSaveChannelEdit} disabled={editChannelLoading || !editChannelName.trim()}>
-                    {editChannelLoading ? "Saving..." : "Save Changes"}
+                  <button 
+                    onClick={handleCreateRole} 
+                    className="create-role-btn"
+                    disabled={isCreatingRole || !newRoleName.trim()}
+                  >
+                    {isCreatingRole ? "Creating..." : "Create"}
                   </button>
                 </div>
+
+                {/* Render the RoleManagement Component */}
+                <RoleManagement 
+                  channelId={channelProfile.id} 
+                  roles={channelRoles || []} 
+                  isOwner={isCurrentUserOwner} 
+                />
               </div>
-            ) : (
-              <>
-                <img src={channelProfile.avatar_url || chatAvatar} alt={channelProfile.name} className="group-profile-avatar-large" />
-                
-                <div style={{ textAlign: "center", marginBottom: "16px" }}>
-                  <h2 className="group-profile-name" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", margin: "0" }}>
-                    {channelProfile.name}
-                    {channelProfile.is_private ? (
-                      <span style={{ fontSize: "10px", backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
-                        Private
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: "10px", backgroundColor: "rgba(20, 83, 45, 0.5)", color: "#4ade80", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
-                        Public
-                      </span>
-                    )}
-                  </h2>
-                  
-                  {!channelProfile.is_private && channelProfile.public_id && (
-                    <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "4px", marginBottom: "0" }}>
-                      {channelProfile.public_id}
-                    </p>
-                  )}
-                </div>
-
-                {channelProfile.description && <div className="group-profile-description">{channelProfile.description}</div>}
-
-                <div className="group-profile-meta">
-                  <p>Created by: {channelProfile.owner_display_name}</p>
-                  <p>Created at: {new Date(channelProfile.created_at).toLocaleDateString()}</p>
-                </div>
-
-                {/* Updated Channel Invite Link Section */}
-                {channelProfile.invite_link && channelPermissions?.can_edit_channel_info && (
-                  <div className="invite-link-section">
-                    <h4>Invite Link</h4>
-                    <div className="invite-input-wrapper">
-                      <input type="text" readOnly value={channelProfile.invite_link} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
-                      <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
-                    </div>
-                  </div>
-                )}
-              </>
             )}
           </div>
         ) : profileViewType === "group" && groupProfile ? (
           <div className="group-profile-card">
-            {/* Group view remains unchanged from previous step */}
             {isEditingGroup ? (
               <div className="edit-group-form">
                 <div className="edit-avatar-section">
@@ -281,7 +412,7 @@ export default function ProfileOverlay({
                   <div className="invite-link-section">
                     <h4>Invite Link</h4>
                     <div className="invite-input-wrapper">
-                      <input type="text" readOnly value={`http://join/${groupProfile.invite_token}`} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                      <input type="text" readOnly value={`http://groups/join/${groupProfile.invite_token}`} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
                       <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
                     </div>
                   </div>

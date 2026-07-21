@@ -4,9 +4,17 @@ export const validateEmail = (email: string): boolean => {
 };
 
 export const validateUsername = (username: string): boolean => {
-  const regex = /^[A-Za-z0-9]+$/;
-  return username.length >= 4 && regex.test(username);
+  // 1. Minimum length of 4
+  if (username.length < 4) return false;
+
+  // 2. Starts with a letter: ^[A-Za-z]
+  // 3. No consecutive underscores: (?!.*__)
+  // 4. Allowed characters + no trailing underscore: [A-Za-z0-9_]*[A-Za-z0-9]$
+  const regex = /^[A-Za-z](?!.*__)[A-Za-z0-9_]*[A-Za-z0-9]$/;
+  
+  return regex.test(username);
 };
+
 
 
 export const validatePassword = (password: string): boolean => {

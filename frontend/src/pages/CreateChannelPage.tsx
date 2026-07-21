@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createChannel } from "../services/channelService";
+import { validateUsername } from "../utils/validators"; // Import utility
 import "../styles/create-channel.css";
 
 export default function CreateChannelPage() {
@@ -21,8 +22,11 @@ export default function CreateChannelPage() {
     return URL.createObjectURL(avatar);
   }, [avatar]);
 
+  // Name remains unchanged (simple non-empty check)
   const isNameValid = name.trim().length > 0;
-  const isPublicIdValid = isPrivate || publicId.trim().length > 0;
+  
+  // Public ID uses the imported validator
+  const isPublicIdValid = isPrivate || validateUsername(publicId.trim());
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
@@ -38,7 +42,7 @@ export default function CreateChannelPage() {
     }
 
     if (!isPublicIdValid) {
-      setError("Public ID is required for public channels.");
+      setError("Public ID must be at least 4 characters and contain only letters and numbers.");
       return;
     }
 
@@ -55,8 +59,6 @@ export default function CreateChannelPage() {
       });
 
       setInviteLink(createdChannel.invite_link);
-
-      // optional: redirect after a short delay or immediately
       navigate(`/HomePage/?chat=${createdChannel.id}`);
     } catch (err: any) {
       const backendMessage =
@@ -180,22 +182,41 @@ export default function CreateChannelPage() {
               <label htmlFor="public-id" className="create-channel-label">
                 Public ID <span className="required-star">*</span>
               </label>
-              <input
-                id="public-id"
-                type="text"
-                className="create-channel-input"
-                placeholder="unique-channel-id"
-                value={publicId}
-                onChange={(e) => {
-                  setPublicId(e.target.value);
-                  if (error) setError("");
-                }}
-              />
-              <p className="field-help">
-                Public channels require a unique public ID.
-              </p>
+
+              <div
+                className="public-id-input-wrapper"
+                style={{ display: "flex", alignItems: "center" }}
+              >
+                <span
+                  className="public-id-prefix"
+                  style={{ paddingRight: "8px", fontWeight: "bold", color: "#888" }}
+                >
+                  @
+                </span>
+                <input
+                  id="public-id"
+                  type="text"
+                  className="create-channel-input"
+                  placeholder="unique-channel-id"
+                  value={publicId}
+                  onChange={(e) => {
+                    setPublicId(e.target.value);
+                    if (error) setError("");
+                  }}
+                  style={{ flex: 1 }}
+                />
+              </div>
+
+              {!isPublicIdValid && (
+                <p className="field-help" style={{ color: "#ef4444" }}>
+                  Public ID must be at least 4 characters long, start with a letter, and
+                  contain only letters, numbers, or underscores. It cannot contain two
+                  underscores in a row or end with an underscore.
+                </p>
+              )}
             </div>
           )}
+
 
           {error && <div className="create-channel-error">{error}</div>}
 

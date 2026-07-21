@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Message } from "../types/chat";
 import { joinGroupByToken } from "../services/groupService";
+import { joinChannelByInviteLink } from "../services/channelService";
 import "../styles/chat.css";
 
 type Props = {
@@ -11,11 +12,14 @@ type Props = {
   isGroupOwner?: boolean;
   isGroupChat?: boolean;
   senderAvatarUrl?: string;
+  canReply?: boolean;
   onReply: (message: Message) => void;
   onEdit: (messageId: string, newText: string) => Promise<void>;
   onDelete: (messageId: string) => Promise<void>;
-  onAvatarClick?: (userId: string) => void; 
+  onAvatarClick?: (userId: string) => void;
   onGroupJoined?: (groupId: string) => void;
+  onChannelJoined?: (channelId: string) => void;
+  onChannelPreview?: (token: string) => void; // Used to trigger the preview modal for the user story
 };
 
 export default function MessageBubble({
@@ -26,19 +30,21 @@ export default function MessageBubble({
   isGroupOwner = false,
   isGroupChat = false,
   senderAvatarUrl,
+  canReply = true,
   onReply,
   onEdit,
   onDelete,
   onAvatarClick,
-  onGroupJoined
+  onGroupJoined,
+  onChannelJoined,
+  onChannelPreview,
 }: Props) {
   const messageText = message.content ?? "";
 
   const isMe =
     (currentUserId != null &&
       String(message.sender) === String(currentUserId)) ||
-    (currentUsername != null &&
-      message.sender_username === currentUsername);
+    (currentUsername != null && message.sender_username === currentUsername);
 
   const alignmentClass = isMe ? "outgoing" : "incoming";
   const canDelete = isMe || isGroupOwner;
@@ -100,9 +106,8 @@ export default function MessageBubble({
     try {
       setJoinLoading(true);
       const data = await joinGroupByToken(token);
-      
-      // Assumes your backend returns the group ID (e.g., { group_id: "123", joined: true })
-      const groupId = data?.group_id || data?.id; 
+
+      const groupId = data?.group_id || data?.id;
 
       if (onGroupJoined && groupId) {
         onGroupJoined(String(groupId));
@@ -111,12 +116,11 @@ export default function MessageBubble({
       }
     } catch (err: any) {
       if (err.response?.status === 400) {
-        // If they are already a member, try to navigate anyway if backend returns the ID
         const groupId = err.response?.data?.group_id;
         if (onGroupJoined && groupId) {
-           onGroupJoined(String(groupId));
+          onGroupJoined(String(groupId));
         } else {
-           alert("You are already a group member!");
+          alert("You are already a group member!");
         }
       } else if (err.response?.status === 404) {
         alert("Invalid invite link");
@@ -128,28 +132,70 @@ export default function MessageBubble({
     }
   };
 
+  const handleJoinChannel = async (token: string) => {
+    // Fulfills the "Accessing a valid invite link should show a preview screen" requirement
+    if (onChannelPreview) {
+      onChannelPreview(token);
+      return;
+    }
+
+    // Direct join fallback if no preview handler is provided
+    try {
+      setJoinLoading(true);
+      const data = await joinChannelByInviteLink(token);
+
+      const channelId = data?.channel_id || data?.id;
+
+      if (onChannelJoined && channelId) {
+        onChannelJoined(String(channelId));
+      } else {
+        alert("Successfully joined the channel!");
+      }
+    } catch (err: any) {
+      if (err.response?.status === 400) {
+        const channelId = err.response?.data?.channel_id;
+        if (onChannelJoined && channelId) {
+          onChannelJoined(String(channelId));
+        } else {
+          alert("You are already a channel member!");
+        }
+      } else if (err.response?.status === 404) {
+        alert("Invalid invite link");
+      } else {
+        alert(err.message || "Failed to join channel.");
+      }
+    } finally {
+      setJoinLoading(false);
+    }
+  };
 
   const renderContent = (text: string) => {
-    const inviteRegex = /(http:\/\/join\/[a-zA-Z0-9_-]+)/g;
+    // Matches http://groups/join/token or http://channels/join/token with optional trailing slash
+    const inviteRegex = /(http:\/\/(?:groups|channels)\/join\/[a-zA-Z0-9_-]+\/?)/g;
     const parts = text.split(inviteRegex);
 
     return (
       <span className="message-content">
         {parts.map((part, index) => {
           if (part.match(inviteRegex)) {
-            const token = part.split("/").pop() || "";
+            // Remove optional trailing slash for parsing
+            const cleanPart = part.endsWith("/") ? part.slice(0, -1) : part;
+            const urlSegments = cleanPart.split("/");
+            
+            const token = urlSegments.pop() || "";
+            const isChannel = urlSegments.includes("channels");
 
             return (
               <button
                 key={index}
                 className="inline-invite-link"
-                onClick={() => handleJoinGroup(token)}
+                onClick={() => isChannel ? handleJoinChannel(token) : handleJoinGroup(token)}
                 disabled={joinLoading}
                 type="button"
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#1db954",
+                  color: "#1db954", // NeoSpotify theme green
                   textDecoration: "underline",
                   cursor: "pointer",
                   padding: 0,
@@ -301,13 +347,15 @@ export default function MessageBubble({
     >
       {!isEditing && !message.is_deleted && (
         <div className="message-actions">
-          <button
-            className="action-btn"
-            onClick={() => onReply(message)}
-            type="button"
-          >
-            Reply
-          </button>
+          {canReply && (
+            <button
+              className="action-btn"
+              onClick={() => onReply(message)}
+              type="button"
+            >
+              Reply
+            </button>
+          )}
 
           {isMe && (
             <button
@@ -341,7 +389,7 @@ export default function MessageBubble({
             height: 32,
             borderRadius: "50%",
             flexShrink: 0,
-            cursor: "pointer"
+            cursor: "pointer",
           }}
         />
       )}
