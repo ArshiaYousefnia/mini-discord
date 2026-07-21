@@ -93,13 +93,37 @@ export default function HomePage() {
       }
 
       // If a chat is already selected, make sure we update it with new backend data (like a new avatar/name)
+      // If a chat is already selected, make sure we update it with new backend data
+      // Inside your loadChats or fetchConversations function:
       if (selectedChat) {
+        // Check if the currently open chat still exists in the fresh data from the backend
         const updatedSelectedChat = sorted.find(c => c.id === selectedChat.id);
-        if (updatedSelectedChat && 
-            (updatedSelectedChat.name !== selectedChat.name || updatedSelectedChat.avatar !== selectedChat.avatar)) {
+        
+        if (!updatedSelectedChat) {
+          // The chat was deleted or the user was kicked out.
+          // This will unmount ChatView and show the blank "Select a chat" screen.
+          setSelectedChat(null);
+          
+          // Also clear the URL parameter so it doesn't try to reload it on refresh
+          if (searchParams.get("chat") === selectedChat.id) {
+            searchParams.delete("chat");
+            setSearchParams(searchParams, { replace: true });
+          }
+        } else if (
+          updatedSelectedChat.name !== selectedChat.name || 
+          updatedSelectedChat.avatar !== selectedChat.avatar
+        ) {
+          // Update name/avatar if they changed
           setSelectedChat({ ...updatedSelectedChat, unreadCount: selectedChat.unreadCount });
         }
       }
+
+// Update the sidebar items
+setChatItems(sorted);
+
+
+      setChatItems(sorted);
+
 
       setChatItems(sorted);
     } catch (err) {
