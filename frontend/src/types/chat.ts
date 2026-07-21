@@ -129,6 +129,9 @@ export type ChannelPermissions = {
     can_manage_roles: boolean;
     can_edit_channel_info: boolean;
     can_view_invite_link: boolean;
+    can_delete_channel: boolean;
+    can_create_topic: boolean;
+    can_manage_others_topics: boolean;
 }
 
 export type ChannelProfile = {
@@ -144,3 +147,15 @@ export type ChannelProfile = {
   is_private: boolean;        
   public_id: string | null;
 }
+
+export type ChannelMember = {
+  id: string;
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  role_name: string;
+};
+
+export type ChannelMembers = ChannelMember[];
+
