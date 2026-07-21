@@ -1,5 +1,6 @@
 from django.db import transaction
 from rest_framework import serializers
+from django.contrib.auth import get_user_model
 from .models import Conversation, ConversationMember, Message, Role, Channel, Topic
 
 from django.urls import reverse
