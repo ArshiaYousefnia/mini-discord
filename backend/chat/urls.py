@@ -2,9 +2,12 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
+
+from .views import ChannelPreviewView,ChannelMemberRoleUpdateView,ChannelMembersListView,ChannelDeleteView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
 from .views import ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelDeleteView, ChannelPublicIdView, \
     ChannelJoinView, GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     ChannelRolesView, ChannelRoleDetailView, TopicListCreateView, TopicDetailView
+
 from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
 from .views import ChannelMyPermissionsView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
@@ -156,6 +159,12 @@ urlpatterns = [
         "channels/<uuid:conversation_id>/my-permissions/",
         ChannelMyPermissionsView.as_view(),
         name="channel-my-permissions",
+    ),
+    path(
+
+        'channels/preview/<uuid:invite_code>/',
+        ChannelPreviewView.as_view(),
+        name='channel-preview'
     ),
     path(
         'channels/<uuid:conversation_id>/roles/',
