@@ -5,7 +5,6 @@ from .models import Conversation, ConversationMember, Message, Role, Channel, To
 
 from django.urls import reverse
 
-
 class GroupDetailSerializer(serializers.ModelSerializer):
     owner_id = serializers.UUIDField(source='owner.id', read_only=True)
     owner_display_name = serializers.CharField(source='owner.display_name', read_only=True)
@@ -182,11 +181,8 @@ class GroupCreateSerializer(serializers.ModelSerializer):
         )
 
         # Add the creator as a member with that role
-        ConversationMember.objects.create(
-            conversation=conversation,
-            user=user,
-            role=role,
-        )
+        member = ConversationMember.objects.create(conversation=conversation, user=user)
+        member.roles.add(role)
 
         return conversation
 
@@ -208,13 +204,14 @@ class GroupMemberSerializer(serializers.ModelSerializer):
             'role_name',
         ]
 
-    def get_role_name(self, obj):
-        if obj.role:
-            if obj.role.can_manage_members:
-                return "Owner"
-            return obj.role.name
+    roles = serializers.SerializerMethodField() # تغییر نام فیلد به roles
 
-        return "Member"
+    def get_roles(self, obj):
+        role_names = [role.name for role in obj.roles.all()]
+        return role_names if role_names else ["Member"]
+    def get_role_name(self, obj):
+        first_role = obj.roles.first()
+        return first_role.name if first_role else "Member"
 
 class GroupUpdateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -318,11 +315,8 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
         )
 
         # Add creator as member with that role
-        ConversationMember.objects.create(
-            conversation=conversation,
-            user=user,
-            role=role,
-        )
+        member = ConversationMember.objects.create(conversation=conversation, user=user)
+        member.roles.add(role)
 
         return conversation
     
@@ -370,8 +364,8 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
         has_permission = (obj.owner == user)
         
         if not has_permission:
-            member = obj.members.filter(user=user).select_related('role').first()
-            if member and member.role and member.role.can_manage_members:
+            member = obj.members.filter(user=user).prefetch_related('roles').first()
+            if member and member.roles.filter(can_manage_members=True).exists():
                 has_permission = True
                 
         if has_permission:
@@ -397,11 +391,10 @@ class ChannelMemberSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     display_name = serializers.CharField(source='user.display_name', read_only=True)
     avatar_url = serializers.CharField(source='user.avatar_url', read_only=True, default=None) 
-    role_name = serializers.CharField(source='role.name', read_only=True, default="Member")
-
+    roles = serializers.SerializerMethodField()
     class Meta:
         model = ConversationMember
-        fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'role_name']
+        fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'roles']
 
 class ChannelMemberRoleUpdateSerializer(serializers.Serializer):
     role_id = serializers.UUIDField(required=True)
