@@ -11,7 +11,7 @@ from chat.models import (
 
 from rest_framework.test import APITestCase
 User = get_user_model()
-from .models import Topic
+from chat.models import Topic
 
 class ChannelMessageTests(APITestCase):
     def setUp(self):

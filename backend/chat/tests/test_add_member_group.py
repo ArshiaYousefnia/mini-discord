@@ -46,8 +46,8 @@ class GroupJoinInviteTests(APITestCase):
         self.assertTrue(is_member)
 
         member_ship = ConversationMember.objects.get(conversation=self.group, user=self.non_member)
-        self.assertEqual(member_ship.role.name, 'Member')
-        self.assertTrue(member_ship.role.can_send_messages)
+        self.assertEqual(member_ship.roles.first().name, 'Member')
+        self.assertTrue(member_ship.roles.first().can_send_messages)
 
     def test_join_group_via_invalid_link_fails(self):
         self.client.force_authenticate(user=self.non_member)

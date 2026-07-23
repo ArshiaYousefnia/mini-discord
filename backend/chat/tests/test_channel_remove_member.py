@@ -7,11 +7,10 @@ from chat.models import Conversation, Channel, ConversationMember, Role
 User = get_user_model()
 class ChannelRemoveMemberTests(APITestCase):
     def setUp(self):
-        self.owner = User.objects.create_user(username='owner', password='password')
-        self.mod = User.objects.create_user(username='moderator', password='password')
-        self.normal_user = User.objects.create_user(username='normal_user', password='password')
-        self.target_user = User.objects.create_user(username='target_user', password='password')
-
+        self.owner = User.objects.create_user(username='owner', email='owner@test.com', password='password')
+        self.mod = User.objects.create_user(username='moderator', email='mod@test.com', password='password')
+        self.normal_user = User.objects.create_user(username='normal_user', email='normal@test.com', password='password')
+        self.target_user = User.objects.create_user(username='target_user', email='target@test.com', password='password')
         self.conversation = Conversation.objects.create(name="Test Channel", is_channel=True)
         
         self.owner_role = Role.objects.create(name="Owner", can_remove_members=True)

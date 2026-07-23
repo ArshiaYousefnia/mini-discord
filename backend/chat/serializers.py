@@ -202,6 +202,7 @@ class GroupMemberSerializer(serializers.ModelSerializer):
             'avatar_url',
             'is_online',
             'role_name',
+            'roles',
         ]
 
     roles = serializers.SerializerMethodField() # تغییر نام فیلد به roles
@@ -395,7 +396,9 @@ class ChannelMemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = ConversationMember
         fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'roles']
-
+    def get_roles(self, obj):
+            role_names = [role.name for role in obj.roles.all()]
+            return role_names if role_names else ["Member"]
 class ChannelMemberRoleUpdateSerializer(serializers.Serializer):
     role_id = serializers.UUIDField(required=True)
 

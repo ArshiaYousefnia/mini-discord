@@ -8,9 +8,8 @@ from chat.models import Conversation, Channel, Role, ConversationMember
 User = get_user_model()
 class ChannelDeletionTests(APITestCase):
     def setUp(self):
-        self.owner = User.objects.create_user(username='owner', password='password')
-        self.member = User.objects.create_user(username='member', password='password')
-
+        self.owner = User.objects.create_user(username='owner', email='owner@test.com', password='password')
+        self.member = User.objects.create_user(username='member', email='member@test.com', password='password')
         self.conversation = Conversation.objects.create(name="Test Channel", is_channel=True)
         
         self.owner_role = Role.objects.create(name="Owner", can_delete_channel=True)
