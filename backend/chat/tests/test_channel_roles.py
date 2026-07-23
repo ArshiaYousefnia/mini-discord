@@ -6,8 +6,8 @@ from django.contrib.auth import get_user_model
 from chat.models import Conversation, Channel, Role, ConversationMember
 
 User = get_user_model()
-
 class ChannelRoleAssignmentTests(APITestCase):
+
     def setUp(self):
         self.owner = User.objects.create_user(username='owner', email='owner@test.com', password='password123')
         self.admin = User.objects.create_user(username='admin', email='admin@test.com', password='password123')
@@ -59,7 +59,6 @@ class ChannelRoleAssignmentTests(APITestCase):
     def test_owner_can_assign_role(self):
         self.client.force_authenticate(user=self.owner)
         data = {'role_id': str(self.new_custom_role.id)}
-        
         response = self.client.patch(self.url, data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -69,14 +68,12 @@ class ChannelRoleAssignmentTests(APITestCase):
     def test_admin_with_permission_can_assign_role(self):
         self.client.force_authenticate(user=self.admin)
         data = {'role_id': str(self.new_custom_role.id)}
-        
         response = self.client.patch(self.url, data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_member_without_permission_cannot_assign_role(self):
         self.client.force_authenticate(user=self.normal_member)
         data = {'role_id': str(self.admin_role.id)}
-        
         response = self.client.patch(self.url, data)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -87,7 +84,6 @@ class ChannelRoleAssignmentTests(APITestCase):
             'user_id': self.outside_user.id
         })
         data = {'role_id': str(self.new_custom_role.id)}
-        
         response = self.client.patch(invalid_url, data)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -97,7 +93,6 @@ class ChannelRoleAssignmentTests(APITestCase):
         
         self.client.force_authenticate(user=self.owner)
         data = {'role_id': str(foreign_role.id)}
-        
         response = self.client.patch(self.url, data)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -108,6 +103,5 @@ class ChannelRoleAssignmentTests(APITestCase):
             'user_id': self.owner.id
         })
         data = {'role_id': str(self.basic_role.id)}
-        
         response = self.client.patch(owner_url, data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

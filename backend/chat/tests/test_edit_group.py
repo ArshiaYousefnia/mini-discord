@@ -8,9 +8,6 @@ from chat.models import Conversation, ConversationMember, Role
 
 User = get_user_model()
 
-from users.models import User
-
-
 class EditGroupTests(APITestCase):
 
     def setUp(self):
@@ -59,17 +56,17 @@ class EditGroupTests(APITestCase):
             can_send_media=True,
         )
 
-        ConversationMember.objects.create(
+        owner_member = ConversationMember.objects.create(
             conversation=self.group,
-            user=self.owner,
-            role=self.owner_role,
+            user=self.owner
         )
+        owner_member.roles.add(self.owner_role)
 
-        ConversationMember.objects.create(
+        regular_member = ConversationMember.objects.create(
             conversation=self.group,
-            user=self.member,
-            role=self.member_role,
+            user=self.member
         )
+        regular_member.roles.add(self.member_role)
 
         self.url = reverse(
             "group-update",

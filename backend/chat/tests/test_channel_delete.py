@@ -6,8 +6,8 @@ from django.contrib.auth import get_user_model
 from chat.models import Conversation, Channel, Role, ConversationMember
 
 User = get_user_model()
-
 class ChannelDeletionTests(APITestCase):
+
     def setUp(self):
         self.owner = User.objects.create_user(username='owner', email='owner@test.com', password='password123')
         self.admin = User.objects.create_user(username='admin', email='admin@test.com', password='password123')
@@ -34,7 +34,6 @@ class ChannelDeletionTests(APITestCase):
             name='Basic Member',
         )
 
-        # عضو کردن کاربران
         ConversationMember.objects.create(
             conversation=self.conversation, user=self.owner
         )
@@ -49,7 +48,6 @@ class ChannelDeletionTests(APITestCase):
 
     def test_owner_can_delete_channel(self):
         self.client.force_authenticate(user=self.owner)
-        
         response = self.client.delete(self.delete_url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
@@ -58,22 +56,18 @@ class ChannelDeletionTests(APITestCase):
 
     def test_admin_with_permission_can_delete_channel(self):
         self.client.force_authenticate(user=self.admin)
-        
         response = self.client.delete(self.delete_url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Conversation.objects.filter(id=self.conversation.id).exists())
 
     def test_member_without_permission_cannot_delete_channel(self):
         self.client.force_authenticate(user=self.normal_member)
-        
         response = self.client.delete(self.delete_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        
         self.assertTrue(Conversation.objects.filter(id=self.conversation.id).exists())
 
     def test_non_member_cannot_delete_channel(self):
         self.client.force_authenticate(user=self.outside_user)
-        
         response = self.client.delete(self.delete_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 

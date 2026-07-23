@@ -45,11 +45,11 @@ class DeleteGroupTests(APITestCase):
             can_manage_roles=True,
         )
 
-        ConversationMember.objects.create(
+        owner_member = ConversationMember.objects.create(
             conversation=self.group,
-            user=self.owner,
-            role=self.owner_role,
+            user=self.owner
         )
+        owner_member.roles.add(self.owner_role)
 
         ConversationMember.objects.create(
             conversation=self.group,
