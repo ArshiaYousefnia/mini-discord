@@ -8,12 +8,14 @@ from chat.models import Conversation, Channel, Role, ConversationMember
 User = get_user_model()
 class ChannelRoleAssignmentTests(APITestCase):
     def setUp(self):
-        self.owner = User.objects.create_user(username='channel_owner', password='password')
-        self.admin = User.objects.create_user(username='channel_admin', password='password')
-        self.normal_member = User.objects.create_user(username='normal_member', password='password')
+        self.owner = User.objects.create_user(username='channel_owner',email='channelOwner@test.com', password='password')
+        self.admin = User.objects.create_user(username='channel_admin',email='channeladmin@test.com', password='password')
+        self.normal_member = User.objects.create_user(username='normal_member',email='normalmember@test.com', password='password')
 
-        self.conversation = Conversation.objects.create(name="Test Channel", is_channel=True)
-        
+        self.conversation = Conversation.objects.create(
+            name="Test Channel", 
+            type=Conversation.Type.CHANNEL
+        )
         self.admin_role = Role.objects.create(name="Admin", can_manage_roles=True)
         self.basic_role = Role.objects.create(name="Basic", can_manage_roles=False)
         self.new_custom_role = Role.objects.create(name="CustomRole", can_manage_roles=False)

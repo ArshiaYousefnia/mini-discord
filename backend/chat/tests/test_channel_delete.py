@@ -10,8 +10,10 @@ class ChannelDeletionTests(APITestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username='owner', email='owner@test.com', password='password')
         self.member = User.objects.create_user(username='member', email='member@test.com', password='password')
-        self.conversation = Conversation.objects.create(name="Test Channel", is_channel=True)
-        
+        self.conversation = Conversation.objects.create(
+            name="Test Channel", 
+            type=Conversation.Type.CHANNEL
+        )
         self.owner_role = Role.objects.create(name="Owner", can_delete_channel=True)
         self.member_role = Role.objects.create(name="Member", can_delete_channel=False)
 

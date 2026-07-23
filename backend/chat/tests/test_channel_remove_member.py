@@ -11,8 +11,10 @@ class ChannelRemoveMemberTests(APITestCase):
         self.mod = User.objects.create_user(username='moderator', email='mod@test.com', password='password')
         self.normal_user = User.objects.create_user(username='normal_user', email='normal@test.com', password='password')
         self.target_user = User.objects.create_user(username='target_user', email='target@test.com', password='password')
-        self.conversation = Conversation.objects.create(name="Test Channel", is_channel=True)
-        
+        self.conversation = Conversation.objects.create(
+            name="Test Channel", 
+            type=Conversation.Type.CHANNEL
+        )
         self.owner_role = Role.objects.create(name="Owner", can_remove_members=True)
         self.mod_role = Role.objects.create(name="Moderator", can_remove_members=True)
         self.normal_role = Role.objects.create(name="Member", can_remove_members=False)

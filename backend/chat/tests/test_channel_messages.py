@@ -15,10 +15,12 @@ from chat.models import Topic
 
 class ChannelMessageTests(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='user', password='password')
-        self.muted_user = User.objects.create_user(username='muted', password='password')
-
-        self.conversation = Conversation.objects.create(name="Test Channel", is_channel=True)
+        self.user = User.objects.create_user(username='user', email='user@test.com',password='password')
+        self.muted_user = User.objects.create_user(username='muted', email='muted@test.com', password='password')
+        self.conversation = Conversation.objects.create(
+            name="Test Channel", 
+            type=Conversation.Type.CHANNEL
+        )
         self.topic = Topic.objects.create(conversation=self.conversation, name="General")
         
         self.normal_role = Role.objects.create(name="Member", can_send_messages=True)

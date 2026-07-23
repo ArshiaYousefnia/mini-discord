@@ -19,9 +19,9 @@ User = get_user_model()
 
 class DeleteGroupMessageTests(APITestCase):
     def setUp(self):
-        self.owner = User.objects.create_user(username='owner', password='password')
-        self.member1 = User.objects.create_user(username='member1', password='password')
-        self.member2 = User.objects.create_user(username='member2', password='password')
+        self.owner = User.objects.create_user(username='owner',email='owner@test.com', password='password')
+        self.member1 = User.objects.create_user(username='member1',email='member1@test.com', password='password')
+        self.member2 = User.objects.create_user(username='member2',email='member2@test.com', password='password')
 
         self.group = Conversation.objects.create(name="Test Group", is_channel=False)
         
