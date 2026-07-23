@@ -15,10 +15,9 @@ class ChannelRemoveMemberTests(APITestCase):
             name="Test Channel", 
             type=Conversation.Type.CHANNEL
         )
-        self.owner_role = Role.objects.create(name="Owner",conversation=self.conversation, can_remove_members=True)
-        self.mod_role = Role.objects.create(name="Moderator", can_remove_members=True)
-        self.normal_role = Role.objects.create(name="Member", can_remove_members=False)
-
+        self.owner_role = Role.objects.create(conversation=self.conversation, name="Owner", can_manage_members=True)
+        self.mod_role = Role.objects.create(conversation=self.conversation, name="Moderator", can_manage_members=True)
+        self.normal_role = Role.objects.create(conversation=self.conversation, name="Member", can_manage_members=False)
         # FIXED: M2M Initialization for all users
         owner_member = ConversationMember.objects.create(conversation=self.conversation, user=self.owner)
         owner_member.roles.add(self.owner_role)

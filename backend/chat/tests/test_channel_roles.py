@@ -17,9 +17,8 @@ class ChannelRoleAssignmentTests(APITestCase):
             type=Conversation.Type.CHANNEL
         )
         self.admin_role = Role.objects.create(conversation=self.conversation,name="Admin", can_manage_roles=True)
-        self.basic_role = Role.objects.create(name="Basic", can_manage_roles=False)
-        self.new_custom_role = Role.objects.create(name="CustomRole", can_manage_roles=False)
-
+        self.basic_role = Role.objects.create(conversation=self.conversation, name="Basic", can_manage_roles=False)
+        self.new_custom_role = Role.objects.create(conversation=self.conversation, name="CustomRole", can_manage_roles=False)
         # FIXED: M2M Initialization
         owner_member = ConversationMember.objects.create(conversation=self.conversation, user=self.owner)
         owner_member.roles.add(self.admin_role)

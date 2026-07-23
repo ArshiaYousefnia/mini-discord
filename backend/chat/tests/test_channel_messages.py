@@ -21,11 +21,10 @@ class ChannelMessageTests(APITestCase):
             name="Test Channel", 
             type=Conversation.Type.CHANNEL
         )
-        self.topic = Topic.objects.create(conversation=self.conversation,creator=self.owner, name="General")
         
-        self.normal_role = Role.objects.create(name="Member", can_send_messages=True)
-        self.muted_role = Role.objects.create(name="Muted", can_send_messages=False)
-
+        self.topic = Topic.objects.create(conversation=self.conversation, creator=self.user, name="General")
+        self.normal_role = Role.objects.create(conversation=self.conversation, name="Member", can_send_messages=True)
+        self.muted_role = Role.objects.create(conversation=self.conversation, name="Muted", can_send_messages=False)
         # FIXED: M2M Initialization
         user_member = ConversationMember.objects.create(conversation=self.conversation, user=self.user)
         user_member.roles.add(self.normal_role)

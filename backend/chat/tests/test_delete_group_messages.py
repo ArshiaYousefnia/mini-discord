@@ -25,8 +25,8 @@ class DeleteGroupMessageTests(APITestCase):
 
         self.group = Conversation.objects.create(name="Test Group", type=Conversation.Type.GROUP)
         
-        self.owner_role = Role.objects.create(name="Owner", can_delete_messages=True)
-        self.member_role = Role.objects.create(name="Member", can_delete_messages=False)
+        self.owner_role = Role.objects.create(conversation=self.group,name="Owner", can_delete_messages=True)
+        self.member_role = Role.objects.create(conversation=self.group,name="Member", can_delete_messages=False)
 
         # FIXED: Create members first, then add ManyToMany roles
         owner_member = ConversationMember.objects.create(conversation=self.group, user=self.owner)
