@@ -21,7 +21,7 @@ class ChannelMessageTests(APITestCase):
             name="Test Channel", 
             type=Conversation.Type.CHANNEL
         )
-        self.topic = Topic.objects.create(conversation=self.conversation, name="General")
+        self.topic = Topic.objects.create(conversation=self.conversation,creator=self.owner, name="General")
         
         self.normal_role = Role.objects.create(name="Member", can_send_messages=True)
         self.muted_role = Role.objects.create(name="Muted", can_send_messages=False)

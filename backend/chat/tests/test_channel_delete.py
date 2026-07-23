@@ -14,7 +14,7 @@ class ChannelDeletionTests(APITestCase):
             name="Test Channel", 
             type=Conversation.Type.CHANNEL
         )
-        self.owner_role = Role.objects.create(name="Owner", can_delete_channel=True)
+        self.owner_role = Role.objects.create(conversation=self.conversation, name="Owner", can_delete_channel=True)
         self.member_role = Role.objects.create(name="Member", can_delete_channel=False)
 
         # FIXED: M2M Initialization

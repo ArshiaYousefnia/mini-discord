@@ -23,7 +23,7 @@ class DeleteGroupMessageTests(APITestCase):
         self.member1 = User.objects.create_user(username='member1',email='member1@test.com', password='password')
         self.member2 = User.objects.create_user(username='member2',email='member2@test.com', password='password')
 
-        self.group = Conversation.objects.create(name="Test Group", is_channel=False)
+        self.group = Conversation.objects.create(name="Test Group", type=Conversation.Type.GROUP)
         
         self.owner_role = Role.objects.create(name="Owner", can_delete_messages=True)
         self.member_role = Role.objects.create(name="Member", can_delete_messages=False)

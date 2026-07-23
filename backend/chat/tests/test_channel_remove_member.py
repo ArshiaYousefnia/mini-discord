@@ -15,7 +15,7 @@ class ChannelRemoveMemberTests(APITestCase):
             name="Test Channel", 
             type=Conversation.Type.CHANNEL
         )
-        self.owner_role = Role.objects.create(name="Owner", can_remove_members=True)
+        self.owner_role = Role.objects.create(name="Owner",conversation=self.conversation, can_remove_members=True)
         self.mod_role = Role.objects.create(name="Moderator", can_remove_members=True)
         self.normal_role = Role.objects.create(name="Member", can_remove_members=False)
 
