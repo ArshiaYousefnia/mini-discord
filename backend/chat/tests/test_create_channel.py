@@ -41,7 +41,7 @@ class ChannelCreateTests(TestCase):
         role = conv.roles.get(name='Channel Owner')
         self.assertTrue(role.can_manage_members)
         member = ConversationMember.objects.get(conversation=conv, user=self.user)
-        self.assertEqual(member.role, role)
+        self.assertEqual(member.roles.first(), role)
 
     def test_create_public_channel_with_public_id(self):
         data = {

@@ -42,9 +42,15 @@ class ChannelInviteLinkVisibilityTests(APITestCase):
         )
 
         ConversationMember.objects.create(conversation=self.conversation, user=self.owner) 
-        ConversationMember.objects.create(conversation=self.conversation, user=self.admin_user, role=self.admin_role)
-        ConversationMember.objects.create(conversation=self.conversation, user=self.normal_user, role=self.normal_role)
-
+        
+        # ۲. کاربر ادمین
+        admin_member = ConversationMember.objects.create(conversation=self.conversation, user=self.admin_user)
+        admin_member.roles.add(self.admin_role)
+        
+        # ۳. کاربر عادی
+        normal_member = ConversationMember.objects.create(conversation=self.conversation, user=self.normal_user)
+        normal_member.roles.add(self.normal_role)
+        # ---------------------
         self.profile_url = reverse('channel-profile', kwargs={'conversation_id': self.conversation.id})
 
     def test_owner_can_see_invite_link(self):

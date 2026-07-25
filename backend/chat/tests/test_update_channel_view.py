@@ -41,9 +41,15 @@ class ChannelUpdateTests(APITestCase):
             can_manage_roles=False
         )
 
-        ConversationMember.objects.create(conversation=self.conversation, user=self.owner, role=self.admin_role)
-        ConversationMember.objects.create(conversation=self.conversation, user=self.admin_user, role=self.admin_role)
-        ConversationMember.objects.create(conversation=self.conversation, user=self.normal_user, role=self.normal_role)
+        # تخصیص نقش‌ها با .add()
+        owner_member = ConversationMember.objects.create(conversation=self.conversation, user=self.owner)
+        owner_member.roles.add(self.admin_role)
+        
+        admin_member = ConversationMember.objects.create(conversation=self.conversation, user=self.admin_user)
+        admin_member.roles.add(self.admin_role)
+        
+        normal_member = ConversationMember.objects.create(conversation=self.conversation, user=self.normal_user)
+        normal_member.roles.add(self.normal_role)
 
         self.update_url = reverse('channel-update', kwargs={'conversation_id': self.conversation.id})
 

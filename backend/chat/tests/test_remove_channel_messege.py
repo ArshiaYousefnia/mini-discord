@@ -49,18 +49,22 @@ class MessageDeletionPermissionTests(APITestCase):
         ConversationMember.objects.create(
             conversation=self.conversation, user=self.owner
         )
-        ConversationMember.objects.create(
-            conversation=self.conversation, user=self.moderator,
-            role=self.mod_role
+        
+        member = ConversationMember.objects.create(
+            conversation=self.conversation, 
+            user=self.moderator
         )
-        ConversationMember.objects.create(
-            conversation=self.conversation, user=self.normal_user,
-            role=self.normal_role
+        member.roles.add(self.mod_role)
+        
+        normal_member = ConversationMember.objects.create(
+            conversation=self.conversation, user=self.normal_user
         )
-        ConversationMember.objects.create(
-            conversation=self.conversation, user=self.sender,
-            role=self.normal_role
+        normal_member.roles.add(self.normal_role)
+        
+        sender_member = ConversationMember.objects.create(
+            conversation=self.conversation, user=self.sender
         )
+        sender_member.roles.add(self.normal_role)
 
     def get_url(self, message_id):
         return reverse('conversation-message-detail', kwargs={
