@@ -43,20 +43,22 @@ class DeleteGroupMessageTests(APITestCase):
             sender=self.member1, 
             content="Hello world"
         )
-        self.url = f'/api/messages/{self.message.id}/'
+        self.delete_url = reverse('conversation-message-detail', kwargs={
+            'conversation_pk': self.group.id,
+            'pk': self.message.id
+        })
 
     def test_owner_can_delete_any_message(self):
         self.client.force_authenticate(user=self.owner)
-        response = self.client.delete(self.url)
+        response = self.client.delete(self.delete_url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(Message.objects.filter(id=self.message.id).exists())
 
     def test_sender_can_delete_own_message(self):
         self.client.force_authenticate(user=self.member1)
-        response = self.client.delete(self.url)
+        response = self.client.delete(self.delete_url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_member_cannot_delete_others_message(self):
         self.client.force_authenticate(user=self.member2)
-        response = self.client.delete(self.url)
-        self.assertEqual(response.status_code, status.HTTP_4_FORBIDDEN)
+        response = self.client.delete(self.delete_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

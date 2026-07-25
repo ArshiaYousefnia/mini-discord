@@ -29,20 +29,21 @@ class ChannelRoleAssignmentTests(APITestCase):
         self.target_membership = ConversationMember.objects.create(conversation=self.conversation, user=self.normal_member)
         self.target_membership.roles.add(self.basic_role)
 
-        self.url = f'/api/channels/{self.conversation.id}/members/{self.target_membership.id}/role/'
+        self.assign_url = reverse('channel-member-role-update', kwargs={
+            'conversation_id': self.conversation.id,
+            'user_id': self.normal_member.id  # user id, not membership
+        })
 
     def test_owner_can_assign_role(self):
         self.client.force_authenticate(user=self.owner)
         data = {'role_id': str(self.new_custom_role.id)}
-        response = self.client.patch(self.url, data)
+        response = self.client.patch(self.assign_url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
         self.target_membership.refresh_from_db()
-        # FIXED: Querying the M2M manager instead of an attribute
         self.assertEqual(self.target_membership.roles.first(), self.new_custom_role)
 
     def test_normal_member_cannot_assign_roles(self):
         self.client.force_authenticate(user=self.normal_member)
         data = {'role_id': str(self.new_custom_role.id)}
-        response = self.client.patch(self.url, data)
+        response = self.client.patch(self.assign_url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

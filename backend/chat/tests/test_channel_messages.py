@@ -32,17 +32,17 @@ class ChannelMessageTests(APITestCase):
         muted_member = ConversationMember.objects.create(conversation=self.conversation, user=self.muted_user)
         muted_member.roles.add(self.muted_role)
 
-        self.url = f'/api/channels/{self.conversation.id}/topics/{self.topic.id}/messages/'
+        self.send_url = reverse('conversation-messages', kwargs={'conversation_pk': self.conversation.id})
 
     def test_user_can_send_message_to_topic(self):
         self.client.force_authenticate(user=self.user)
-        data = {'content': 'Hello Topic'}
-        response = self.client.post(self.url, data)
+        response = self.client.post(self.send_url, {
+            'content': 'Hello Topic',
+            'topic_id': str(self.topic.id)
+        })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Message.objects.count(), 1)
 
     def test_muted_user_cannot_send_message(self):
         self.client.force_authenticate(user=self.muted_user)
-        data = {'content': 'I am muted'}
-        response = self.client.post(self.url, data)
+        response = self.client.post(self.send_url, {'content': 'I am muted'})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

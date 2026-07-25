@@ -222,11 +222,13 @@ class MessageViewSet(
 
     def perform_create(self, serializer):
         conversation_id = self.kwargs.get("conversation_pk")
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_id,
-            members__user=self.request.user
-        )
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        # Manual membership check
+        if not ConversationMember.objects.filter(
+                conversation=conversation,
+                user=self.request.user
+        ).exists():
+            raise PermissionDenied("You are not a member of this conversation.")
 
         if conversation.type == Conversation.Type.CHANNEL:
             member = ConversationMember.objects.get(
@@ -855,11 +857,9 @@ class ChannelRemoveMemberView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, conversation_id, user_id):
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_id,
-            type=Conversation.Type.CHANNEL
-        )
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        if conversation.type != Conversation.Type.CHANNEL:
+            return Response({"detail": "Not a channel."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             requester_membership = ConversationMember.objects.prefetch_related('roles').get(
@@ -880,7 +880,7 @@ class ChannelRemoveMemberView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if str(conversation.owner.id) == str(user_id):
+        if conversation.owner and str(conversation.owner.id) == str(user_id):
             return Response(
                 {"detail": "The channel owner cannot be removed."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -911,11 +911,9 @@ class ChannelMemberRoleUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, conversation_id, user_id):
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_id,
-            type=Conversation.Type.CHANNEL
-        )
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        if conversation.type != Conversation.Type.CHANNEL:
+            return Response({"detail": "Not a channel."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             requester_membership = ConversationMember.objects.prefetch_related('roles').get(
@@ -937,7 +935,7 @@ class ChannelMemberRoleUpdateView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if str(conversation.owner.id) == str(user_id):
+        if conversation.owner and str(conversation.owner.id) == str(user_id):
             return Response(
                 {"detail": "You cannot change the role of the channel owner."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -977,11 +975,9 @@ class ChannelDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, conversation_id):
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_id,
-            type=Conversation.Type.CHANNEL
-        )
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        if conversation.type != Conversation.Type.CHANNEL:
+            return Response({"detail": "Not a channel."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             membership = ConversationMember.objects.prefetch_related('roles').get(
@@ -1243,7 +1239,7 @@ class TopicDetailView(APIView):
     def delete(self, request, conversation_id, topic_id):
         topic = self.get_topic(conversation_id, topic_id)
         member = ConversationMember.objects.get(conversation=topic.conversation, user=request.user)
-        if topic.creator != request.user and not (member.role and member.role.can_manage_others_topics):
+        if topic.creator != request.user and not member.roles.filter(can_manage_others_topics=True).exists():
             raise PermissionDenied("You do not have permission to delete this topic.")
         topic.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
