@@ -1,4 +1,6 @@
 import uuid
+import os
+from datetime import datetime
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db import models
@@ -208,3 +210,25 @@ class ChannelMessage(Message):
         blank=True,
         related_name='messages',
     )
+
+def attachment_upload_path(instance, filename):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ext = os.path.splitext(filename)[1]
+    new_filename = f"{uuid.uuid4()}_{timestamp}{ext}"
+    return f"attachments/{new_filename}"
+
+
+class Attachment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+    )
+    file = models.FileField(upload_to=attachment_upload_path)
+    original_filename = models.CharField(max_length=255)
+    size = models.PositiveIntegerField()  # in bytes
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Attachment {self.id} for message {self.message_id}"
