@@ -96,11 +96,10 @@ class ConversationMember(models.Model):
         related_name='conversation_memberships',
     )
     # role is nullable and not used for DM
-    role = models.ForeignKey(
-        'Role',  # we'll skip this model for now; can be added later
-        on_delete=models.SET_NULL,
-        null=True,
+    roles = models.ManyToManyField(
+        'Role',
         blank=True,
+        related_name='members',
     )
     last_read_message = models.ForeignKey(
         'Message',
