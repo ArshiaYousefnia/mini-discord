@@ -1,11 +1,13 @@
+import mimetypes
+from django.http import FileResponse, HttpResponseNotFound
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-from django.db.models import Q
 from rest_framework.views import APIView
+
 
 from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
     MinimalMessageSerializer, ChannelCreateSerializer, RoleSerializer, TopicSerializer, TopicUpdateSerializer, \
@@ -17,7 +19,7 @@ from django.db.models import OuterRef, Subquery, Count, Q, Value, Prefetch
 from django.db.models.functions import Coalesce
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, ChannelMessage
+from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, ChannelMessage, Attachment
 
 from .serializers import ChannelMemberRoleUpdateSerializer,ChannelMemberSerializer,ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
 
@@ -223,13 +225,14 @@ class MessageViewSet(
     def perform_create(self, serializer):
         conversation_id = self.kwargs.get("conversation_pk")
         conversation = get_object_or_404(Conversation, id=conversation_id)
-        # Manual membership check
+        # Membership check (keep existing logic)
         if not ConversationMember.objects.filter(
-                conversation=conversation,
-                user=self.request.user
+                conversation=conversation, user=self.request.user
         ).exists():
             raise PermissionDenied("You are not a member of this conversation.")
 
+        # Channel permission check (unchanged)
+        topic = None
         if conversation.type == Conversation.Type.CHANNEL:
             member = ConversationMember.objects.get(
                 conversation=conversation,
@@ -237,12 +240,12 @@ class MessageViewSet(
             )
             if not member.roles.filter(can_send_messages=True).exists():
                 raise PermissionDenied("You do not have permission to send messages in this channel.")
-
             topic_id = self.request.data.get('topic_id')
-            topic = None
             if topic_id:
                 topic = get_object_or_404(Topic, id=topic_id, conversation=conversation)
 
+        # Create the message (choose ChannelMessage if channel)
+        if conversation.type == Conversation.Type.CHANNEL:
             message = ChannelMessage.objects.create(
                 conversation=conversation,
                 sender=self.request.user,
@@ -251,8 +254,21 @@ class MessageViewSet(
                 topic=topic,
             )
         else:
-            message = serializer.save(sender=self.request.user, conversation=conversation)
+            message = serializer.save(
+                sender=self.request.user, conversation=conversation
+            )
 
+        # Handle uploaded files (create Attachments)
+        uploaded_files = serializer.validated_data.get('uploaded_files', [])
+        for file in uploaded_files:
+            Attachment.objects.create(
+                message=message,
+                file=file,
+                original_filename=file.name,
+                size=file.size,
+            )
+
+        # Update last_read_message
         member = ConversationMember.objects.get(
             conversation=conversation,
             user=self.request.user
@@ -561,21 +577,23 @@ class GroupDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, conversation_id):
-
         group = get_object_or_404(
             Conversation,
             id=conversation_id,
             type=Conversation.Type.GROUP,
         )
 
-        if group.owner != request.user:
+        # Check that the requesting user is a member of the group
+        if not ConversationMember.objects.filter(
+            conversation=group,
+            user=request.user
+        ).exists():
             return Response(
-                {"detail": "Only the group owner can delete the group."},
+                {"detail": "You are not a member of this group."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         group.delete()
-
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -1244,3 +1262,50 @@ class TopicDetailView(APIView):
         topic.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+class AttachmentDownloadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, attachment_id):
+        attachment = get_object_or_404(Attachment.objects.select_related(
+            'message__conversation'
+        ), id=attachment_id)
+
+        # Verify the requesting user is a member of the conversation
+        conversation = attachment.message.conversation
+        if not ConversationMember.objects.filter(
+            conversation=conversation,
+            user=request.user
+        ).exists():
+            return Response(
+                {"detail": "You do not have access to this file."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        file_field = attachment.file
+        if not file_field:
+            return Response(
+                {"detail": "File not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Determine MIME type from the original filename
+        mime_type, _ = mimetypes.guess_type(attachment.original_filename)
+        if not mime_type:
+            mime_type = 'application/octet-stream'
+
+        # Open the file from storage and serve it as an attachment
+        try:
+            file_handle = file_field.open('rb')
+        except FileNotFoundError:
+            return Response(
+                {"detail": "File not found on storage."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        response = FileResponse(
+            file_handle,
+            content_type=mime_type,
+            as_attachment=True,
+            filename=attachment.original_filename,
+        )
+        return response
