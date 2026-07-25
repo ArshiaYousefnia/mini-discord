@@ -3,7 +3,9 @@ from rest_framework.routers import DefaultRouter
 
 
 
-from .views import ChannelPreviewView,ChannelMemberRoleUpdateView,ChannelMembersListView,ChannelDeleteView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
+from .views import ChannelPreviewView, ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelDeleteView, \
+    ChannelPublicIdView, ChannelJoinView, GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, \
+    ConversationViewSet, AttachmentDownloadView
 from .views import ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelDeleteView, ChannelPublicIdView, \
     ChannelJoinView, GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     ChannelRolesView, ChannelRoleDetailView, TopicListCreateView, TopicDetailView
@@ -185,5 +187,10 @@ urlpatterns = [
         'channels/<uuid:conversation_id>/topics/<uuid:topic_id>/',
         TopicDetailView.as_view(),
         name='topic-detail',
+    ),
+    path(
+        'attachments/<uuid:attachment_id>/download/',
+        AttachmentDownloadView.as_view(),
+        name='attachment-download',
     ),
 ]
