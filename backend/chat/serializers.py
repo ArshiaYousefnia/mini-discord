@@ -1,9 +1,20 @@
+import os
 from django.db import transaction
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Conversation, ConversationMember, Message, Role, Channel, Topic
+from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, Attachment
 
 from django.urls import reverse
+
+
+ALLOWED_FILE_EXTENSIONS = {
+    'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',        # images
+    'mp4', 'mov', 'avi', 'mkv', 'webm',                 # videos
+    'mp3', 'ogg', 'wav', 'flac', 'aac',                 # audio
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', # documents
+    'txt', 'csv', 'zip', 'rar', '7z',                   # misc
+}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 class GroupDetailSerializer(serializers.ModelSerializer):
     owner_id = serializers.UUIDField(source='owner.id', read_only=True)
@@ -33,10 +44,14 @@ class GroupDetailSerializer(serializers.ModelSerializer):
 
 class MinimalMessageSerializer(serializers.ModelSerializer):
     sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
+    attachments_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ['id', 'content', 'sender_display_name', 'created_at']
+        fields = ['id', 'content', 'sender_display_name', 'created_at', 'attachments_count']
+
+    def get_attachments_count(self, obj):
+        return obj.attachments.count()
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -457,3 +472,84 @@ class TopicSerializer(serializers.ModelSerializer):
         model = Topic
         fields = ['id', 'name', 'creator_id', 'creator_display_name', 'created_at', 'updated_at']
         read_only_fields = ['id', 'creator_id', 'creator_display_name', 'created_at', 'updated_at']
+
+class AttachmentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Attachment
+        fields = ['id', 'file_url', 'original_filename', 'size', 'created_at']
+        read_only_fields = ['id', 'file_url', 'original_filename', 'size', 'created_at']
+
+    def get_file_url(self, obj):
+        if obj.file and hasattr(obj.file, 'url'):
+            return obj.file.url
+        return None
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender_username = serializers.CharField(source='sender.username', read_only=True)
+    sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
+    attachments = AttachmentSerializer(many=True, read_only=True)
+    uploaded_files = serializers.ListField(
+        child=serializers.FileField(max_length=None, allow_empty_file=False, use_url=False),
+        write_only=True,
+        required=False,
+    )
+
+    class Meta:
+        model = Message
+        fields = [
+            'id', 'conversation', 'sender', 'sender_username', 'sender_display_name',
+            'content', 'attachments', 'uploaded_files',
+            'reply_to', 'is_edited', 'is_deleted', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'conversation', 'sender',
+            'is_edited', 'is_deleted', 'created_at', 'updated_at',
+        ]
+
+    def create(self, validated_data):
+        # Remove the write-only field before passing to model
+        uploaded_files = validated_data.pop('uploaded_files', [])
+        instance = super().create(validated_data)
+        # Attachments are handled by the view, not here.
+        return instance
+
+    # Keep validate_uploaded_files, validate, and validate_content exactly as before
+
+    def validate_uploaded_files(self, files):
+        if files is None:
+            return files
+        for file in files:
+            ext = os.path.splitext(file.name)[1].lower().lstrip('.')
+            if ext not in ALLOWED_FILE_EXTENSIONS:
+                raise serializers.ValidationError(
+                    f"File type .{ext} is not supported. Allowed types: {', '.join(sorted(ALLOWED_FILE_EXTENSIONS))}"
+                )
+            if file.size > MAX_FILE_SIZE:
+                raise serializers.ValidationError("File size must be under 10 MB.")
+        return files
+
+    def validate(self, data):
+        # Existing reply_to check
+        if data.get('reply_to'):
+            view = self.context.get('view')
+            if view and 'conversation_id' in view.kwargs:
+                url_convo_id = str(view.kwargs['conversation_id'])
+                if str(data['reply_to'].conversation_id) != url_convo_id:
+                    raise serializers.ValidationError("Reply message does not belong to this conversation.")
+        # Content or at least one attachment required
+        content = data.get('content')
+        uploaded_files = data.get('uploaded_files')
+        if not content and not uploaded_files:
+            raise serializers.ValidationError("Either message content or at least one file is required.")
+        return data
+
+    def validate_content(self, value):
+        # If content is provided, it must not be empty after strip
+        if value and not value.strip():
+            raise serializers.ValidationError("Message cannot be empty.")
+        if value and len(value) > 2000:
+            raise serializers.ValidationError("Message must be 2000 characters or fewer.")
+        return value
