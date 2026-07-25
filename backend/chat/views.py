@@ -577,21 +577,23 @@ class GroupDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, conversation_id):
-
         group = get_object_or_404(
             Conversation,
             id=conversation_id,
             type=Conversation.Type.GROUP,
         )
 
-        if group.owner != request.user:
+        # Check that the requesting user is a member of the group
+        if not ConversationMember.objects.filter(
+            conversation=group,
+            user=request.user
+        ).exists():
             return Response(
-                {"detail": "Only the group owner can delete the group."},
+                {"detail": "You are not a member of this group."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         group.delete()
-
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
