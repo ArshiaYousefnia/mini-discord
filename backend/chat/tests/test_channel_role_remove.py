@@ -8,10 +8,10 @@ User = get_user_model()
 
 class ChannelMemberRoleRemoveTests(APITestCase):
     def setUp(self):
-        self.owner = User.objects.create_user(username='owner', password='password123')
-        self.admin = User.objects.create_user(username='admin', password='password123')
-        self.member = User.objects.create_user(username='member', password='password123')
-        self.stranger = User.objects.create_user(username='stranger', password='password123')
+        self.owner = User.objects.create_user(username='owner',email='channelOwner@test.com', password='password123')
+        self.admin = User.objects.create_user(username='admin',email='channelAdmin@test.com', password='password123')
+        self.member = User.objects.create_user(username='member',email='channelMember@test.com', password='password123')
+        self.stranger = User.objects.create_user(username='stranger',email='channelStranger@test.com', password='password123')
 
         self.conversation = Conversation.objects.create(
             type=Conversation.Type.CHANNEL,
