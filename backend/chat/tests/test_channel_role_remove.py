@@ -2,7 +2,7 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth import get_user_model
-from your_app.models import Conversation, Channel, ConversationMember, Role # نام your_app را با نام اپلیکیشن خود جایگزین کنید
+from chat.models import Conversation, Channel, ConversationMember, Role 
 
 User = get_user_model()
 
