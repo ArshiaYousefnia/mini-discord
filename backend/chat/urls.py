@@ -11,7 +11,7 @@ from .views import ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelD
     ChannelRolesView, ChannelRoleDetailView, TopicListCreateView, TopicDetailView
 
 from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
-from .views import ChannelMyPermissionsView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
+from .views import ChannelMemberRoleRemoveView,ChannelMyPermissionsView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
     ChannelRemoveMemberView,ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
 
@@ -192,5 +192,10 @@ urlpatterns = [
         'attachments/<uuid:attachment_id>/download/',
         AttachmentDownloadView.as_view(),
         name='attachment-download',
+    ),
+    path(
+        'channels/<uuid:conversation_id>/members/<uuid:user_id>/roles/<uuid:role_id>/',
+        ChannelMemberRoleRemoveView.as_view(),
+        name='channel-member-role-remove'
     ),
 ]

@@ -1309,3 +1309,71 @@ class AttachmentDownloadView(APIView):
             filename=attachment.original_filename,
         )
         return response
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from rest_framework.permissions import IsAuthenticated
+# مطمئن شوید که Conversation, ConversationMember, Role ایمپورت شده‌اند
+
+class ChannelMemberRoleRemoveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, conversation_id, user_id, role_id):
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        if conversation.type != Conversation.Type.CHANNEL:
+            return Response({"detail": "Not a channel."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            requester_membership = ConversationMember.objects.prefetch_related('roles').get(
+                conversation=conversation,
+                user=request.user
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        is_owner = (conversation.owner == request.user)
+        can_manage_roles = requester_membership.roles.filter(can_manage_roles=True).exists()
+
+        if not (is_owner or can_manage_roles):
+            return Response(
+                {"detail": "You do not have permission to manage roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if conversation.owner and str(conversation.owner.id) == str(user_id):
+            return Response(
+                {"detail": "You cannot change the role of the channel owner."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            target_membership = ConversationMember.objects.get(
+                conversation=conversation,
+                user_id=user_id
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "Target user is not a member of this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            role = Role.objects.get(id=role_id, conversation=conversation)
+        except Role.DoesNotExist:
+            return Response(
+                {"detail": "Role not found in this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        target_membership.roles.remove(role)
+
+        return Response(
+            {"detail": "Role removed successfully."},
+            status=status.HTTP_200_OK
+        )
