@@ -1180,6 +1180,13 @@ class ChannelRoleDetailView(APIView):
 
     def patch(self, request, conversation_id, role_id):
         role = self.get_role(conversation_id, role_id)
+        
+        if role.name == 'Channel Owner':
+            return Response(
+                {"detail": "Cannot edit the Channel Owner role."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+            
         serializer = RoleSerializer(role, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
