@@ -49,9 +49,10 @@ class SendDirectMessageView(viewsets.GenericViewSet):
             )
         if not content:
             return Response(
-                {"error": "Message content is required."},
+                {"content": "Message content is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
 
         # Validate recipient exists
         recipient = get_object_or_404(User, id=recipient_id)
