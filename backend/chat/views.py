@@ -28,7 +28,6 @@ from .serializers import ChannelMemberRoleUpdateSerializer,ChannelMemberSerializ
 User = get_user_model()
 
 
-
 class SendDirectMessageView(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = MessageSerializer
@@ -39,17 +38,18 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         Send a direct message to another user.
         """
         recipient_id = request.data.get('recipient_id')
-        content = request.data.get('content')
+        content = request.data.get('content', '')
         reply_to = request.data.get('reply_to')
+        uploaded_files = request.FILES.getlist('uploaded_files') if request.FILES else []
 
         if not recipient_id:
             return Response(
                 {"recipient_id": "This field is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not content:
+        if not content and not uploaded_files:
             return Response(
-                {"content": "Message content is required."},
+                {"error": "Message content or attachments are required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -77,17 +77,30 @@ class SendDirectMessageView(viewsets.GenericViewSet):
             ConversationMember.objects.create(conversation=conversation, user=request.user)
             ConversationMember.objects.create(conversation=conversation, user=recipient)
 
-        # Validate message content via serializer
-        serializer = self.get_serializer(data={
+        # Build data dictionary and optionally include uploaded_files for serializer validation
+        data = {
             'conversation': str(conversation.id),  # Need to pass UUID as string
             'content': content,
             'reply_to': reply_to,
+        }
+        if uploaded_files:
+            data['uploaded_files'] = uploaded_files
 
-        })
+        # Validate message content via serializer
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
 
         # Save with sender = request.user
         message = serializer.save(sender=request.user, conversation=conversation)
+
+        # Create attachment records
+        for file in serializer.validated_data.get('uploaded_files', []):
+            Attachment.objects.create(
+                message=message,
+                file=file,
+                original_filename=file.name,
+                size=file.size,
+            )
 
         # update last_read_message for sender (so they mark own message as read)
         # Not required for the story, but useful later
@@ -96,6 +109,7 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         member.save()
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 class ConversationViewSet(mixins.ListModelMixin,
                           mixins.RetrieveModelMixin,
