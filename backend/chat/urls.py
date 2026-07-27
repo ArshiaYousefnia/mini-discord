@@ -2,10 +2,16 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
-from .views import GroupDeleteView,GroupUpdateView,GroupMembersView,SendDirectMessageView, ConversationViewSet, MessageViewSet, ConversationListView, \
-    ConversationMarkReadView, GroupCreateView,GroupJoinView, GroupProfileView
 
+from .views import ChannelPreviewView,ChannelMemberRoleUpdateView,ChannelMembersListView,ChannelDeleteView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
+from .views import ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelDeleteView, ChannelPublicIdView, \
+    ChannelJoinView, GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
+    ChannelRolesView, ChannelRoleDetailView, TopicListCreateView, TopicDetailView
 
+from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
+from .views import ChannelMyPermissionsView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
+    MessageViewSet, ConversationListView, \
+    ChannelRemoveMemberView,ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
 
 router = DefaultRouter()
 router.register(r'dm', SendDirectMessageView, basename='direct-message')
@@ -81,5 +87,103 @@ urlpatterns = [
         "conversations/groups/<uuid:conversation_id>/",
         GroupDeleteView.as_view(),
         name="group-delete",
+    ),
+    path(
+        'channels/create/',
+        ChannelCreateView.as_view(),
+        name='channel-create',
+    ),
+    path(
+        "channels/<uuid:conversation_id>/profile/",
+        ChannelProfileView.as_view(),
+        name="channel-profile",
+        ),
+    path(
+        'channels/join/<uuid:invite_code>/',
+        ChannelJoinView.as_view(),
+        name='channel-join'
+    ),
+    path(
+        'channels/public/<str:public_id>/',
+        ChannelPublicIdView.as_view(),
+        name='channel-public-join'
+    ),
+
+    path(
+        "channels/<uuid:conversation_id>/edit/",
+        ChannelUpdateView.as_view(),
+        name="channel-update",
+    ),
+
+    path(
+        'channels/<uuid:conversation_id>/members/',
+        ChannelMembersListView.as_view(),
+        name='channel-members-list'
+    ),
+
+    path(
+        'channels/<uuid:conversation_id>/members/<uuid:user_id>/',
+        ChannelRemoveMemberView.as_view(),
+        name='channel-remove-member'
+    ),
+
+    path(
+        'channels/<uuid:conversation_id>/members/<uuid:user_id>/role/',
+        ChannelMemberRoleUpdateView.as_view(),
+        name='channel-member-role-update'
+    ),
+    path(
+        "channels/<uuid:conversation_id>/delete/",
+        ChannelDeleteView.as_view(),
+        name="channel-delete",
+    ),
+    path(
+        'channels/join/<uuid:invite_code>/',
+        ChannelJoinView.as_view(),
+        name='channel-join'
+        ),
+    path(
+        'channels/public/<str:public_id>/',
+        ChannelPublicIdView.as_view(),
+        name='channel-public-join'
+    ),
+
+    path(
+        "channels/<uuid:conversation_id>/edit/",
+        ChannelUpdateView.as_view(),
+        name="channel-update",
+    ),
+
+
+    path(
+        "channels/<uuid:conversation_id>/my-permissions/",
+        ChannelMyPermissionsView.as_view(),
+        name="channel-my-permissions",
+    ),
+    path(
+
+        'channels/preview/<uuid:invite_code>/',
+        ChannelPreviewView.as_view(),
+        name='channel-preview'
+    ),
+    path(
+        'channels/<uuid:conversation_id>/roles/',
+        ChannelRolesView.as_view(),
+        name='channel-roles',
+    ),
+    path(
+        'channels/<uuid:conversation_id>/roles/<uuid:role_id>/',
+        ChannelRoleDetailView.as_view(),
+        name='channel-role-detail',
+    ),
+    path(
+        'channels/<uuid:conversation_id>/topics/',
+        TopicListCreateView.as_view(),
+        name='topic-list-create',
+    ),
+    path(
+        'channels/<uuid:conversation_id>/topics/<uuid:topic_id>/',
+        TopicDetailView.as_view(),
+        name='topic-detail',
     ),
 ]
