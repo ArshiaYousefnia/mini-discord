@@ -100,3 +100,62 @@ export type GroupMember = {
 };
 
 export type GroupMembers = GroupMember[];
+
+export type CreateChannelRequest = {
+  name: string;
+  description?: string;
+  avatar?: File;
+  is_private?: boolean;
+  public_id?: string | null;
+};
+
+export type CreateChannelResponse = {
+  id: string;
+  name: string;
+  description: string;
+  avatar_url: string | null;
+  is_private: boolean;
+  public_id: string | null;
+  invite_link: string;
+  owner_id: string | number;
+};
+
+export type ChannelPermissions = {
+    is_owner: boolean;
+    can_send_messages: boolean;
+    can_send_media: boolean;
+    can_delete_messages: boolean;
+    can_manage_members: boolean;
+    can_manage_roles: boolean;
+    can_edit_channel_info: boolean;
+    can_view_invite_link: boolean;
+    can_delete_channel: boolean;
+    can_create_topic: boolean;
+    can_manage_others_topics: boolean;
+}
+
+export type ChannelProfile = {
+  id: string;
+  name: string;
+  description: string;
+  avatar: string;
+  avatar_url: string;
+  owner_id: string;
+  owner_display_name: string;
+  created_at: string;
+  invite_link: string | null; 
+  is_private: boolean;        
+  public_id: string | null;
+}
+
+export type ChannelMember = {
+  id: string;
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  role_name: string;
+};
+
+export type ChannelMembers = ChannelMember[];
+

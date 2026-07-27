@@ -73,6 +73,11 @@ class Role(models.Model):
     can_delete_messages = models.BooleanField(default=False)
     can_manage_members = models.BooleanField(default=False)
     can_manage_roles = models.BooleanField(default=False)
+    can_view_invite_link = models.BooleanField(default=False)
+    can_edit_channel_info = models.BooleanField(default=False)
+    can_delete_channel = models.BooleanField(default=False)
+    can_create_topic = models.BooleanField(default=False)
+    can_manage_others_topics = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.name} ({self.conversation_id})"
@@ -143,3 +148,64 @@ class Message(models.Model):
 
     def __str__(self):
         return f"Message {self.id} in {self.conversation_id}"
+
+class Channel(models.Model):
+    conversation = models.OneToOneField(
+        Conversation,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name='channel',
+    )
+    is_private = models.BooleanField(default=True)
+    public_id = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Unique public identifier, required only for public channels.",
+    )
+    invite_code = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        help_text="Permanent invite code (never changes).",
+    )
+
+    @property
+    def invite_link(self):
+        # The view will build the absolute URL; we just expose the code.
+        return self.invite_code
+
+
+class Topic(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='topics',
+        limit_choices_to={'type': Conversation.Type.CHANNEL},
+    )
+    name = models.CharField(max_length=200)
+    creator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='created_topics',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('conversation', 'name')
+
+    def __str__(self):
+        return f"{self.name} in {self.conversation_id}"
+
+
+class ChannelMessage(Message):
+    topic = models.ForeignKey(
+        Topic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='messages',
+    )
