@@ -47,9 +47,9 @@ class SendDirectMessageView(viewsets.GenericViewSet):
                 {"recipient_id": "This field is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not content and not uploaded_files:
+        if not content:
             return Response(
-                {"error": "Message content or attachments are required."},
+                {"error": "Message content is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
