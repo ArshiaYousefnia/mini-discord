@@ -48,6 +48,7 @@ class SendDirectMessageView(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+
         # Validate recipient exists
         recipient = get_object_or_404(User, id=recipient_id)
         if recipient == request.user:
