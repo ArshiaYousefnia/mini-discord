@@ -132,8 +132,7 @@ class MessageSerializer(serializers.ModelSerializer):
         if value and len(value) > 2000:
             raise serializers.ValidationError("Message must be 2000 characters or fewer.")
         return value
-
-
+    
 class ConversationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
