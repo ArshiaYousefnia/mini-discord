@@ -226,16 +226,159 @@ export default function MessageBubble({
           display: "flex",
           flexDirection: "column",
           gap: "8px",
-          marginBottom: "8px", // Changed from marginTop to marginBottom to separate media from text below
+          marginTop: "8px",
         }}
       >
-        {attachments.map((att) => (
-          <CachedAttachment key={att.id} attachment={att} />
-        ))}
+        {attachments.map((att) => {
+          const fileUrl = att.file_url || att.url;
+          const fileName =
+            att.original_filename || att.file_name || "Attachment";
+          const fileSizeBytes = att.size ?? att.file_size ?? 0;
+          const sizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(2);
+          const extension =
+            fileName.split(".").pop()?.toLowerCase() || "";
+
+          const isImage = ["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(
+            extension
+          );
+          const isVideo = ["mp4", "webm", "ogg", "mov"].includes(extension);
+          const isAudio = [
+            "mp3",
+            "wav",
+            "ogg",
+            "aac",
+            "m4a",
+            "flac",
+          ].includes(extension);
+
+          if (isImage) {
+            return (
+              <div
+                key={att.id}
+                className="attachment-image-wrapper"
+                style={{
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                  maxWidth: "100%",
+                  maxHeight: "300px",
+                  backgroundColor: "rgba(0, 0, 0, 0.2)",
+                }}
+              >
+                <a
+                  href={fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: "block" }}
+                >
+                  <img
+                    src={fileUrl}
+                    alt={fileName}
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "300px",
+                      objectFit: "contain",
+                      display: "block",
+                      margin: "0 auto",
+                    }}
+                  />
+                </a>
+              </div>
+            );
+          }
+
+          if (isVideo) {
+            return (
+              <div
+                key={att.id}
+                className="attachment-video-wrapper"
+                style={{
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                  maxWidth: "100%",
+                }}
+              >
+                <video
+                  controls
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "300px",
+                    display: "block",
+                    borderRadius: "8px",
+                    backgroundColor: "#000",
+                  }}
+                >
+                  <source src={fileUrl} />
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+            );
+          }
+
+          if (isAudio) {
+            return (
+              <div
+                key={att.id}
+                className="attachment-audio-wrapper"
+                style={{ width: "100%", minWidth: "240px", padding: "4px 0" }}
+              >
+                <audio controls style={{ width: "100%", height: "36px" }}>
+                  <source src={fileUrl} />
+                  Your browser does not support the audio element.
+                </audio>
+              </div>
+            );
+          }
+
+          // Document / Default Download Card
+          return (
+            <a
+              key={att.id}
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={fileName}
+              className="attachment-document-card"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                padding: "10px 12px",
+                backgroundColor: "rgba(255, 255, 255, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: "8px",
+                textDecoration: "none",
+                color: "inherit",
+                transition: "background-color 0.2s ease",
+              }}
+            >
+              <div style={{ fontSize: "24px", flexShrink: 0 }}>📄</div>
+              <div style={{ overflow: "hidden", flexGrow: 1 }}>
+                <div
+                  style={{
+                    fontWeight: 500,
+                    fontSize: "14px",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {fileName}
+                </div>
+                <div
+                  style={{ fontSize: "12px", opacity: 0.7, marginTop: "2px" }}
+                >
+                  {fileSizeBytes > 0 ? `${sizeMB} MB` : "Document"}
+                </div>
+              </div>
+              <div style={{ fontSize: "18px", flexShrink: 0, opacity: 0.8 }}>
+                ⬇️
+              </div>
+            </a>
+          );
+        })}
       </div>
     );
   };
-
 
   const renderReplyPreview = () => {
     if (replyMessage) {
@@ -337,6 +480,7 @@ export default function MessageBubble({
               {loading ? "Saving..." : "Save"}
             </button>
           </div>
+          {renderAttachments(message.attachments)}
         </div>
       ) : (
         <>
@@ -344,11 +488,10 @@ export default function MessageBubble({
             <div className="message-text">Deleted message</div>
           ) : (
             <>
-              {/* Media renders above the text content in normal view */}
-              {renderAttachments(message.attachments)}
               {messageText ? (
                 <div className="message-text">{renderContent(messageText)}</div>
               ) : null}
+              {renderAttachments(message.attachments)}
             </>
           )}
         </>
