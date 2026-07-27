@@ -28,7 +28,6 @@ from .serializers import ChannelMemberRoleUpdateSerializer,ChannelMemberSerializ
 User = get_user_model()
 
 
-
 class SendDirectMessageView(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = MessageSerializer
@@ -102,6 +101,7 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         member.save()
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 class ConversationViewSet(mixins.ListModelMixin,
                           mixins.RetrieveModelMixin,

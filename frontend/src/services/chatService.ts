@@ -120,19 +120,6 @@ export const chatService = {
   },
 
   // Task #33: Search messages within a single DM / Group / Channel.
-  //
-  // ASSUMPTION: this calls GET /api/chat/conversations/:id/messages/search/?q=...
-  // matching the naming convention of the existing endpoints above. The
-  // Development section on issue #33 mentions the search backend was already
-  // added in MR !52 — if the real route or query param name differs
-  // (e.g. "query" instead of "q", or a different path), just update the
-  // `api.get` call below, the rest of the feature does not depend on it.
-  //
-  // Expected response shape: an array of Message objects (same shape as
-  // getConversationMessages) whose content matches the query,
-  // case-insensitively. Snippet highlighting is done entirely on the
-  // frontend (see MessageSearchPanel), so the backend does not need to
-  // return a pre-built snippet.
   searchMessages: async (
     conversationId: string,
     query: string
@@ -155,9 +142,6 @@ export const chatService = {
         error
       );
 
-      // Fallback: case-insensitive search over whatever messages we already
-      // have cached locally, so the feature still degrades gracefully if the
-      // backend search endpoint is unreachable or not deployed yet.
       const needle = trimmed.toLowerCase();
       return getLocalConversationMessages(conversationId).filter(
         (message) =>
@@ -179,17 +163,43 @@ export const chatService = {
 
   sendDirectMessage: async ({
     recipient_id,
-    content,
+    content = "",
     reply_to = null,
-  }: SendDirectMessagePayload): Promise<Message> => {
-    if (!content.trim()) {
-      throw new Error("Message cannot be empty.");
+    files = [],
+  }: SendDirectMessagePayload & { files?: File[] }): Promise<Message> => {
+    if (!content.trim() && (!files || files.length === 0)) {
+      throw new Error("Message or attachment cannot be empty.");
     }
 
     if (content.length > 2000) {
       throw new Error("Message exceeds the 2000 character limit.");
     }
 
+    // Handle File Attachments
+    if (files && files.length > 0) {
+      const formData = new FormData();
+      if (content.trim()) formData.append("content", content.trim());
+      if (reply_to) formData.append("reply_to", reply_to);
+      formData.append("recipient_id", recipient_id);
+
+      files.forEach((file) => {
+        formData.append("uploaded_files", file);
+      });
+
+      try {
+        const response = await api.post<Message>("/api/chat/dm/", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        const message = response.data;
+        upsertLocalMessage(message);
+        return message;
+      } catch (error) {
+        console.error("Failed to send direct message with files to API", error);
+        throw error;
+      }
+    }
+
+    // Fallback to Standard JSON
     try {
       const response = await api.post<Message>("/api/chat/dm/", {
         recipient_id,
@@ -215,20 +225,54 @@ export const chatService = {
   
   sendConversationMessage: async ({
     conversation_id,
-    content,
+    content = "",
     reply_to = null,
     recipient_id,
+    files = [],
   }: SendConversationMessagePayload): Promise<Message> => {
-    if (!content.trim()) {
-      throw new Error("Message cannot be empty.");
+    if (!content.trim() && (!files || files.length === 0)) {
+      throw new Error("Message or attachment cannot be empty.");
     }
 
-    if (content.length > 2000) {
-      throw new Error("Message exceeds the 2000 character limit.");
+    // If there are files, we MUST send as FormData
+    if (files && files.length > 0) {
+      const formData = new FormData();
+      if (content.trim()) formData.append("content", content.trim());
+      if (reply_to) formData.append("reply_to", reply_to);
+
+      files.forEach((file) => {
+        formData.append("uploaded_files", file);
+      });
+
+      try {
+        if (recipient_id) {
+          formData.append("recipient_id", recipient_id);
+          const response = await api.post<Message>("/api/chat/dm/", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+          const message = response.data;
+          upsertLocalMessage(message);
+          return message;
+        }
+
+        const response = await api.post<Message>(
+          `/api/chat/conversations/${conversation_id}/messages/`,
+          formData,
+          {
+            headers: { "Content-Type": "multipart/form-data" },
+          }
+        );
+        const message = response.data;
+        upsertLocalMessage(message);
+        return message;
+      } catch (error) {
+        console.error("Failed to send multipart message to API", error);
+        throw error;
+      }
     }
 
+    // Fallback to standard JSON payload when no files are attached
     try {
-      // اگر چت از نوع DM باشد و شناسه مخاطب را داشته باشیم، از Endpoint سالم استفاده می‌کنیم
       if (recipient_id) {
         const response = await api.post<Message>("/api/chat/dm/", {
           recipient_id,
@@ -240,7 +284,6 @@ export const chatService = {
         return message;
       }
       
-      // در غیر این صورت (مانند چت‌های گروهی یا کانال‌ها در آینده) به آدرس قبلی می‌فرستیم
       const response = await api.post<Message>(
         `/api/chat/conversations/${conversation_id}/messages/`,
         { content, reply_to }
@@ -250,11 +293,9 @@ export const chatService = {
       return message;
     } catch (error) {
       console.error("Failed to send message to API", error);
-      throw error; // خطا را پرتاب می‌کنیم تا UI متوجه شکست ارسال شود
+      throw error;
     }
   },
-
-
 
   editMessage: async (
     conversationId: string,
@@ -308,7 +349,6 @@ export const chatService = {
         `/api/chat/conversations/${conversationId}/messages/${messageId}/`
       );
       
-      // Update local cache state reflecting deletion
       const messages = getLocalMessages();
       const updatedMessages = messages.map((message) =>
         message.id === messageId
@@ -373,12 +413,14 @@ export const {
 export async function createDirectMessage(
   recipientId: string,
   content: string,
-  replyTo: string | null = null
+  replyTo: string | null = null,
+  files: File[] = [] // Supported here as well now
 ): Promise<Message> {
   return sendDirectMessage({
     recipient_id: recipientId,
     content: content,
     reply_to: replyTo,
+    files: files,
   });
 }
 
