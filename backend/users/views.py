@@ -117,10 +117,7 @@ class UserProfileUpdateView(generics.RetrieveUpdateAPIView):        #needed in o
     
 
 
-
-
-
-class GlobalSearchView(APIView):
+class UserSearchView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
