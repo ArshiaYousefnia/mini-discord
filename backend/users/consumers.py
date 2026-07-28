@@ -14,8 +14,6 @@ class OnlineStatusConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        await self.accept()
-
         # Join global status group
         await self.channel_layer.group_add(self.GROUP_NAME, self.channel_name)
 
@@ -32,9 +30,10 @@ class OnlineStatusConsumer(AsyncWebsocketConsumer):
             }
         )
 
+        await self.accept()
+
     async def disconnect(self, close_code):
-        user = getattr(self, 'user', None)
-        if user and not user.is_anonymous:
+        if not self.user.is_anonymous:
             await self.set_user_online(False)
             await self.channel_layer.group_send(
                 self.GROUP_NAME,
