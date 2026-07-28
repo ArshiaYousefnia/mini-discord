@@ -226,7 +226,7 @@ export default function MessageBubble({
           display: "flex",
           flexDirection: "column",
           gap: "8px",
-          marginTop: "8px",
+          marginBottom: "8px", // Changed from marginTop to marginBottom to separate media from text below
         }}
       >
         {attachments.map((att) => (
@@ -337,7 +337,6 @@ export default function MessageBubble({
               {loading ? "Saving..." : "Save"}
             </button>
           </div>
-          {renderAttachments(message.attachments)}
         </div>
       ) : (
         <>
@@ -345,10 +344,11 @@ export default function MessageBubble({
             <div className="message-text">Deleted message</div>
           ) : (
             <>
+              {/* Media renders above the text content in normal view */}
+              {renderAttachments(message.attachments)}
               {messageText ? (
                 <div className="message-text">{renderContent(messageText)}</div>
               ) : null}
-              {renderAttachments(message.attachments)}
             </>
           )}
         </>
