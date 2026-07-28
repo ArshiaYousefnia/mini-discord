@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom"; // Imported Link here
 import { loginUser } from "../services/authService";
 import type { LoginFormData } from "../types/auth";
 
@@ -128,6 +128,13 @@ export default function LoginForm() {
       <button className="login-button" type="submit" disabled={loading}>
         {loading ? "Logging in..." : "Login"}
       </button>
+
+      {/* Added the registration link below the login button */}
+      <div style={{ marginTop: "15px", textAlign: "center" }}>
+        <p style={{ margin: 0, fontSize: "14px" }}>
+          Don't have an account? <Link to="/register" style={{ color: "#007bff", textDecoration: "none" }}>Register here</Link>
+        </p>
+      </div>
     </form>
   );
 }
