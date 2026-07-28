@@ -9,6 +9,13 @@ from rest_framework.permissions import IsAuthenticated
 from .models import User
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import NotFound
+from django.contrib.auth import get_user_model
+from chat.models import Channel
+from chat.serializers import ChannelDetailSerializer
+
+from .serializers import UserSearchSerializer
+
+User = get_user_model()
 
 class UserRegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -109,18 +116,34 @@ class UserProfileUpdateView(generics.RetrieveUpdateAPIView):        #needed in o
 
 
 
-class UserSearchView(generics.RetrieveAPIView):
+class GlobalSearchView(APIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = UserSearchSerializer
 
-    def get_object(self):
-        username = self.request.query_params.get("username")
+    def get(self, request):
+        query = request.query_params.get("username", "").strip()
+        
+        if not query:
+            return Response(
+                {"detail": "Search parameter is required."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        user = User.objects.filter(
-            username__iexact=username
-        ).first()
+        user = User.objects.filter(username__iexact=query).first()
+        if user:
+            serializer = UserSearchSerializer(user, context={"request": request})
+            data = serializer.data
+            data["type"] = "user"  
+            return Response(data, status=status.HTTP_200_OK)
 
-        if user is None:
-            raise NotFound("User not found.")
+        channel = Channel.objects.filter(
+            public_id__iexact=query, 
+            is_private=False
+        ).select_related('conversation').first()
+        
+        if channel:
+            serializer = ChannelDetailSerializer(channel.conversation, context={"request": request})
+            data = serializer.data
+            data["type"] = "channel"
+            return Response(data, status=status.HTTP_200_OK)
 
-        return user
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
