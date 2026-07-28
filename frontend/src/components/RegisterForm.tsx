@@ -49,7 +49,9 @@ export default function RegisterForm() {
     }
 
     if (!validateUsername(form.username)) {
-      newErrors.username = "Username must be at least 4 characters and can only have english numbers and letters";
+  newErrors.username = `username must be at least 4 characters long, start with an english letter, and
+                        contain only English letters, numbers, or underscores. It cannot contain two
+                        underscores in a row or end with an underscore.`;
     }
 
     if (!validatePassword(form.password)) {
