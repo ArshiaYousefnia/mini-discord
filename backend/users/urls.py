@@ -20,5 +20,6 @@ urlpatterns = [
         name='user-profile-update'
     ),
 
+
     path('users/search/', GlobalSearchView.as_view(), name='global-search'),
 ]

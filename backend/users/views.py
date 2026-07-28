@@ -137,6 +137,7 @@ class GlobalSearchView(APIView):
             serializer = UserSearchSerializer(user, context={"request": request})
             data = serializer.data
 
+
             data["type"] = "user" 
 
             return Response(data, status=status.HTTP_200_OK)
