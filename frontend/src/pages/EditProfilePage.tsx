@@ -143,15 +143,38 @@ export default function EditProfilePage() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      const refreshToken = localStorage.getItem("refreshToken");
+      if (refreshToken) {
+        await logoutUser(refreshToken);
+      }
+    } catch (error) {
+      console.error("Logout failed", error);
+    } finally {
+      // 1. Clear Local Storage
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("username");
+      localStorage.removeItem("email");
+      localStorage.removeItem("id");
+      localStorage.removeItem("display_name");
+      localStorage.removeItem("avatar_url");
 
+      // 2. Clear Browser Cache API (Media Cache)
+      if ('caches' in window) {
+        try {
+          // Grabs all cache names (e.g., 'chat-media-cache-v1', etc.)
+          const cacheNames = await caches.keys();
+          // Deletes all of them to ensure no media is left behind
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
+        } catch (cacheError) {
+          console.error("Failed to clear browser cache", cacheError);
+        }
+      }
 
-// ... inside your component
-
-const handleLogout = async () => {
-  try {
-    const refreshToken = localStorage.getItem("refreshToken");
-    if (refreshToken) {
-      await logoutUser(refreshToken);
+      // 3. Redirect
+      navigate("/login", { replace: true });
     }
   } catch (error) {
     console.error("Logout failed", error);
@@ -188,6 +211,7 @@ const handleLogout = async () => {
     navigate("/login", { replace: true });
   }
 };
+
 
 
 
