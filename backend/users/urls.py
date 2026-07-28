@@ -19,6 +19,6 @@ urlpatterns = [
         UserProfileUpdateView.as_view(),
         name='user-profile-update'
     ),
-    path('users/search/', GlobalSearchView.as_view(), name='global-search'),
 
-    ]
+    path('users/search/', GlobalSearchView.as_view(), name='global-search'),
+]
