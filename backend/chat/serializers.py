@@ -132,7 +132,8 @@ class MessageSerializer(serializers.ModelSerializer):
         if value and len(value) > 2000:
             raise serializers.ValidationError("Message must be 2000 characters or fewer.")
         return value
-    
+
+
 class ConversationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
@@ -158,7 +159,8 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Conversation
-        fields = ['id', 'type', 'display_name', 'avatar', 'last_message', 'unread_count', 'other_user_id', 'other_user_is_online']
+        fields = ['id', 'type', 'display_name', 'avatar', 'last_message', 'unread_count', 'other_user_id',
+                  'other_user_is_online']
 
     def get_other_user_is_online(self, obj):
         user = self.context['request'].user
@@ -446,12 +448,13 @@ class ChannelMemberSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ConversationMember
-        # Include 'is_online' in the fields list
         fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'roles', 'is_online']
 
     def get_roles(self, obj):
         role_names = [role.name for role in obj.roles.all()]
         return role_names if role_names else ["Member"]
+
+
 class ChannelMemberRoleUpdateSerializer(serializers.Serializer):
     role_id = serializers.UUIDField(required=True)
 

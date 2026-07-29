@@ -14,9 +14,6 @@ class OnlineStatusConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        # NOTE: We accept the connection first before sending messages or 
-        # joining groups. This ensures the WebSocket handshake is completed 
-        # and avoids dropping the user's own broadcasted status event.
         await self.accept()
 
         # Join global status group
@@ -36,8 +33,6 @@ class OnlineStatusConsumer(AsyncWebsocketConsumer):
         )
 
     async def disconnect(self, close_code):
-        # NOTE: Using getattr checks if 'user' exists on the instance. This prevents 
-        # an AttributeError if the connection fails early during the handshake phase.
         user = getattr(self, 'user', None)
         if user and not user.is_anonymous:
             await self.set_user_online(False)
