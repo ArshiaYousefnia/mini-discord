@@ -34,11 +34,12 @@ export default function HomePage() {
   const [pageError, setPageError] = useState("");
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [currentUsername, setCurrentUsername] = useState("");
-  
-  const [searchParams, setSearchParams] = useSearchParams(); 
-  
-  // Hook now connects and tracks online users using snapshots
-  const { onlineUsers } = useOnlineStatus();
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Hook now tracks live websocket updates only.
+  // Initial DM presence is hydrated from REST conversation data below.
+  const { onlineUsers, setOnlineUsers } = useOnlineStatus();
 
   useEffect(() => {
     setCurrentUsername(getCurrentUsername());
@@ -56,6 +57,25 @@ export default function HomePage() {
 
       const conversations: Conversation[] = await getConversations();
 
+      // Hydrate initial online state for DM sidebar entries from REST.
+      // WebSocket events will overwrite these values as users go online/offline.
+      const initialStatuses: Record<string, boolean> = {};
+      conversations.forEach((conversation) => {
+        if (
+          conversation.type === "DM" &&
+          conversation.other_user_id
+        ) {
+          initialStatuses[String(conversation.other_user_id)] = Boolean(
+            conversation.other_user_is_online
+          );
+        }
+      });
+
+      setOnlineUsers((prev) => ({
+        ...prev,
+        ...initialStatuses,
+      }));
+
       const mappedChats = await Promise.all(
         conversations.map(async (conversation) => {
           try {
@@ -70,17 +90,17 @@ export default function HomePage() {
 
       const chatIdFromUrl = searchParams.get("chat");
       const idToSelect = targetGroupId || chatIdFromUrl;
-      
+
       if (idToSelect) {
         const chatToSelect = sorted.find((c) => c.id === idToSelect);
-        
+
         if (chatToSelect) {
           const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
-          
+
           if (!isBackgroundRefresh || targetGroupId) {
             setSelectedChat(readChat);
           }
-          
+
           sorted = sorted.map((c) =>
             c.id === idToSelect ? readChat : c
           );
@@ -93,20 +113,23 @@ export default function HomePage() {
       }
 
       if (selectedChat) {
-        const updatedSelectedChat = sorted.find(c => c.id === selectedChat.id);
-        
+        const updatedSelectedChat = sorted.find((c) => c.id === selectedChat.id);
+
         if (!updatedSelectedChat) {
           setSelectedChat(null);
-          
+
           if (searchParams.get("chat") === selectedChat.id) {
             searchParams.delete("chat");
             setSearchParams(searchParams, { replace: true });
           }
         } else if (
-          updatedSelectedChat.name !== selectedChat.name || 
+          updatedSelectedChat.name !== selectedChat.name ||
           updatedSelectedChat.avatar !== selectedChat.avatar
         ) {
-          setSelectedChat({ ...updatedSelectedChat, unreadCount: selectedChat.unreadCount });
+          setSelectedChat({
+            ...updatedSelectedChat,
+            unreadCount: selectedChat.unreadCount,
+          });
         }
       }
 
@@ -125,7 +148,7 @@ export default function HomePage() {
   useEffect(() => {
     loadChats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); 
+  }, []);
 
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
@@ -163,9 +186,9 @@ export default function HomePage() {
 
   // Determine if the currently selected chat's other user is online.
   // We use String() representation here to match our normalized websocket state.
-  const isOtherUserOnline = 
-    selectedChat && (selectedChat as any).other_user_id
-      ? !!onlineUsers[String((selectedChat as any).other_user_id)]
+  const isOtherUserOnline =
+    selectedChat?.other_user_id
+      ? !!onlineUsers[String(selectedChat.other_user_id)]
       : undefined;
 
   return (
@@ -177,7 +200,7 @@ export default function HomePage() {
           onSelectChat={handleSelectChat}
           currentUsername={currentUsername}
           onStartDirectMessage={handleStartDirectMessage}
-          onRefresh={() => loadChats(true)} 
+          onRefresh={() => loadChats(true)}
           onlineUsers={onlineUsers ?? {}}
         />
       )}
@@ -198,7 +221,6 @@ export default function HomePage() {
                 setSearchParams({ chat: groupId });
                 await loadChats(false, groupId);
               }}
-              // Pass the online status prop here
               isOtherUserOnline={isOtherUserOnline}
               onlineUsers={onlineUsers}
             />

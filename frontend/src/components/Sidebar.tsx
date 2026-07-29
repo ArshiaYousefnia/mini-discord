@@ -281,8 +281,8 @@ export default function Sidebar({
                 active={selectedChatId === chat.id}
                 onClick={() => onSelectChat(chat)}
                 isOnline={
-                  (chat as any).other_user_id 
-                    ? !!onlineUsers[String((chat as any).other_user_id)] 
+                  chat.other_user_id
+                    ? !!onlineUsers[String(chat.other_user_id)]
                     : undefined
                 }
               />

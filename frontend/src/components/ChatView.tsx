@@ -97,15 +97,38 @@ export default function ChatView({
   const highlightTimeoutRef = useRef<number | null>(null);
 
   const currentUserId = localStorage.getItem("Id");
-  const currentUsername = localStorage.getItem("username");
+  const currentUsername = (() => {
+  const raw = localStorage.getItem("username");
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed?.username ? String(parsed.username) : String(parsed);
+    } catch {
+      return raw;
+    }
+  })();
 
   const chatType = chat?.type?.toUpperCase() ?? "";
+
 
   const isCurrentUserOwner =
     String(groupProfile?.owner_id) === String(currentUserId) ||
     (chatType === "CHANNEL" && channelPermissions?.is_owner === true);
 
+  const activeOtherUserOnline = useMemo(() => {
+    if (chatType !== "DM" || !chat?.other_user_id) return !!isOtherUserOnline;
+    
+    const userId = String(chat.other_user_id);
+    // If the user is in our WebSocket map, that is the "live" truth.
+    // If not, fall back to the initial API state.
+    return userId in onlineUsers ? onlineUsers[userId] : !!isOtherUserOnline;
+  }, [chatType, chat, onlineUsers, isOtherUserOnline]);
+
+
+
   const [sendingMessage, setSendingMessage] = useState(false);
+
+
 
   useEffect(() => {
     if (chat) {
@@ -270,11 +293,17 @@ export default function ChatView({
 
     try {
       setSendingMessage(true);
+
+      const recipientId =
+        chatType === "DM" && chat.other_user_id
+          ? String(chat.other_user_id)
+          : undefined;
+
       const newMessage = await sendConversationMessage({
         conversation_id: chat.id,
         content: text,
         reply_to: activeReplyTo?.id || null,
-        recipient_id: chat.other_user_id || (chat as any).otherUserId,
+        recipient_id: recipientId,
         files,
       });
 
@@ -345,10 +374,10 @@ export default function ChatView({
           setProfileLoading(false);
         }
       }
-    } else if (chatType === "DM") {
-      const otherUserId = chat.other_user_id || (chat as any).otherUserId;
-      if (otherUserId) handleUserClick(otherUserId);
-    } else if (chatType === "CHANNEL") {
+      } else if (chatType === "DM") {
+        const otherUserId = chat.other_user_id ? String(chat.other_user_id) : null;
+        if (otherUserId) handleUserClick(otherUserId);
+      } else if (chatType === "CHANNEL") {
       setShowProfile(true);
       setProfileViewType("channel");
 
@@ -647,8 +676,9 @@ export default function ChatView({
           setShowProfile(false);
           setShowSearch((prev) => !prev);
         }}
-        isOtherUserOnline={isOtherUserOnline}
+        isOtherUserOnline={activeOtherUserOnline}
       />
+
 
       {showSearch && (
         <MessageSearchPanel
@@ -698,9 +728,7 @@ export default function ChatView({
 
         {!loading && !error && messages.length > 0 && (
           <div className="message-history">
-            {messages
-              .filter((msg) => !msg.is_deleted)
-              .map((msg) => (
+            {messages.map((msg) => (
                 <MessageBubble
                   key={msg.id}
                   message={msg}

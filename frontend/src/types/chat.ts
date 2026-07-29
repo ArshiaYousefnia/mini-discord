@@ -15,7 +15,7 @@ export type Conversation = {
   last_message: BackendLastMessage | null;
   unread_count: number;
   other_user_id: string | null;
-  is_online: string;
+  other_user_is_online: boolean | null;
 };
 
 export interface Attachment {
@@ -167,6 +167,7 @@ export type ChannelMember = {
   display_name: string;
   avatar_url: string | null;
   role_name: string;
+  is_online: boolean;
 };
 
 export type ChannelMembers = ChannelMember[];

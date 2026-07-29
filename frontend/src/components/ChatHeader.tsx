@@ -44,19 +44,22 @@ export default function ChatHeader({
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div className="chat-view-name">{localChatInfo?.name || chat.name}</div>
 
-          {/* Render status only if it is a Direct Message and we have resolved the status */}
-          {isDM && isOtherUserOnline !== undefined && (
+          {/* Render status only for DMs. If unknown, show "…" */}
+          {isDM && (
             <div
-              className={`chat-view-status ${isOtherUserOnline ? "online" : "offline"}`}
+              className={`chat-view-status ${
+                isOtherUserOnline === true ? "online" : "offline"
+              }`}
               style={{
                 fontSize: "0.85rem",
-                color: isOtherUserOnline ? "#22c55e" : "#94a3b8",
+                color: isOtherUserOnline === true ? "#22c55e" : "#94a3b8",
                 lineHeight: 1.2,
               }}
             >
-              {isOtherUserOnline ? "Online" : "Offline"}
+              {isOtherUserOnline === undefined ? "…" : isOtherUserOnline ? "Online" : "Offline"}
             </div>
           )}
+
         </div>
       </div>
 
