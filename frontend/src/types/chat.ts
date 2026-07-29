@@ -18,19 +18,37 @@ export type Conversation = {
   created_at: string;
 };
 
-export type Message = {
+export interface Attachment {
+  id: string;
+  file_url: string;
+  file_name: string;
+  file_size?: number;
+  created_at?: string;
+}
+
+export interface Message {
   id: string;
   conversation: string;
-  sender: string;
-  sender_username: string;
-  sender_display_name: string;
+  sender: string | number;
+  sender_username?: string;
+  sender_display_name?: string;
   content: string | null;
-  reply_to: string | null;
+  reply_to?: string | null;
   is_edited: boolean;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
-};
+  attachments?: Attachment[]; // Added
+}
+
+export interface SendConversationMessagePayload {
+  conversation_id: string;
+  content?: string;
+  reply_to?: string | null;
+  recipient_id?: string;
+  files?: File[]; // Added
+}
+
 
 export type ChatListItem = {
   id: string;
@@ -58,12 +76,6 @@ export type SendDirectMessagePayload = {
   reply_to?: string | null;
 };
 
-export type SendConversationMessagePayload = {
-  conversation_id: string;
-  content: string;
-  reply_to?: string | null;
-  recipient_id?: string | null;
-};
 
 export type CreateGroupPayload = {
   name: string;

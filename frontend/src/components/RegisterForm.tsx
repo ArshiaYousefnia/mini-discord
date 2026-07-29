@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom"; // Imported Link and useNavigate
 import DatePickerModule from "react-multi-date-picker";
 import persian from "react-date-object/calendars/persian";
 import persian_fa from "react-date-object/locales/persian_fa";
@@ -11,6 +12,8 @@ import { normalizeDate } from "../utils/dateUtils";
 const DatePicker = (DatePickerModule as any).default ?? DatePickerModule;
 
 export default function RegisterForm() {
+  const navigate = useNavigate(); // Initialize navigate
+
   const [form, setForm] = useState<RegisterFormData>({
     email: "",
     birthday: "",
@@ -46,7 +49,9 @@ export default function RegisterForm() {
     }
 
     if (!validateUsername(form.username)) {
-      newErrors.username = "Username must be at least 4 characters and can only have english numbers and letters";
+  newErrors.username = `username must be at least 4 characters long, start with an english letter, and
+                        contain only English letters, numbers, or underscores. It cannot contain two
+                        underscores in a row or end with an underscore.`;
     }
 
     if (!validatePassword(form.password)) {
@@ -84,6 +89,7 @@ export default function RegisterForm() {
 
       await registerUser(payload);
       alert("Registration successful");
+      navigate("/login"); // Automatically redirect to login page upon success
     } catch (err: any) {
         const backendErrors = err.response?.data;
 
@@ -210,6 +216,13 @@ export default function RegisterForm() {
       <button className="register-button" type="submit" disabled={loading}>
         {loading ? "Registering..." : "Register"}
       </button>
+
+      {/* Added the login link below the register button */}
+      <div style={{ marginTop: "15px", textAlign: "center" }}>
+        <p style={{ margin: 0, fontSize: "14px" }}>
+          Already have an account? <Link to="/login" style={{ color: "#007bff", textDecoration: "none" }}>Login here</Link>
+        </p>
+      </div>
     </form>
   );
 }
