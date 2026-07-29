@@ -12,6 +12,7 @@
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "axios": "^1.18.1",
+    "idb-keyval": "^6.3.0",
     "react": "^19.2.6",
     "react-date-object": "^2.1.9",
     "react-dom": "^19.2.6",

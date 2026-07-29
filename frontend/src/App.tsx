@@ -8,15 +8,24 @@ import HomePage from "./pages/HomePage";
 import CreateGroupPage from "./pages/CreateGroupPage";
 import CreateChannelPage from "./pages/CreateChannelPage";
 
+// Helper component to handle root routing logic
+function RootRedirect() {
+  // Check if user exists in localStorage. 
+  // IMPORTANT: Change "user" to the exact key your LoginForm saves (e.g., "token", "access_token", or "userData")
+  const isAuthenticated = !!localStorage.getItem("username");
 
-function Home() {
-  return <div>Home page</div>;
+  if (isAuthenticated) {
+    return <Navigate to="/HomePage/" replace />;
+  }
+  return <Navigate to="/login" replace />;
 }
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
+      {/* Root path now uses the redirect component */}
+      <Route path="/" element={<RootRedirect />} />
+      
       <Route path="/register" element={<Register />} />
       <Route path="/login" element={<Login />} />
 
@@ -38,10 +47,11 @@ export default function App() {
       />
   
       <Route path="/HomePage/" element={<HomePage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
       <Route path="/groups/create" element={<CreateGroupPage />} />
       <Route path="/channels/create" element={<CreateChannelPage />} />
 
+      {/* Fallback wildcard route placed at the end */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
