@@ -28,6 +28,7 @@ from .serializers import ChannelMemberRoleUpdateSerializer,ChannelMemberSerializ
 User = get_user_model()
 
 
+
 class SendDirectMessageView(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = MessageSerializer
@@ -47,7 +48,6 @@ class SendDirectMessageView(viewsets.GenericViewSet):
                 {"recipient_id": "This field is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
 
         # Validate recipient exists
         recipient = get_object_or_404(User, id=recipient_id)
@@ -102,7 +102,6 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         member.save()
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
 
 class ConversationViewSet(mixins.ListModelMixin,
                           mixins.RetrieveModelMixin,

@@ -107,6 +107,8 @@ class UserProfileUpdateView(generics.RetrieveUpdateAPIView):        #needed in o
     
 
 
+
+
 class UserSearchView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = UserSearchSerializer
