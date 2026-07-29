@@ -15,7 +15,7 @@ export type Conversation = {
   last_message: BackendLastMessage | null;
   unread_count: number;
   other_user_id: string | null;
-  created_at: string;
+  is_online: string;
 };
 
 export interface Attachment {
@@ -58,7 +58,7 @@ export type ChatListItem = {
   lastMessage: string;
   lastMessageAt: string | null;
   unreadCount: number;
-  other_user_id?: string | null; // <-- include it for DM use
+  other_user_id?: string | null;
 };
 
 export type UserProfile = {

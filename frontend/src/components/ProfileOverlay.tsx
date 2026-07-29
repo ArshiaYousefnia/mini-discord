@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react"; // Added useEffect
 import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
 import type { UserProfile } from "../types/user";
 import { formatJoinLink } from "../utils/linkFormat";
@@ -31,7 +31,8 @@ interface ProfileOverlayProps {
   onDeleteGroupRequest: () => void;
   onLeaveChannelRequest?: () => void; 
   onDeleteChannelRequest?: () => void;
-  
+  onlineUsers?: Record<string, boolean>; // ADDED: real-time online mapping
+  onRefreshProfile?: () => void; // ADDED: optional callback to refetch user data
 }
 
 export default function ProfileOverlay({
@@ -60,8 +61,9 @@ export default function ProfileOverlay({
   channelProfile,
   channelPermissions,
   channelMembers,
-  channelRoles
-  
+  channelRoles,
+  onlineUsers = {}, // DEFAULT: empty map
+  onRefreshProfile
 }: ProfileOverlayProps) {
   // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -85,7 +87,22 @@ export default function ProfileOverlay({
   const [inviteCopied, setInviteCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Listen to profile changes to update local user profile if needed
+  useEffect(() => {
+    if (!show || !onRefreshProfile) return;
+    const handleProfileUpdate = () => {
+      onRefreshProfile();
+    };
+    window.addEventListener("profileUpdated", handleProfileUpdate);
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdate);
+    };
+  }, [show, onRefreshProfile]);
+
   if (!show) return null;
+
+  // Helpers to resolve online status cleanly
+  const isUserOnline = (userId: string | number) => !!onlineUsers[String(userId)];
 
   // --- Group Edit Handlers ---
   const handleStartEdit = () => {
@@ -298,6 +315,7 @@ export default function ProfileOverlay({
                           >
                             <div className="member-avatar-wrapper">
                               <img src={member.avatar_url || "/default-avatar.svg"} alt={member.display_name} />
+                              {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
                             </div>
                             <span className="member-name flex-1">{member.display_name}</span>
                             <span className="badge mr-2" style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}>
@@ -426,7 +444,7 @@ export default function ProfileOverlay({
                         <div key={member.user_id} className="member-row group" onClick={() => onUserClick(member.user_id)}>
                           <div className="member-avatar-wrapper">
                             <img src={member.avatar_url || "/default-avatar.svg"} alt={member.display_name} />
-                            {member.is_online && <span className="status-indicator online"></span>}
+                            {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
                           </div>
                           <span className="member-name flex-1">{member.display_name}</span>
                           {String(member.user_id) === String(groupProfile.owner_id) && <span className="badge owner-badge mr-2">Owner</span>}
@@ -456,8 +474,8 @@ export default function ProfileOverlay({
             <h2 className="group-profile-name">{userProfile.display_name}</h2>
             <p className="group-profile-meta">@{userProfile.username}</p>
             {userProfile.bio && <div className="group-profile-description">{userProfile.bio}</div>}
-            <div className="group-profile-meta" style={{ color: userProfile.is_online ? "#4ade80" : "#9ca3af", marginTop: "8px" }}>
-              {userProfile.is_online ? "Online" : "Offline"}
+            <div className="group-profile-meta" style={{ color: isUserOnline(userProfile.id) ? "#4ade80" : "#9ca3af", marginTop: "8px" }}>
+              {isUserOnline(userProfile.id) ? "Online" : "Offline"}
             </div>
           </div>
         ) : (

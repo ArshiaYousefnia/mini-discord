@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+
 class OnlineStatusConsumer(AsyncWebsocketConsumer):
     GROUP_NAME = 'online_status_updates'
 
@@ -20,6 +21,16 @@ class OnlineStatusConsumer(AsyncWebsocketConsumer):
         # Mark user online
         await self.set_user_online(True)
 
+        # Accept first, so the socket is fully established
+        await self.accept()
+
+        # Send current online users snapshot to this client only
+        online_user_ids = await self.get_online_user_ids()
+        await self.send(text_data=json.dumps({
+            'type': 'online_users_snapshot',
+            'user_ids': online_user_ids,
+        }))
+
         # Broadcast to everyone
         await self.channel_layer.group_send(
             self.GROUP_NAME,
@@ -29,8 +40,6 @@ class OnlineStatusConsumer(AsyncWebsocketConsumer):
                 'is_online': True,
             }
         )
-
-        await self.accept()
 
     async def disconnect(self, close_code):
         if not self.user.is_anonymous:
@@ -46,7 +55,6 @@ class OnlineStatusConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_discard(self.GROUP_NAME, self.channel_name)
 
     async def user_status(self, event):
-        """Forward status update to WebSocket."""
         await self.send(text_data=json.dumps({
             'type': 'user_status',
             'user_id': event['user_id'],
@@ -56,3 +64,10 @@ class OnlineStatusConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def set_user_online(self, online):
         User.objects.filter(pk=self.user.pk).update(is_online=online)
+
+    @database_sync_to_async
+    def get_online_user_ids(self):
+        return [
+            str(uid)
+            for uid in User.objects.filter(is_online=True).values_list('id', flat=True)
+        ]

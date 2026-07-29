@@ -1,8 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getConversationMessages, markConversationRead, sendConversationMessage, editMessage, deleteMessage } from "../services/chatService";
-import { getGroupProfile, getGroupMembers, removeGroupMember, updateGroupProfile, leaveGroup, deleteGroup } from "../services/groupService";
+import {
+  getConversationMessages,
+  markConversationRead,
+  sendConversationMessage,
+  editMessage,
+  deleteMessage,
+} from "../services/chatService";
+import {
+  getGroupProfile,
+  getGroupMembers,
+  removeGroupMember,
+  updateGroupProfile,
+  leaveGroup,
+  deleteGroup,
+} from "../services/groupService";
 import { getUserProfile } from "../services/users";
-import type { ChatListItem, Message, GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
+import type {
+  ChatListItem,
+  Message,
+  GroupProfile,
+  GroupMembers,
+  ChannelProfile,
+  ChannelPermissions,
+  ChannelMembers,
+} from "../types/chat";
 import type { UserProfile } from "../types/user";
 
 import MessageBubble from "./MessageBubble";
@@ -11,7 +32,16 @@ import MessageSearchPanel from "./MessageSearchPanel";
 import ConfirmModal from "./ConfirmModal";
 import ChatHeader from "./ChatHeader";
 import ProfileOverlay from "./ProfileOverlay";
-import { getChannelProfile, getPermissions, updateChannel, deleteChannel, getChannelMembers, removeChannelMember, getChannelRoles, createChannelRole } from "../services/channelService";
+import {
+  getChannelProfile,
+  getPermissions,
+  updateChannel,
+  deleteChannel,
+  getChannelMembers,
+  removeChannelMember,
+  getChannelRoles,
+  createChannelRole,
+} from "../services/channelService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -19,9 +49,19 @@ interface Props {
   onBack: () => void;
   onGroupExit?: (groupId: string) => void;
   onGroupJoined?: (groupId: string) => void;
+  isOtherUserOnline?: boolean;
+  onlineUsers: Record<string, boolean>; 
 }
 
-export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJoined }: Props) {
+export default function ChatView({
+  chat,
+  isMobile,
+  onBack,
+  onGroupExit,
+  onGroupJoined,
+  isOtherUserOnline,
+  onlineUsers,
+}: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -45,7 +85,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   const [showDeleteChannelConfirm, setShowDeleteChannelConfirm] = useState(false);
   const [deleteChannelLoading, setDeleteChannelLoading] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-  
+
   const [channelProfile, setChannelProfile] = useState<ChannelProfile | null>(null);
   const [channelPermissions, setChannelPermissions] = useState<ChannelPermissions | null>(null);
   const [channelMembers, setChannelMembers] = useState<ChannelMembers | null>(null);
@@ -58,13 +98,19 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
 
   const currentUserId = localStorage.getItem("Id");
   const currentUsername = localStorage.getItem("username");
-  const isCurrentUserOwner = String(groupProfile?.owner_id) === String(currentUserId) || (chat?.type.toUpperCase() === "CHANNEL" && channelPermissions?.is_owner === true);
-  
-  // State to track if an attachment is uploading
+
+  const chatType = chat?.type?.toUpperCase() ?? "";
+
+  const isCurrentUserOwner =
+    String(groupProfile?.owner_id) === String(currentUserId) ||
+    (chatType === "CHANNEL" && channelPermissions?.is_owner === true);
+
   const [sendingMessage, setSendingMessage] = useState(false);
 
   useEffect(() => {
-    if (chat) setLocalChatInfo({ name: chat.name, avatar: chat.avatar });
+    if (chat) {
+      setLocalChatInfo({ name: chat.name, avatar: chat.avatar });
+    }
   }, [chat]);
 
   useEffect(() => {
@@ -95,12 +141,15 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         setError("");
         const data = await getConversationMessages(chat.id);
         if (!isMounted) return;
+
         const sortedMessages = [...data].sort(
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
+
         shouldScrollToBottomRef.current = true;
         scrollBehaviorRef.current = "auto";
         setMessages(sortedMessages);
+
         if (sortedMessages.length) {
           await markConversationRead(chat.id, sortedMessages[sortedMessages.length - 1].id);
         }
@@ -122,70 +171,113 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
   }, [chat]);
 
   useEffect(() => {
-    if (!chat || chat.type.toUpperCase() !== "GROUP") return;
+    if (!chat || chatType !== "GROUP") return;
+
     let isMounted = true;
+
     const pollGroupInfo = async () => {
       try {
-        const [profileData, membersData] = await Promise.all([getGroupProfile(chat.id), getGroupMembers(chat.id)]);
+        const [profileData, membersData] = await Promise.all([
+          getGroupProfile(chat.id),
+          getGroupMembers(chat.id),
+        ]);
+
         if (!isMounted) return;
-        setGroupProfile(profileData); setGroupMembers(membersData);
-        setLocalChatInfo(prev => prev?.name !== profileData.name || prev?.avatar !== (profileData.avatar_url || chat.avatar) ? { name: profileData.name, avatar: profileData.avatar_url || chat.avatar } : prev);
-      } catch (error) { console.error("Failed to background refresh group data:", error); }
+
+        setGroupProfile(profileData);
+        setGroupMembers(membersData);
+        setLocalChatInfo((prev) =>
+          prev?.name !== profileData.name || prev?.avatar !== (profileData.avatar_url || chat.avatar)
+            ? { name: profileData.name, avatar: profileData.avatar_url || chat.avatar }
+            : prev
+        );
+      } catch (error) {
+        console.error("Failed to background refresh group data:", error);
+      }
     };
+
     pollGroupInfo();
     const intervalId = setInterval(pollGroupInfo, 5000);
-    return () => { isMounted = false; clearInterval(intervalId); };
-  }, [chat]);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [chat, chatType]);
 
   useEffect(() => {
     if (!chat) return;
+
     let isMounted = true;
+
     const pollMessages = async () => {
       try {
         const data = await getConversationMessages(chat.id);
         if (!isMounted) return;
-        const sorted = [...data].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        setMessages(prev => {
+
+        const sorted = [...data].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+
+        setMessages((prev) => {
           if (JSON.stringify(prev) === JSON.stringify(sorted)) return prev;
-          if (sorted.length > prev.length) { shouldScrollToBottomRef.current = true; scrollBehaviorRef.current = "smooth"; }
+          if (sorted.length > prev.length) {
+            shouldScrollToBottomRef.current = true;
+            scrollBehaviorRef.current = "smooth";
+          }
           return sorted;
         });
-      } catch (err) { console.error("Failed to poll messages:", err); }
+      } catch (err) {
+        console.error("Failed to poll messages:", err);
+      }
     };
+
     const intervalId = setInterval(pollMessages, 4000);
-    return () => { isMounted = false; clearInterval(intervalId); };
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
   }, [chat]);
 
   useEffect(() => {
     if (!loading && shouldScrollToBottomRef.current) {
-      requestAnimationFrame(() => { messagesEndRef.current?.scrollIntoView({ behavior: scrollBehaviorRef.current }); shouldScrollToBottomRef.current = false; });
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: scrollBehaviorRef.current });
+        shouldScrollToBottomRef.current = false;
+      });
     }
   }, [messages.length, loading, chat?.id]);
 
   useEffect(() => {
-    if (!chat || chat.type.toUpperCase() !== "CHANNEL") return;
+    if (!chat || chatType !== "CHANNEL") return;
+
     let isMounted = true;
-    
+
     getPermissions(chat.id)
-      .then(permissions => {
+      .then((permissions) => {
         if (isMounted) setChannelPermissions(permissions);
       })
       .catch(console.error);
 
-    return () => { isMounted = false; };
-  }, [chat]);
-  
+    return () => {
+      isMounted = false;
+    };
+  }, [chat, chatType]);
+
   const handleSendMessage = async (text: string, files: File[] = []) => {
     if (!chat) return;
+
     try {
-      setSendingMessage(true); // Start loading indicator
+      setSendingMessage(true);
       const newMessage = await sendConversationMessage({
         conversation_id: chat.id,
         content: text,
         reply_to: activeReplyTo?.id || null,
         recipient_id: chat.other_user_id || (chat as any).otherUserId,
-        files: files,
+        files,
       });
+
       shouldScrollToBottomRef.current = true;
       scrollBehaviorRef.current = "smooth";
       setMessages((prev) => [...prev, newMessage]);
@@ -194,32 +286,45 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to send message");
     } finally {
-      setSendingMessage(false); // Stop loading indicator
+      setSendingMessage(false);
     }
   };
 
   const handleEditMessage = async (messageId: string, newText: string) => {
     if (!chat) return;
     const updatedMessage = await editMessage(chat.id, messageId, newText);
-    setMessages(prev => prev.map(msg => msg.id === messageId ? updatedMessage : msg));
+    setMessages((prev) => prev.map((msg) => (msg.id === messageId ? updatedMessage : msg)));
   };
 
   const handleDeleteMessage = async (messageId: string) => {
     if (!chat) return;
     await deleteMessage(chat.id, messageId);
-    setMessages(prev => prev.map(msg => msg.id === messageId ? { ...msg, content: null, is_deleted: true, updated_at: new Date().toISOString() } : msg));
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId
+          ? { ...msg, content: null, is_deleted: true, updated_at: new Date().toISOString() }
+          : msg
+      )
+    );
   };
 
   const handleUserClick = async (userId: string, source: "CHAT" | "GROUP_PROFILE" = "GROUP_PROFILE") => {
-    setProfileSource(source); setShowProfile(true); setProfileViewType("user"); setProfileLoading(true);
-    try { setUserProfile(await getUserProfile(userId)); } 
-    catch (err) { console.error("Failed to load user profile", err); } 
-    finally { setProfileLoading(false); }
+    setProfileSource(source);
+    setShowProfile(true);
+    setProfileViewType("user");
+    setProfileLoading(true);
+
+    try {
+      setUserProfile(await getUserProfile(userId));
+    } catch (err) {
+      console.error("Failed to load user profile", err);
+    } finally {
+      setProfileLoading(false);
+    }
   };
 
   const handleHeaderClick = async () => {
     if (!chat) return;
-    const chatType = chat.type.toUpperCase();
 
     if (chatType === "GROUP") {
       setShowProfile(true);
@@ -254,6 +359,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
             getChannelProfile(chat.id),
             getPermissions(chat.id),
           ]);
+
           setChannelProfile(profileData);
           setChannelPermissions(permissionsData);
 
@@ -266,7 +372,6 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
             const rolesData = await getChannelRoles(chat.id);
             setChannelRoles(rolesData);
           }
-
         } catch (err) {
           console.error("Failed to load channel details", err);
         } finally {
@@ -278,6 +383,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
 
   const handleSaveGroupEdit = async (name: string, desc: string, avatar: File | null) => {
     if (!chat) return;
+
     try {
       const updatedProfile = await updateGroupProfile(chat.id, { name, description: desc, avatar });
       setGroupProfile(updatedProfile);
@@ -287,38 +393,47 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
       alert("Failed to update group details.");
     }
   };
-  
+
   const handleSaveChannelEdit = async (name: string, desc: string, avatar: File | null) => {
     if (!chat) return;
+
     try {
-      const updatedProfile = await updateChannel(chat.id, { name, description: desc, avatar});
+      const updatedProfile = await updateChannel(chat.id, { name, description: desc, avatar });
       setChannelProfile(updatedProfile);
       setLocalChatInfo({ name: updatedProfile.name, avatar: updatedProfile.avatar_url || chat.avatar });
     } catch (error) {
       console.error("Failed to update channel:", error);
-      throw error; 
+      throw error;
     }
   };
 
   const confirmRemoveMember = async () => {
     if (!chat || !memberToRemove) return;
+
     try {
       await removeGroupMember(chat.id, memberToRemove.user_id);
-      setGroupMembers(prev => prev ? prev.filter(m => m.user_id !== memberToRemove.user_id) : null);
-      setGroupProfile(prev => prev ? { ...prev, member_count: Number(prev.member_count) - 1 } : null);
+      setGroupMembers((prev) => (prev ? prev.filter((m) => m.user_id !== memberToRemove.user_id) : null));
+      setGroupProfile((prev) =>
+        prev ? { ...prev, member_count: Number(prev.member_count) - 1 } : null
+      );
       setMemberToRemove(null);
-    } catch (error) { console.error("Failed to remove member:", error); alert("Failed to remove group member."); }
+    } catch (error) {
+      console.error("Failed to remove member:", error);
+      alert("Failed to remove group member.");
+    }
   };
 
   const handleRemoveChannelMember = async (member: any) => {
     if (!chat) return;
-    
-    const isConfirmed = window.confirm(`Are you sure you want to remove ${member.display_name} from the channel?`);
+
+    const isConfirmed = window.confirm(
+      `Are you sure you want to remove ${member.display_name} from the channel?`
+    );
     if (!isConfirmed) return;
-  
+
     try {
       await removeChannelMember(chat.id, member.user_id);
-      
+
       if (channelMembers) {
         setChannelMembers(channelMembers.filter((m) => m.user_id !== member.user_id));
       }
@@ -330,9 +445,10 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
 
   const handleCreateRole = async (name: string) => {
     if (!chat) return;
+
     try {
       const newRole = await createChannelRole(chat.id, name);
-      setChannelRoles(prev => prev ? [...prev, newRole] : [newRole]);
+      setChannelRoles((prev) => (prev ? [...prev, newRole] : [newRole]));
     } catch (error) {
       console.error("Failed to create role:", error);
       throw error;
@@ -341,98 +457,144 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
 
   const handleLeaveGroup = async () => {
     if (!chat) return;
+
     try {
-      setLeaveLoading(true); await leaveGroup(chat.id);
-      setShowLeaveConfirm(false); setShowProfile(false); onGroupExit?.(chat.id);
-    } catch (error) { console.error("Failed to leave group:", error); alert("Failed to leave the group."); } 
-    finally { setLeaveLoading(false); }
+      setLeaveLoading(true);
+      await leaveGroup(chat.id);
+      setShowLeaveConfirm(false);
+      setShowProfile(false);
+      onGroupExit?.(chat.id);
+    } catch (error) {
+      console.error("Failed to leave group:", error);
+      alert("Failed to leave the group.");
+    } finally {
+      setLeaveLoading(false);
+    }
   };
 
   const handleLeaveChannel = async () => {
     if (!chat) return;
+
     try {
-      setLeaveLoading(true); 
-      await leaveGroup(chat.id); 
-      setShowLeaveChannelConfirm(false); 
-      setShowProfile(false); 
-      onGroupExit?.(chat.id); 
-    } catch (error) { 
-      console.error("Failed to leave channel:", error); 
-      alert("Failed to leave the channel."); 
-    } finally { 
-      setLeaveLoading(false); 
+      setLeaveLoading(true);
+      await leaveGroup(chat.id);
+      setShowLeaveChannelConfirm(false);
+      setShowProfile(false);
+      onGroupExit?.(chat.id);
+    } catch (error) {
+      console.error("Failed to leave channel:", error);
+      alert("Failed to leave the channel.");
+    } finally {
+      setLeaveLoading(false);
     }
   };
 
   const handleDeleteGroup = async () => {
     if (!chat) return;
+
     try {
-      setDeleteGroupLoading(true); await deleteGroup(chat.id);
-      setShowDeleteGroupConfirm(false); setShowProfile(false); onGroupExit?.(chat.id);
-    } catch (error) { console.error("Failed to delete group:", error); alert("Failed to delete the group."); } 
-    finally { setDeleteGroupLoading(false); }
+      setDeleteGroupLoading(true);
+      await deleteGroup(chat.id);
+      setShowDeleteGroupConfirm(false);
+      setShowProfile(false);
+      onGroupExit?.(chat.id);
+    } catch (error) {
+      console.error("Failed to delete group:", error);
+      alert("Failed to delete the group.");
+    } finally {
+      setDeleteGroupLoading(false);
+    }
   };
 
   const handleDeleteChannel = async () => {
     if (!chat) return;
+
     try {
-      setDeleteChannelLoading(true); 
+      setDeleteChannelLoading(true);
       await deleteChannel(chat.id);
-      setShowDeleteChannelConfirm(false); 
-      setShowProfile(false); 
+      setShowDeleteChannelConfirm(false);
+      setShowProfile(false);
       onGroupExit?.(chat.id);
-    } catch (error) { 
-      console.error("Failed to delete channel:", error); 
-      alert("Failed to delete the channel."); 
-    } finally { 
-      setDeleteChannelLoading(false); 
+    } catch (error) {
+      console.error("Failed to delete channel:", error);
+      alert("Failed to delete the channel.");
+    } finally {
+      setDeleteChannelLoading(false);
     }
   };
 
   const scrollToMessage = async (targetMessage: Message) => {
     if (!chat) return;
+
     const scrollAndHighlight = (): boolean => {
       const el = document.getElementById(`msg-${targetMessage.id}`);
       if (!el) return false;
+
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       el.classList.add("message-highlight-flash");
-      if (highlightTimeoutRef.current) window.clearTimeout(highlightTimeoutRef.current);
-      highlightTimeoutRef.current = window.setTimeout(() => el.classList.remove("message-highlight-flash"), 1600);
+
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
+
+      highlightTimeoutRef.current = window.setTimeout(() => {
+        el.classList.remove("message-highlight-flash");
+      }, 1600);
+
       return true;
     };
+
     setShowSearch(false);
+
     requestAnimationFrame(() => {
       if (scrollAndHighlight()) return;
+
       (async () => {
         try {
           const data = await getConversationMessages(chat.id);
-          const sorted = [...data].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          const sorted = [...data].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
           setMessages(sorted);
           requestAnimationFrame(() => requestAnimationFrame(scrollAndHighlight));
-        } catch (err) { console.error("Failed to load message history for search result:", err); }
+        } catch (err) {
+          console.error("Failed to load message history for search result:", err);
+        }
       })();
     });
   };
 
   const senderAvatarById = useMemo(() => {
     const map: Record<string, string> = {};
-    groupMembers?.forEach(m => { map[String(m.user_id)] = m.avatar_url || ""; });
+    groupMembers?.forEach((m) => {
+      map[String(m.user_id)] = m.avatar_url || "";
+    });
     return map;
   }, [groupMembers]);
 
-  if (!chat) return <div className="chat-placeholder" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}><div>Select a chat to start messaging</div></div>;
-  const chatType = chat.type.toUpperCase();
+  if (!chat) {
+    return (
+      <div className="chat-placeholder" style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+        <div>Select a chat to start messaging</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="chat-view" style={{ position: 'relative', overflow: 'hidden' }}>
+    <div className="chat-view" style={{ position: "relative", overflow: "hidden" }}>
       <ConfirmModal
         isOpen={!!memberToRemove}
         title="Remove Member"
-        message={<>Are you sure you want to remove <span>{memberToRemove?.display_name}</span> from the group?</>}
+        message={
+          <>
+            Are you sure you want to remove <span>{memberToRemove?.display_name}</span> from the group?
+          </>
+        }
         confirmText="Remove"
         onConfirm={confirmRemoveMember}
         onCancel={() => setMemberToRemove(null)}
       />
+
       <ConfirmModal
         isOpen={showLeaveConfirm}
         title="Leave Group"
@@ -442,6 +604,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onConfirm={handleLeaveGroup}
         onCancel={() => setShowLeaveConfirm(false)}
       />
+
       <ConfirmModal
         isOpen={showDeleteGroupConfirm}
         title="Delete Group"
@@ -452,6 +615,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onConfirm={handleDeleteGroup}
         onCancel={() => setShowDeleteGroupConfirm(false)}
       />
+
       <ConfirmModal
         isOpen={showLeaveChannelConfirm}
         title="Leave Channel"
@@ -461,6 +625,7 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onConfirm={handleLeaveChannel}
         onCancel={() => setShowLeaveChannelConfirm(false)}
       />
+
       <ConfirmModal
         isOpen={showDeleteChannelConfirm}
         title="Delete Channel"
@@ -478,10 +643,20 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         isMobile={isMobile}
         onBack={onBack}
         onHeaderClick={handleHeaderClick}
-        onToggleSearch={() => { setShowProfile(false); setShowSearch(prev => !prev); }}
+        onToggleSearch={() => {
+          setShowProfile(false);
+          setShowSearch((prev) => !prev);
+        }}
+        isOtherUserOnline={isOtherUserOnline}
       />
 
-      {showSearch && <MessageSearchPanel conversationId={chat.id} onClose={() => setShowSearch(false)} onResultClick={scrollToMessage} />}
+      {showSearch && (
+        <MessageSearchPanel
+          conversationId={chat.id}
+          onClose={() => setShowSearch(false)}
+          onResultClick={scrollToMessage}
+        />
+      )}
 
       <ProfileOverlay
         show={showProfile}
@@ -510,38 +685,43 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         onDeleteGroupRequest={() => setShowDeleteGroupConfirm(true)}
         onLeaveChannelRequest={() => setShowLeaveChannelConfirm(true)}
         onDeleteChannelRequest={() => setShowDeleteChannelConfirm(true)}
+        onlineUsers={onlineUsers}
+        onRefreshProfile={() => userProfile?.id && handleUserClick(userProfile.id)}
       />
 
       <div className="chat-view-body">
         {loading && <div className="chat-placeholder">Loading messages...</div>}
         {!loading && error && <div className="chat-placeholder">{error}</div>}
-        {!loading && !error && messages.length === 0 && <div className="chat-placeholder">No messages yet.</div>}
-        
+        {!loading && !error && messages.length === 0 && (
+          <div className="chat-placeholder">No messages yet.</div>
+        )}
+
         {!loading && !error && messages.length > 0 && (
           <div className="message-history">
-            {messages.filter(msg => !msg.is_deleted).map(msg => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                currentUserId={currentUserId}
-                currentUsername={currentUsername}
-                replyMessage={msg.reply_to ? messages.find(m => m.id === msg.reply_to) : null}
-                isGroupOwner={chatType === "GROUP" && isCurrentUserOwner}
-                isGroupChat={chatType === "GROUP"}
-                senderAvatarUrl={senderAvatarById[String(msg.sender)]}
-                canReply={chatType === "CHANNEL" ? (channelPermissions?.can_send_messages ?? false) : true}
-                onReply={setActiveReplyTo}
-                onEdit={handleEditMessage}
-                onDelete={handleDeleteMessage}
-                onAvatarClick={(userId) => handleUserClick(userId, "CHAT")}
-                onGroupJoined={onGroupJoined}
-              />
-            ))}
+            {messages
+              .filter((msg) => !msg.is_deleted)
+              .map((msg) => (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  currentUserId={currentUserId}
+                  currentUsername={currentUsername}
+                  replyMessage={msg.reply_to ? messages.find((m) => m.id === msg.reply_to) : null}
+                  isGroupOwner={chatType === "GROUP" && isCurrentUserOwner}
+                  isGroupChat={chatType === "GROUP"}
+                  senderAvatarUrl={senderAvatarById[String(msg.sender)]}
+                  canReply={chatType === "CHANNEL" ? (channelPermissions?.can_send_messages ?? false) : true}
+                  onReply={setActiveReplyTo}
+                  onEdit={handleEditMessage}
+                  onDelete={handleDeleteMessage}
+                  onAvatarClick={(userId) => handleUserClick(userId, "CHAT")}
+                  onGroupJoined={onGroupJoined}
+                />
+              ))}
             <div ref={messagesEndRef} />
           </div>
         )}
 
-        {/* Upload Loading Indicator */}
         {sendingMessage && (
           <div className="sticky bottom-0 left-0 right-0 bg-[#1db954]/20 text-[#1db954] px-4 py-1.5 text-xs text-center font-medium backdrop-blur-sm border-t border-[#1db954]/30 animate-pulse">
             ⏳ Sending attachment(s)... Please wait.
@@ -549,12 +729,11 @@ export default function ChatView({ chat, isMobile, onBack, onGroupExit, onGroupJ
         )}
       </div>
 
-      {/* MessageInput disabled status tied to loading or sendingMessage */}
-      <MessageInput 
-        activeReplyTo={activeReplyTo} 
-        onCancelReply={() => setActiveReplyTo(null)} 
-        onSendMessage={handleSendMessage} 
-        disabled={loading || sendingMessage} 
+      <MessageInput
+        activeReplyTo={activeReplyTo}
+        onCancelReply={() => setActiveReplyTo(null)}
+        onSendMessage={handleSendMessage}
+        disabled={loading || sendingMessage}
         canSendMessages={chatType === "CHANNEL" ? (channelPermissions?.can_send_messages ?? false) : true}
       />
     </div>
