@@ -39,17 +39,13 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         Send a direct message to another user.
         """
         recipient_id = request.data.get('recipient_id')
-        content = request.data.get('content')
+        content = request.data.get('content', '')  # allow empty
         reply_to = request.data.get('reply_to')
+        uploaded_files = request.FILES.getlist('uploaded_files') if request.FILES else []
 
         if not recipient_id:
             return Response(
                 {"recipient_id": "This field is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if not content:
-            return Response(
-                {"content": "Message content is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -62,7 +58,6 @@ class SendDirectMessageView(viewsets.GenericViewSet):
             )
 
         # Find existing DM conversation between the two users
-        # A DM has exactly two members (the sender and recipient)
         conversation = Conversation.objects.filter(
             type=Conversation.Type.DM,
             members__user=request.user
@@ -73,24 +68,35 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         # If not found, create a new DM conversation and add both members
         if not conversation:
             conversation = Conversation.objects.create(type=Conversation.Type.DM)
-            # Add both users as members
             ConversationMember.objects.create(conversation=conversation, user=request.user)
             ConversationMember.objects.create(conversation=conversation, user=recipient)
 
-        # Validate message content via serializer
-        serializer = self.get_serializer(data={
-            'conversation': str(conversation.id),  # Need to pass UUID as string
+        # Build data dictionary for serializer
+        data = {
+            'conversation': str(conversation.id),
             'content': content,
             'reply_to': reply_to,
+        }
+        if uploaded_files:
+            data['uploaded_files'] = uploaded_files
 
-        })
+        # Validate using the serializer (it will require content or file)
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
 
-        # Save with sender = request.user
+        # Save the message
         message = serializer.save(sender=request.user, conversation=conversation)
 
-        # update last_read_message for sender (so they mark own message as read)
-        # Not required for the story, but useful later
+        # Create attachment records
+        for file in serializer.validated_data.get('uploaded_files', []):
+            Attachment.objects.create(
+                message=message,
+                file=file,
+                original_filename=file.name,
+                size=file.size,
+            )
+
+        # Update sender's last_read_message
         member = ConversationMember.objects.get(conversation=conversation, user=request.user)
         member.last_read_message = message
         member.save()
@@ -438,8 +444,8 @@ class GroupCreateView(APIView):
 
         detail_serializer = GroupDetailSerializer(conversation)
         return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
-    
-    
+
+
 
 class GroupJoinView(APIView):
     permission_classes = [IsAuthenticated]
@@ -474,7 +480,7 @@ class GroupJoinView(APIView):
                 'can_delete_messages': False,
                 'can_manage_members': False,
                 'can_manage_roles': False,
-                'can_view_invite_link':True,    
+                'can_view_invite_link':True,
                 'can_edit_channel_info':True,
             }
         )
@@ -502,7 +508,7 @@ class GroupProfileView(APIView):
         )
 
         return Response(serializer.data)
-    
+
 class GroupMembersView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -573,7 +579,7 @@ class GroupUpdateView(APIView):
         return Response(
             GroupDetailSerializer(conversation).data
         )
-    
+
 class GroupDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -630,7 +636,7 @@ class ChannelCreateView(APIView):
             },
             status=status.HTTP_201_CREATED
         )
-    
+
 class ChannelProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -672,7 +678,7 @@ class ChannelJoinView(APIView):
                 {"detail": "Invalid link."},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         conversation = channel.conversation
         return Response({
             "name": conversation.name,
@@ -709,7 +715,7 @@ class ChannelJoinView(APIView):
                 'can_delete_messages': False,
                 'can_manage_members': False,
                 'can_manage_roles': False,
-                'can_view_invite_link':False,    
+                'can_view_invite_link':False,
                 'can_edit_channel_info':False,
                 'can_delete_channel':False,
             }
@@ -720,7 +726,7 @@ class ChannelJoinView(APIView):
 
         serializer = ChannelDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 
 class ChannelPublicIdView(APIView):
     permission_classes = [IsAuthenticated]
@@ -729,7 +735,7 @@ class ChannelPublicIdView(APIView):
 
         try:
             channel = Channel.objects.select_related('conversation').get(
-                public_id=public_id, 
+                public_id=public_id,
                 is_private=False
             )
         except Channel.DoesNotExist:
@@ -737,7 +743,7 @@ class ChannelPublicIdView(APIView):
                 {"detail": "Channel not found."},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         conversation = channel.conversation
         return Response({
             "id": conversation.id,
@@ -752,7 +758,7 @@ class ChannelPublicIdView(APIView):
 
         try:
             channel = Channel.objects.select_related('conversation').get(
-                public_id=public_id, 
+                public_id=public_id,
                 is_private=False
             )
         except Channel.DoesNotExist:
@@ -779,7 +785,7 @@ class ChannelPublicIdView(APIView):
                 'can_delete_messages': False,
                 'can_manage_members': False,
                 'can_manage_roles': False,
-                'can_view_invite_link':True,    
+                'can_view_invite_link':True,
                 'can_edit_channel_info':True
             }
         )
@@ -789,7 +795,7 @@ class ChannelPublicIdView(APIView):
 
         serializer = ChannelDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 
 class ChannelUpdateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -824,7 +830,7 @@ class ChannelUpdateView(APIView):
         serializer = ChannelUpdateSerializer(
             conversation,
             data=request.data,
-            partial=True, 
+            partial=True,
         )
 
         serializer.is_valid(raise_exception=True)
@@ -832,7 +838,7 @@ class ChannelUpdateView(APIView):
 
         detail_serializer = ChannelDetailSerializer(conversation, context={"request": request})
         return Response(detail_serializer.data, status=status.HTTP_200_OK)
-    
+
 
 class ChannelMembersListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -870,7 +876,7 @@ class ChannelMembersListView(APIView):
 
         serializer = ChannelMemberSerializer(members, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 
 class ChannelRemoveMemberView(APIView):
     permission_classes = [IsAuthenticated]
@@ -918,13 +924,13 @@ class ChannelRemoveMemberView(APIView):
             )
             target_membership.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
-            
+
         except ConversationMember.DoesNotExist:
             return Response(
                 {"detail": "User is not a member of this channel."},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
 
 class ChannelMemberRoleUpdateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -989,7 +995,7 @@ class ChannelMemberRoleUpdateView(APIView):
             {"detail": "Role updated successfully."},
             status=status.HTTP_200_OK
         )
-    
+
 class ChannelDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1010,7 +1016,7 @@ class ChannelDeleteView(APIView):
             )
 
         is_owner = (conversation.owner == request.user)
-        
+
         can_delete = membership.roles.filter(Q(can_delete_channel=True) | Q(can_manage_roles=True)).exists()
         if not (is_owner or can_delete):
             return Response(
@@ -1058,7 +1064,7 @@ class ChannelMyPermissionsView(APIView):
                 conversation=conversation,
                 user=request.user
             )
-            
+
             roles = member.roles.all()
 
             permissions = {
@@ -1074,7 +1080,7 @@ class ChannelMyPermissionsView(APIView):
                 "can_create_topic": any(r.can_create_topic for r in roles),
                 "can_manage_others_topics": any(r.can_manage_others_topics for r in roles),
             }
-            
+
             return Response(permissions, status=status.HTTP_200_OK)
 
         except ConversationMember.DoesNotExist:
@@ -1094,7 +1100,7 @@ class ChannelPreviewView(APIView):
                 {"detail": "Invalid invite link or channel does not exist."},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         conversation = channel.conversation
 
         messages = Message.objects.filter(
@@ -1111,7 +1117,7 @@ class ChannelPreviewView(APIView):
             "avatar_url": conversation.avatar_url,
             "is_private": channel.is_private,
             "public_id": channel.public_id,
-            "messages": message_serializer.data,  
+            "messages": message_serializer.data,
         }
 
         return Response(preview_data, status=status.HTTP_200_OK)
@@ -1180,13 +1186,13 @@ class ChannelRoleDetailView(APIView):
 
     def patch(self, request, conversation_id, role_id):
         role = self.get_role(conversation_id, role_id)
-        
+
         if role.name == 'Channel Owner':
             return Response(
                 {"detail": "Cannot edit the Channel Owner role."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-            
+
         serializer = RoleSerializer(role, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -1257,7 +1263,7 @@ class TopicDetailView(APIView):
     def patch(self, request, conversation_id, topic_id):
         topic = self.get_topic(conversation_id, topic_id)
         member = ConversationMember.objects.get(conversation=topic.conversation, user=request.user)
-        
+
         is_owner = (topic.conversation.owner == request.user)
         is_creator = (topic.creator == request.user)
         can_manage = member.roles.filter(can_manage_others_topics=True).exists()
@@ -1273,17 +1279,17 @@ class TopicDetailView(APIView):
     def delete(self, request, conversation_id, topic_id):
         topic = self.get_topic(conversation_id, topic_id)
         member = ConversationMember.objects.get(conversation=topic.conversation, user=request.user)
-        
+
         is_owner = (topic.conversation.owner == request.user)
         is_creator = (topic.creator == request.user)
         can_manage = member.roles.filter(can_manage_others_topics=True).exists()
 
         if not (is_owner or is_creator or can_manage):
             raise PermissionDenied("You do not have permission to delete this topic.")
-            
+
         topic.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
+
 class AttachmentDownloadView(APIView):
     permission_classes = [IsAuthenticated]
 
