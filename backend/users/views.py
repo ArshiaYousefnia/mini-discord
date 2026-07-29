@@ -15,7 +15,9 @@ from chat.serializers import ChannelDetailSerializer
 
 from .serializers import UserSearchSerializer
 
+
 User = get_user_model()
+
 
 class UserRegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -116,6 +118,8 @@ class UserProfileUpdateView(generics.RetrieveUpdateAPIView):        #needed in o
 
 
 
+
+
 class GlobalSearchView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -132,7 +136,7 @@ class GlobalSearchView(APIView):
         if user:
             serializer = UserSearchSerializer(user, context={"request": request})
             data = serializer.data
-            data["type"] = "user"  
+            data["type"] = "user" 
             return Response(data, status=status.HTTP_200_OK)
 
         channel = Channel.objects.filter(
@@ -143,7 +147,7 @@ class GlobalSearchView(APIView):
         if channel:
             serializer = ChannelDetailSerializer(channel.conversation, context={"request": request})
             data = serializer.data
-            data["type"] = "channel"
+            data["type"] = "channel" 
             return Response(data, status=status.HTTP_200_OK)
 
-        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
