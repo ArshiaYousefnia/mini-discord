@@ -6,15 +6,15 @@ from .models import Conversation, ConversationMember, Message, Role, Channel, To
 
 from django.urls import reverse
 
-
 ALLOWED_FILE_EXTENSIONS = {
-    'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',        # images
-    'mp4', 'mov', 'avi', 'mkv', 'webm',                 # videos
-    'mp3', 'ogg', 'wav', 'flac', 'aac',                 # audio
-    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', # documents
-    'txt', 'csv', 'zip', 'rar', '7z',                   # misc
+    'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',  # images
+    'mp4', 'mov', 'avi', 'mkv', 'webm',  # videos
+    'mp3', 'ogg', 'wav', 'flac', 'aac',  # audio
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',  # documents
+    'txt', 'csv', 'zip', 'rar', '7z',  # misc
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
 
 class GroupDetailSerializer(serializers.ModelSerializer):
     owner_id = serializers.UUIDField(source='owner.id', read_only=True)
@@ -22,8 +22,6 @@ class GroupDetailSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     invite_token = serializers.UUIDField(read_only=True)
     member_count = serializers.SerializerMethodField()
-    
-
 
     class Meta:
         model = Conversation
@@ -37,10 +35,10 @@ class GroupDetailSerializer(serializers.ModelSerializer):
 
     def get_avatar_url(self, obj):
         return obj.avatar_url
-    
+
     def get_member_count(self, obj):
         return obj.members.count()
-    
+
 
 class MinimalMessageSerializer(serializers.ModelSerializer):
     sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
@@ -136,7 +134,6 @@ class MessageSerializer(serializers.ModelSerializer):
         return value
 
 
-# For listing conversations, we may want a simple serializer
 class ConversationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
@@ -145,33 +142,39 @@ class ConversationSerializer(serializers.ModelSerializer):
 
 class ConversationMemberSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField()  # or use a user serializer
+
     class Meta:
         model = ConversationMember
 
-        
 
 class ConversationListSerializer(serializers.ModelSerializer):
-    #type = serializers.CharField(source='type')   # the choice is already a string
+    # type = serializers.CharField(source='type')   # the choice is already a string
 
     display_name = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
-    unread_count = serializers.IntegerField()     # will be annotated in the view
+    unread_count = serializers.IntegerField()  # will be annotated in the view
     other_user_id = serializers.SerializerMethodField()
-
+    other_user_is_online = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
-        fields = ['id', 'type', 'display_name', 'avatar', 'last_message', 'unread_count', 'other_user_id']
+        fields = ['id', 'type', 'display_name', 'avatar', 'last_message', 'unread_count', 'other_user_id',
+                  'other_user_is_online']
+
+    def get_other_user_is_online(self, obj):
+        user = self.context['request'].user
+        if obj.type == Conversation.Type.DM:
+            other = obj.get_other_user(user)
+            return other.is_online if other else False
+        return False
 
     def get_other_user_id(self, obj):
         user = self.context['request'].user
-        other = None  
+        other = None
         if obj.type == Conversation.Type.DM:
             other = obj.get_other_user(user)
         return other.id if other else None
-
-
 
     def get_display_name(self, obj):
         user = self.context['request'].user
@@ -195,8 +198,10 @@ class ConversationListSerializer(serializers.ModelSerializer):
             return MinimalMessageSerializer(msg).data
         return None
 
+
 class ConversationMarkReadSerializer(serializers.Serializer):
     last_read_message_id = serializers.UUIDField(required=True)
+
 
 class GroupCreateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -252,14 +257,16 @@ class GroupMemberSerializer(serializers.ModelSerializer):
             'roles',
         ]
 
-    roles = serializers.SerializerMethodField() # تغییر نام فیلد به roles
+    roles = serializers.SerializerMethodField()  # تغییر نام فیلد به roles
 
     def get_roles(self, obj):
         role_names = [role.name for role in obj.roles.all()]
         return role_names if role_names else ["Member"]
+
     def get_role_name(self, obj):
         first_role = obj.roles.first()
         return first_role.name if first_role else "Member"
+
 
 class GroupUpdateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -303,15 +310,15 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'public_id': "Public ID is required for public channels."
                 })
-            
+
             clean_public_id = public_id.strip()
-            
+
             # ۱. بررسی تکراری نبودن در کانال‌ها (Case-Insensitive)
             if Channel.objects.filter(public_id__iexact=clean_public_id).exists():
                 raise serializers.ValidationError({
                     'public_id': "This public ID is already taken by another channel."
                 })
-                
+
             # ۲. بررسی تکراری نبودن در یوزرنیم کاربران (Case-Insensitive)
             User = get_user_model()
             if User.objects.filter(username__iexact=clean_public_id).exists():
@@ -367,20 +374,16 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
         member.roles.add(role)
 
         return conversation
-    
+
 
 class ChannelDetailSerializer(serializers.ModelSerializer):
     owner_id = serializers.UUIDField(source="owner.id", read_only=True)
     owner_display_name = serializers.CharField(source="owner.display_name", read_only=True)
     avatar_url = serializers.SerializerMethodField()
-    invite_link = serializers.SerializerMethodField() 
-
-
+    invite_link = serializers.SerializerMethodField()
 
     is_private = serializers.BooleanField(source='channel.is_private', read_only=True)
     public_id = serializers.CharField(source='channel.public_id', read_only=True)
-
-
 
     class Meta:
         model = Conversation
@@ -394,10 +397,9 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
             "owner_display_name",
             "created_at",
             "invite_link",
-            "is_private", # اضافه شد
+            "is_private",  # اضافه شد
             "public_id",  # اضافه شد
         ]
-
 
     def get_avatar_url(self, obj):
         return obj.avatar_url
@@ -406,23 +408,24 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if not request or not hasattr(obj, 'channel'):
             return None
-        
+
         user = request.user
-        
+
         has_permission = (obj.owner == user)
-        
+
         if not has_permission:
             member = obj.members.filter(user=user).prefetch_related('roles').first()
             if member and member.roles.filter(can_manage_members=True).exists():
                 has_permission = True
-                
+
         if has_permission:
             invite_code = obj.channel.invite_code
             path = reverse('channel-join', kwargs={'invite_code': invite_code})
             return request.build_absolute_uri(path)
-            
+
         return None
-    
+
+
 class ChannelUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
@@ -433,21 +436,28 @@ class ChannelUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Channel name cannot be empty.")
         return value.strip()
 
-    
+
 class ChannelMemberSerializer(serializers.ModelSerializer):
     user_id = serializers.UUIDField(source='user.id', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
     display_name = serializers.CharField(source='user.display_name', read_only=True)
-    avatar_url = serializers.CharField(source='user.avatar_url', read_only=True, default=None) 
+    avatar_url = serializers.CharField(source='user.avatar_url', read_only=True, default=None)
     roles = serializers.SerializerMethodField()
+    # Added this line to expose the user's current database online status
+    is_online = serializers.BooleanField(source='user.is_online', read_only=True)
+
     class Meta:
         model = ConversationMember
-        fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'roles']
+        fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'roles', 'is_online']
+
     def get_roles(self, obj):
-            role_names = [role.name for role in obj.roles.all()]
-            return role_names if role_names else ["Member"]
+        role_names = [role.name for role in obj.roles.all()]
+        return role_names if role_names else ["Member"]
+
+
 class ChannelMemberRoleUpdateSerializer(serializers.Serializer):
     role_id = serializers.UUIDField(required=True)
+
 
 class RoleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -461,6 +471,7 @@ class RoleSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
 
+
 class ChannelMessageSerializer(MessageSerializer):
     topic_id = serializers.SerializerMethodField()
     topic_name = serializers.SerializerMethodField()
@@ -473,6 +484,7 @@ class ChannelMessageSerializer(MessageSerializer):
 
     def get_topic_name(self, obj):
         return obj.topic.name if obj.topic else None
+
 
 class TopicCreateSerializer(serializers.ModelSerializer):
     class Meta:
