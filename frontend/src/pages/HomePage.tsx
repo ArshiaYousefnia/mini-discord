@@ -13,6 +13,7 @@ import {
 import type { ChatListItem, Conversation } from "../types/chat";
 import type { BackendUserProfile } from "../types/user";
 import "../styles/home.css";
+import { useOnlineStatus } from "../hooks/useOnlineStatus";
 
 // Retrieve current logged in user config
 function getCurrentUsername(): string {
@@ -35,6 +36,9 @@ export default function HomePage() {
   const [currentUsername, setCurrentUsername] = useState("");
   
   const [searchParams, setSearchParams] = useSearchParams(); 
+  
+  // Hook now connects and tracks online users using snapshots
+  const { onlineUsers } = useOnlineStatus();
 
   useEffect(() => {
     setCurrentUsername(getCurrentUsername());
@@ -43,7 +47,6 @@ export default function HomePage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // NEW: Added isBackgroundRefresh parameter to prevent UI flickering on polls
   const loadChats = async (isBackgroundRefresh = false, targetGroupId?: string) => {
     try {
       if (!isBackgroundRefresh) {
@@ -65,7 +68,6 @@ export default function HomePage() {
 
       let sorted = sortChatsByRecent(mappedChats);
 
-      // Prioritize the directly passed targetGroupId, fallback to URL parameter
       const chatIdFromUrl = searchParams.get("chat");
       const idToSelect = targetGroupId || chatIdFromUrl;
       
@@ -75,7 +77,6 @@ export default function HomePage() {
         if (chatToSelect) {
           const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
           
-          // Auto-select if it's the initial load OR if an explicit targetGroupId was provided
           if (!isBackgroundRefresh || targetGroupId) {
             setSelectedChat(readChat);
           }
@@ -84,7 +85,6 @@ export default function HomePage() {
             c.id === idToSelect ? readChat : c
           );
 
-          // Only delete the URL parameter if we actually used it
           if (!targetGroupId && chatIdFromUrl) {
             searchParams.delete("chat");
             setSearchParams(searchParams, { replace: true });
@@ -92,19 +92,12 @@ export default function HomePage() {
         }
       }
 
-      // If a chat is already selected, make sure we update it with new backend data (like a new avatar/name)
-      // If a chat is already selected, make sure we update it with new backend data
-      // Inside your loadChats or fetchConversations function:
       if (selectedChat) {
-        // Check if the currently open chat still exists in the fresh data from the backend
         const updatedSelectedChat = sorted.find(c => c.id === selectedChat.id);
         
         if (!updatedSelectedChat) {
-          // The chat was deleted or the user was kicked out.
-          // This will unmount ChatView and show the blank "Select a chat" screen.
           setSelectedChat(null);
           
-          // Also clear the URL parameter so it doesn't try to reload it on refresh
           if (searchParams.get("chat") === selectedChat.id) {
             searchParams.delete("chat");
             setSearchParams(searchParams, { replace: true });
@@ -113,17 +106,9 @@ export default function HomePage() {
           updatedSelectedChat.name !== selectedChat.name || 
           updatedSelectedChat.avatar !== selectedChat.avatar
         ) {
-          // Update name/avatar if they changed
           setSelectedChat({ ...updatedSelectedChat, unreadCount: selectedChat.unreadCount });
         }
       }
-
-// Update the sidebar items
-setChatItems(sorted);
-
-
-      setChatItems(sorted);
-
 
       setChatItems(sorted);
     } catch (err) {
@@ -137,9 +122,9 @@ setChatItems(sorted);
     }
   };
 
-
   useEffect(() => {
-    loadChats(); // Initial load
+    loadChats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
   const handleSelectChat = (chat: ChatListItem) => {
@@ -171,12 +156,17 @@ setChatItems(sorted);
     }
   };
 
-  // Tasks #15 / #35: called by ChatView after the user leaves or deletes
-  // a group, so it disappears from the chat list immediately for them.
   const handleGroupExit = (groupId: string) => {
     setChatItems((prev) => prev.filter((c) => c.id !== groupId));
     setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
   };
+
+  // Determine if the currently selected chat's other user is online.
+  // We use String() representation here to match our normalized websocket state.
+  const isOtherUserOnline = 
+    selectedChat && (selectedChat as any).other_user_id
+      ? !!onlineUsers[String((selectedChat as any).other_user_id)]
+      : undefined;
 
   return (
     <div className="home-page">
@@ -187,8 +177,8 @@ setChatItems(sorted);
           onSelectChat={handleSelectChat}
           currentUsername={currentUsername}
           onStartDirectMessage={handleStartDirectMessage}
-          // NEW: Pass the loadChats function, specifically tagging it as a background refresh
           onRefresh={() => loadChats(true)} 
+          onlineUsers={onlineUsers ?? {}}
         />
       )}
 
@@ -205,11 +195,12 @@ setChatItems(sorted);
               onBack={() => setSelectedChat(null)}
               onGroupExit={handleGroupExit}
               onGroupJoined={async (groupId) => {
-              // 1. Set the URL param so loadChats knows which chat to auto-select
-              setSearchParams({ chat: groupId });
-              // 2. Fetch the updated list of conversations (including the newly joined one)
-              await loadChats(false, groupId);
-            }}
+                setSearchParams({ chat: groupId });
+                await loadChats(false, groupId);
+              }}
+              // Pass the online status prop here
+              isOtherUserOnline={isOtherUserOnline}
+              onlineUsers={onlineUsers}
             />
           )}
         </div>
