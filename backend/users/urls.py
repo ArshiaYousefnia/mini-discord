@@ -6,7 +6,7 @@ from .views import (
     LogoutView,
     UserProfileView,
     UserProfileUpdateView,
-    UserSearchView,
+    GlobalSearchView,
 )
 
 urlpatterns = [
@@ -19,5 +19,7 @@ urlpatterns = [
         UserProfileUpdateView.as_view(),
         name='user-profile-update'
     ),
-    path('users/search/', UserSearchView.as_view(), name='user-search'),
+
+
+    path('users/search/', GlobalSearchView.as_view(), name='global-search'),
 ]
