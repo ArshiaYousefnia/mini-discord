@@ -3,6 +3,8 @@ import type { Message } from "../types/chat";
 import { joinGroupByToken } from "../services/groupService";
 import { joinChannelByInviteLink } from "../services/channelService";
 import "../styles/chat.css";
+import CachedAttachment from "./CachedAttachment";
+
 
 type Props = {
   message: Message;
@@ -214,6 +216,27 @@ export default function MessageBubble({
     );
   };
 
+  const renderAttachments = (attachments?: any[]) => {
+    if (!attachments || attachments.length === 0) return null;
+
+    return (
+      <div
+        className="message-attachments"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          marginBottom: "8px", // Changed from marginTop to marginBottom to separate media from text below
+        }}
+      >
+        {attachments.map((att) => (
+          <CachedAttachment key={att.id} attachment={att} />
+        ))}
+      </div>
+    );
+  };
+
+
   const renderReplyPreview = () => {
     if (replyMessage) {
       return (
@@ -280,6 +303,9 @@ export default function MessageBubble({
 
       {isEditing ? (
         <div className="edit-input-container">
+          {/* Media renders above the textarea in edit mode */}
+          {renderAttachments(message.attachments)}
+          
           <textarea
             className="edit-textarea"
             value={editText}
@@ -313,9 +339,19 @@ export default function MessageBubble({
           </div>
         </div>
       ) : (
-        <div className="message-text">
-          {message.is_deleted ? "Deleted message" : renderContent(messageText)}
-        </div>
+        <>
+          {message.is_deleted ? (
+            <div className="message-text">Deleted message</div>
+          ) : (
+            <>
+              {/* Media renders above the text content in normal view */}
+              {renderAttachments(message.attachments)}
+              {messageText ? (
+                <div className="message-text">{renderContent(messageText)}</div>
+              ) : null}
+            </>
+          )}
+        </>
       )}
 
       {!isEditing && (
