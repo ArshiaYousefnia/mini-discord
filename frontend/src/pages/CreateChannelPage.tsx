@@ -210,7 +210,7 @@ export default function CreateChannelPage() {
               {!isPublicIdValid && (
                 <p className="field-help" style={{ color: "#ef4444" }}>
                   Public ID must be at least 4 characters long, start with a letter, and
-                  contain only letters, numbers, or underscores. It cannot contain two
+                  contain only English letters, numbers, or underscores. It cannot contain two
                   underscores in a row or end with an underscore.
                 </p>
               )}

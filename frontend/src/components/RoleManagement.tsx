@@ -23,6 +23,7 @@ export default function RoleManagement({ channelId, isOwner, roles: initialRoles
   const [roles, setRoles] = useState<ChannelRole[]>(initialRoles || []);
   const [selectedRole, setSelectedRole] = useState<ChannelRole | null>(null);
   const [editingPermissions, setEditingPermissions] = useState<Partial<RolePermissions>>({});
+  const [editingName, setEditingName] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -46,11 +47,22 @@ export default function RoleManagement({ channelId, isOwner, roles: initialRoles
   const handleSavePermissions = async () => {
     if (!selectedRole) return;
     setLoading(true);
+
+    const isSystemRole =
+      selectedRole.name === 'Channel Owner' ||
+      selectedRole.name === 'Channel Member' ||
+      selectedRole.name === 'Member';
+
     try {
+      const payload = {
+        ...editingPermissions,
+        ...(isSystemRole ? {} : { name: editingName.trim() || selectedRole.name }),
+      };
+
       const updatedRole = await updateChannelRole(
         channelId, 
         selectedRole.id, 
-        editingPermissions
+        payload
       );
       setRoles(prevRoles => prevRoles.map(r => r.id === updatedRole.id ? updatedRole : r));
       setSelectedRole(null);
@@ -73,17 +85,51 @@ export default function RoleManagement({ channelId, isOwner, roles: initialRoles
 
   // VIEW: EDITING A ROLE
   if (selectedRole) {
+    const isSystemRole =
+      selectedRole.name === 'Channel Owner' ||
+      selectedRole.name === 'Channel Member' ||
+      selectedRole.name === 'Member';
+
     return (
       <div className="role-edit-view">
-        <div className="role-edit-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="role-edit-header" style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
             <button 
               onClick={() => setSelectedRole(null)} 
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex' }}
             >
               <ChevronLeftIcon style={{ width: '24px', height: '24px', color: 'var(--md-sys-color-text-secondary)' }} />
             </button>
-            <h2 className="role-edit-title">Edit Role: {selectedRole.name}</h2>
+
+            {isSystemRole ? (
+              <h2 className="role-edit-title" style={{ margin: 0 }}>
+                Edit Role: {selectedRole.name}
+              </h2>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                <label style={{ fontSize: '12px', color: 'var(--md-sys-color-text-secondary)' }}>
+                  Role Name
+                </label>
+                <input
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  placeholder="Enter role name"
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--md-sys-color-outline)',
+                    background: 'transparent',
+                    color: 'var(--md-sys-color-text-primary)',
+                    fontSize: '15px',
+                    fontWeight: '500',
+                    outline: 'none',
+                    width: '100%',
+                    maxWidth: '300px',
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -129,27 +175,55 @@ export default function RoleManagement({ channelId, isOwner, roles: initialRoles
   return (
     <div className="roles-management-section">
       <div className="roles-list">
-        {roles.map(role => (
-          <div 
-            key={role.id}
-            onClick={() => {
-              setSelectedRole(role);
-              setEditingPermissions(role);
-            }}
-            className="role-row"
-          >
-            <span className="role-name">{role.name}</span>
-            {role.name !== 'Channel Owner' && (
-              <button
-                onClick={(e) => handleDeleteRole(e, role.id)}
-                title="Delete Role"
-                className="role-delete-btn"
-              >
-                <TrashIcon style={{ width: '20px', height: '20px' }} />
-              </button>
-            )}
-          </div>
-        ))}
+        {roles.map(role => {
+          const isOwnerRole = role.name === 'Channel Owner';
+          const isSystemRole =
+            role.name === 'Channel Owner' ||
+            role.name === 'Channel Member' ||
+            role.name === 'Member';
+
+          return (
+            <div 
+              key={role.id}
+              onClick={() => {
+                if (isOwnerRole) return; // Prevent opening edit view for Channel Owner
+                setSelectedRole(role);
+                setEditingPermissions(role);
+                setEditingName(role.name);
+              }}
+              className="role-row"
+              style={{
+                cursor: isOwnerRole ? 'default' : 'pointer',
+                opacity: isOwnerRole ? 0.6 : 1,
+              }}
+            >
+              <span className="role-name">
+                {role.name}
+                {isOwnerRole && (
+                  <span
+                    style={{
+                      marginLeft: '8px',
+                      fontSize: '12px',
+                      color: 'var(--md-sys-color-text-secondary)',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    (Uneditable)
+                  </span>
+                )}
+              </span>
+              {!isSystemRole && (
+                <button
+                  onClick={(e) => handleDeleteRole(e, role.id)}
+                  title="Delete Role"
+                  className="role-delete-btn"
+                >
+                  <TrashIcon style={{ width: '20px', height: '20px' }} />
+                </button>
+              )}
+            </div>
+          );
+        })}
         {roles.length === 0 && <p className="no-roles-msg">No custom roles found.</p>}
       </div>
     </div>
