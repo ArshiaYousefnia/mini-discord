@@ -33,7 +33,7 @@ class ChannelInviteLinkVisibilityTests(APITestCase):
         self.admin_role = Role.objects.create(
             conversation=self.conversation,
             name="Admin",
-            can_manage_members=True 
+            can_view_invite_link=True
         )
         self.normal_role = Role.objects.create(
             conversation=self.conversation,
