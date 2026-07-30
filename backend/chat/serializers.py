@@ -415,7 +415,7 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
 
         if not has_permission:
             member = obj.members.filter(user=user).prefetch_related('roles').first()
-            if member and member.roles.filter(can_manage_members=True).exists():
+            if member and member.roles.filter(can_view_invite_link=True).exists():
                 has_permission = True
 
         if has_permission:
