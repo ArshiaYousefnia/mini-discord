@@ -33,7 +33,8 @@ class ChannelUpdateTests(APITestCase):
         self.admin_role = Role.objects.create(
             conversation=self.conversation,
             name="Admin",
-            can_manage_roles=True
+            can_manage_roles=True,
+            can_edit_channel_info=True,
         )
         self.normal_role = Role.objects.create(
             conversation=self.conversation,
