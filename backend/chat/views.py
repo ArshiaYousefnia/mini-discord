@@ -818,10 +818,9 @@ class ChannelUpdateView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        is_owner = (conversation.owner == request.user)
-        has_admin_role = member.roles.filter(can_manage_roles=True).exists()
+        can_edit_channel = member.roles.filter(can_edit_channel_info=True).exists()
 
-        if not (is_owner or has_admin_role):
+        if not (can_edit_channel):
             return Response(
                 {"detail": "You do not have permission to edit this channel's info."},
                 status=status.HTTP_403_FORBIDDEN,
