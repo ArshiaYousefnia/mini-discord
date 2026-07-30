@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import ChatItem from "./ChatItem";
 import type { ChatListItem } from "../types/chat";
 import type { BackendUserProfile } from "../types/user";
@@ -11,8 +11,8 @@ type Props = {
   onSelectChat: (chat: ChatListItem) => void;
   currentUsername: string;
   onStartDirectMessage: (user: BackendUserProfile) => Promise<void>;
-  // NEW: Optional callback to trigger a refresh of the chats list from the parent
   onRefresh?: () => void; 
+  onlineUsers?: Record<string, boolean>;
 };
 
 function getLoggedInUsername(): string {
@@ -46,7 +46,8 @@ export default function Sidebar({
   onSelectChat,
   currentUsername,
   onStartDirectMessage,
-  onRefresh, // NEW
+  onRefresh, 
+  onlineUsers = {},
 }: Props) {
   const navigate = useNavigate();
 
@@ -62,6 +63,26 @@ export default function Sidebar({
 
   const [loggedInUsername, setLoggedInUsername] = useState("");
 
+  // --- FIXED POLLING LOGIC ---
+  const onRefreshRef = useRef(onRefresh);
+
+  // 1. Keep the ref updated with the latest function reference on every render
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
+
+  // 2. Set the interval only ONCE on mount. It will call the current function inside the ref.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (onRefreshRef.current) {
+        onRefreshRef.current();
+      }
+    }, 5000); 
+    
+    return () => clearInterval(interval);
+  }, []); 
+  // ---------------------------
+
   useEffect(() => {
     const savedName = localStorage.getItem("display_name");
     const savedAvatar = localStorage.getItem("avatar_url");
@@ -74,17 +95,6 @@ export default function Sidebar({
 
     setLoggedInUsername(fromStorage || fromProp);
   }, [currentUsername]);
-
-  // NEW: Polling mechanism to fetch updates periodically (e.g., every 5 seconds)
-  useEffect(() => {
-    if (!onRefresh) return;
-    
-    const interval = setInterval(() => {
-      onRefresh();
-    }, 5000); // 5000ms = 5 seconds
-    
-    return () => clearInterval(interval);
-  }, [onRefresh]);
 
   const goToEditProfile = () => {
     navigate("/profile/");
@@ -145,9 +155,13 @@ export default function Sidebar({
     loggedInUsername !== "" &&
     searchedUsername === loggedInUsername;
 
+  // Compute live online status for global search layout
+  const isGlobalUserOnline = globalUser
+    ? onlineUsers[String(globalUser.id)] ?? globalUser.is_online
+    : false;
+
   return (
     <div className="sidebar">
-      {/* Rest of the JSX remains exactly the same */}
       <div className="sidebar-top">
         <div
           className="my-profile"
@@ -226,6 +240,13 @@ export default function Sidebar({
                   </div>
                   <div className="search-profile-username">
                     @{globalUser.username}
+                    <span style={{ 
+                      marginLeft: "8px", 
+                      color: isGlobalUserOnline ? "#4ade80" : "#9ca3af",
+                      fontSize: "0.85em"
+                    }}>
+                      {isGlobalUserOnline ? "• Online" : "• Offline"}
+                    </span>
                   </div>
 
                   {globalUser.bio && (
@@ -259,6 +280,11 @@ export default function Sidebar({
                 chat={chat}
                 active={selectedChatId === chat.id}
                 onClick={() => onSelectChat(chat)}
+                isOnline={
+                  chat.other_user_id
+                    ? !!onlineUsers[String(chat.other_user_id)]
+                    : undefined
+                }
               />
             ))
           )
@@ -278,7 +304,7 @@ export default function Sidebar({
           className="create-group-sidebar-btn create-channel-sidebar-btn"
           onClick={goToCreateChannel}
           style={{ marginTop: "10px" }}
-          >
+        >
           + Create Channel
         </button>
       </div>

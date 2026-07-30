@@ -156,8 +156,11 @@ const handleLogout = async () => {
   } catch (error) {
     console.error("Logout failed", error);
   } finally {
+    // --- ADD THIS LINE FIRST ---
+    window.dispatchEvent(new Event("userLoggedOut"));
+    // ----------------------------
+
     // 1. Clear Local Storage
-    // Note: You could also just use localStorage.clear() to wipe everything instantly.
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("username");
@@ -166,7 +169,7 @@ const handleLogout = async () => {
     localStorage.removeItem("display_name");
     localStorage.removeItem("avatar_url");
 
-    // 2. Clear Browser Cache API (In case you still have older files cached here)
+    // 2. Clear Browser Cache API
     if ('caches' in window) {
       try {
         const cacheNames = await caches.keys();
@@ -176,7 +179,7 @@ const handleLogout = async () => {
       }
     }
 
-    // 3. Clear IndexedDB (This wipes all media saved via idb-keyval!)
+    // 3. Clear IndexedDB
     try {
       await clear(); 
       console.log("IndexedDB media cache wiped successfully.");
@@ -188,6 +191,7 @@ const handleLogout = async () => {
     navigate("/login", { replace: true });
   }
 };
+
 
 
 
