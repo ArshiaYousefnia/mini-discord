@@ -1331,3 +1331,19 @@
   border-top: 1px solid var(--md-sys-color-outline);
 }
 
+.chat-avatar-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.online-indicator {
+  position: absolute;
+  bottom: 0px;
+  right: 0px;
+  width: 14px;
+  height: 14px;
+  background-color: #4ade80; /* Tailwind green-400 */
+  border: 2px solid #1f2937; /* Match your sidebar background color */
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(0,0,0,0.3);
+}

@@ -15,31 +15,16 @@ export function useOnlineStatus() {
       try {
         const data = JSON.parse(event.data);
 
-        console.log("ONLINE WS MESSAGE:", data);
-
         if (data.type === "user_status" && data.user_id) {
-          setOnlineUsers((prev) => {
-            const userId = String(data.user_id);
-            const nextValue = Boolean(data.is_online);
-
-            console.log("ONLINE STATUS UPDATE:", {
-              userId,
-              previous: prev[userId],
-              next: nextValue,
-              fullPayload: data,
-            });
-
-            return {
-              ...prev,
-              [userId]: nextValue,
-            };
-          });
+          setOnlineUsers((prev) => ({
+            ...prev,
+            [String(data.user_id)]: Boolean(data.is_online),
+          }));
         }
       } catch (err) {
         console.error("Failed to parse status message", err);
       }
     };
-
 
     ws.onerror = (err) => {
       console.error("Online status websocket error", err);
