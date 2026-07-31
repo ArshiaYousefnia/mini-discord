@@ -2,12 +2,6 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getChannelPreview, joinChannelByInviteLink, type ChannelPreview } from "../services/channelService";
 
-// Task #20 — Join a Channel with Invite Link
-//
-// Route: /channels/join/:inviteCode
-// Flow: fetch a read-only preview (name, avatar) -> show a "Join Channel"
-// button -> on click, join and redirect to the main chat view. Invalid
-// links show a simple "Invalid link" message and never join anything.
 export default function ChannelInvitePage() {
   const { inviteCode } = useParams<{ inviteCode: string }>();
   const navigate = useNavigate();
@@ -17,6 +11,7 @@ export default function ChannelInvitePage() {
   const [invalid, setInvalid] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
+  const [isMember, setIsMember] = useState(false);   // track already‑member state
 
   useEffect(() => {
     if (!inviteCode) {
@@ -46,10 +41,6 @@ export default function ChannelInvitePage() {
   }, [inviteCode]);
 
   const goHome = (openChatId?: string) => {
-    // HomePage.tsx already knows how to select a chat via a `?chat=<id>`
-    // query param (see its `loadChats` / `chatIdFromUrl` logic), the same
-    // mechanism used after joining a group. Reusing it here means no
-    // HomePage changes are needed for the invite-link flow.
     navigate(openChatId ? `/HomePage/?chat=${openChatId}` : "/HomePage/", { replace: true });
   };
 
@@ -59,12 +50,14 @@ export default function ChannelInvitePage() {
     try {
       setJoining(true);
       setError("");
+      setIsMember(false);
       const data = await joinChannelByInviteLink(inviteCode);
+      // Success – navigate to the channel
       goHome(data?.id || preview?.id);
     } catch (err: any) {
       if (err?.response?.status === 400 && preview) {
-        // Already a member — nothing to join, just take them to the channel.
-        goHome(preview.id);
+        // Already a member – show the "Open" state
+        setIsMember(true);
         return;
       }
       if (err?.response?.status === 404) {
@@ -75,6 +68,11 @@ export default function ChannelInvitePage() {
     } finally {
       setJoining(false);
     }
+  };
+
+  const handleCancel = () => {
+    // Navigate back to home without opening the channel
+    goHome();
   };
 
   return (
@@ -111,7 +109,7 @@ export default function ChannelInvitePage() {
             </p>
             <button
               type="button"
-              onClick={() => goHome()}
+              onClick={handleCancel}
               style={{
                 padding: "10px 20px",
                 borderRadius: 8,
@@ -143,31 +141,81 @@ export default function ChannelInvitePage() {
             />
             <h2 style={{ margin: "0 0 4px" }}>{preview.name}</h2>
             {preview.description && (
-              <p style={{ opacity: 0.7, fontSize: 14, marginBottom: 20 }}>{preview.description}</p>
+              <p style={{ opacity: 0.7, fontSize: 14, marginBottom: 20 }}>
+                {preview.description}
+              </p>
             )}
 
             {error && (
-              <div style={{ color: "#f87171", fontSize: 13, marginBottom: 12 }}>{error}</div>
+              <div style={{ color: "#f87171", fontSize: 13, marginBottom: 12 }}>
+                {error}
+              </div>
             )}
 
-            <button
-              type="button"
-              onClick={handleJoin}
-              disabled={joining}
-              style={{
-                padding: "12px 24px",
-                borderRadius: 8,
-                border: "none",
-                background: "#1db954",
-                color: "#04120a",
-                fontWeight: 700,
-                fontSize: 15,
-                cursor: joining ? "default" : "pointer",
-                width: "100%",
-              }}
-            >
-              {joining ? "Joining..." : "Join Channel"}
-            </button>
+            {isMember ? (
+              // Already a member – show Open button
+              <>
+                <div style={{ color: "#fbbf24", fontSize: 14, marginBottom: 12 }}>
+                  You are already a member of this channel.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => goHome(preview.id)}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "#3b82f6",
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: 15,
+                    cursor: "pointer",
+                    width: "100%",
+                  }}
+                >
+                  Open Channel
+                </button>
+              </>
+            ) : (
+              // Normal join flow
+              <>
+                <button
+                  type="button"
+                  onClick={handleJoin}
+                  disabled={joining}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "#1db954",
+                    color: "#04120a",
+                    fontWeight: 700,
+                    fontSize: 15,
+                    cursor: joining ? "default" : "pointer",
+                    width: "100%",
+                  }}
+                >
+                  {joining ? "Joining..." : "Join Channel"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  style={{
+                    marginTop: 12,
+                    padding: "8px 16px",
+                    borderRadius: 6,
+                    border: "1px solid #30363d",
+                    background: "transparent",
+                    color: "#8b949e",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    width: "100%",
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
           </>
         )}
       </div>

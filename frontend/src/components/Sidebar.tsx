@@ -12,10 +12,8 @@ type Props = {
   onSelectChat: (chat: ChatListItem) => void;
   currentUsername: string;
   onStartDirectMessage: (user: BackendUserProfile) => Promise<void>;
-  onRefresh?: () => void; 
+  onRefresh?: () => void;
   onlineUsers?: Record<string, boolean>;
-  // Task #55 — called after successfully joining a channel via public-ID
-  // search, so the parent can select it / refresh the chat list.
   onChannelJoined?: (channelId: string) => void;
 };
 
@@ -26,18 +24,15 @@ function getLoggedInUsername(): string {
 
     try {
       const parsed = JSON.parse(raw);
-
       if (typeof parsed === "object" && parsed?.username) {
         return String(parsed.username).trim().toLowerCase();
       }
-
       if (typeof parsed === "string") {
         return parsed.trim().toLowerCase();
       }
     } catch {
       return raw.trim().toLowerCase();
     }
-
     return raw.trim().toLowerCase();
   } catch {
     return "";
@@ -50,7 +45,7 @@ export default function Sidebar({
   onSelectChat,
   currentUsername,
   onStartDirectMessage,
-  onRefresh, 
+  onRefresh,
   onlineUsers = {},
   onChannelJoined,
 }: Props) {
@@ -66,53 +61,41 @@ export default function Sidebar({
   const [globalResults, setGlobalResults] = useState<GlobalSearchResult[]>([]);
   const [searchError, setSearchError] = useState("");
   const [joiningChannelId, setJoiningChannelId] = useState<string | null>(null);
+  // Track which channels we know the user is already a member of
+  const [membershipStatus, setMembershipStatus] = useState<Record<string, 'member'>>({});
 
   const [loggedInUsername, setLoggedInUsername] = useState("");
 
-  // --- FIXED POLLING LOGIC ---
+  // --- Polling logic (unchanged) ---
   const onRefreshRef = useRef(onRefresh);
-
-  // 1. Keep the ref updated with the latest function reference on every render
   useEffect(() => {
     onRefreshRef.current = onRefresh;
   }, [onRefresh]);
 
-  // 2. Set the interval only ONCE on mount. It will call the current function inside the ref.
   useEffect(() => {
     const interval = setInterval(() => {
       if (onRefreshRef.current) {
         onRefreshRef.current();
       }
-    }, 5000); 
-    
+    }, 5000);
     return () => clearInterval(interval);
-  }, []); 
-  // ---------------------------
+  }, []);
+  // ---------------------------------
 
   useEffect(() => {
     const savedName = localStorage.getItem("display_name");
     const savedAvatar = localStorage.getItem("avatar_url");
-
     if (savedName) setDisplayName(savedName);
     if (savedAvatar) setAvatarUrl(savedAvatar);
 
     const fromStorage = getLoggedInUsername();
     const fromProp = (currentUsername || "").trim().toLowerCase();
-
     setLoggedInUsername(fromStorage || fromProp);
   }, [currentUsername]);
 
-  const goToEditProfile = () => {
-    navigate("/profile/");
-  };
-
-  const goToCreateGroup = () => {
-    navigate("/groups/create");
-  };
-
-  const goToCreateChannel = () => {
-    navigate("/channels/create");
-  };
+  const goToEditProfile = () => navigate("/profile/");
+  const goToCreateGroup = () => navigate("/groups/create");
+  const goToCreateChannel = () => navigate("/channels/create");
 
   const isGlobalSearchQuery = search.trim().startsWith("@");
 
@@ -123,9 +106,6 @@ export default function Sidebar({
     );
   }, [chats, search, isGlobalSearchQuery]);
 
-  // Task #55 — the "@..." global search bar now searches both usernames
-  // and channel public IDs against the same `api/users/search/` endpoint,
-  // rendering a user card or a channel card depending on the result shape.
   const handleGlobalSearch = async () => {
     const queryVal = search.trim().replace(/^@/, "");
     if (!queryVal) return;
@@ -134,9 +114,10 @@ export default function Sidebar({
       setSearchingGlobal(true);
       setSearchError("");
       setGlobalResults([]);
+      // Clear any stale membership status when a new search is performed
+      setMembershipStatus({});
 
       const results = await searchGlobal(queryVal);
-
       if (!results.length) {
         setSearchError("No results found");
       } else {
@@ -151,10 +132,9 @@ export default function Sidebar({
 
   const handleStartChat = async (user: BackendUserProfile | null) => {
     if (!user) return;
-
     setSearch("");
     setGlobalResults([]);
-
+    setMembershipStatus({});
     await onStartDirectMessage(user);
   };
 
@@ -162,22 +142,34 @@ export default function Sidebar({
     try {
       setJoiningChannelId(channel.id);
       await joinChannelByPublicId(channel.public_id);
+      // Successfully joined – navigate and clear everything
       setSearch("");
       setGlobalResults([]);
+      setMembershipStatus({});
       onChannelJoined?.(channel.id);
       onRefresh?.();
     } catch (err: any) {
       if (err?.response?.status === 400) {
-        // Already a member — just open it.
-        setSearch("");
-        setGlobalResults([]);
-        onChannelJoined?.(channel.id);
+        // Already a member – store this fact and show a warning
+        setMembershipStatus((prev) => ({ ...prev, [channel.id]: 'member' }));
+        // Do NOT navigate automatically; let the user click "Open"
       } else {
         alert("Failed to join channel.");
       }
     } finally {
       setJoiningChannelId(null);
     }
+  };
+
+  // Handler for the "Open" button when already a member
+  const handleOpenChannel = (channel: ChannelSearchResult) => {
+    // Navigate to the channel
+    onChannelJoined?.(channel.id);
+    onRefresh?.();
+    // Clear the overlay and status
+    setSearch("");
+    setGlobalResults([]);
+    setMembershipStatus({});
   };
 
   return (
@@ -205,6 +197,8 @@ export default function Sidebar({
               setSearch(e.target.value);
               if (searchError) setSearchError("");
               if (globalResults.length) setGlobalResults([]);
+              // Clear membership status when the user types something new
+              setMembershipStatus({});
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && isGlobalSearchQuery) {
@@ -237,6 +231,7 @@ export default function Sidebar({
                   setGlobalResults([]);
                   setSearchError("");
                   setSearch("");
+                  setMembershipStatus({});
                 }}
               >
                 ✕
@@ -278,9 +273,7 @@ export default function Sidebar({
                           {isUserOnline ? "• Online" : "• Offline"}
                         </span>
                       </div>
-
                       {user.bio && <div className="search-profile-bio">{user.bio}</div>}
-
                       {isSelf ? (
                         <span className="self-label">This is you</span>
                       ) : (
@@ -297,8 +290,10 @@ export default function Sidebar({
                 );
               }
 
-              // Task #55 — channel result: avatar, name, "Join" action.
+              // Channel result
               const channel = result.data;
+              const isMember = membershipStatus[channel.id] === 'member';
+
               return (
                 <div className="search-profile-card" key={`channel-${channel.id}`}>
                   <img
@@ -309,19 +304,34 @@ export default function Sidebar({
                   <div className="search-profile-details">
                     <div className="search-profile-name">{channel.name}</div>
                     <div className="search-profile-username">@{channel.public_id}</div>
-
                     {channel.description && (
                       <div className="search-profile-bio">{channel.description}</div>
                     )}
 
-                    <button
-                      type="button"
-                      className="message-action-btn"
-                      onClick={() => handleJoinChannelResult(channel)}
-                      disabled={joiningChannelId === channel.id}
-                    >
-                      {joiningChannelId === channel.id ? "Joining..." : "Join"}
-                    </button>
+                    {isMember ? (
+                      <>
+                        <div style={{ color: "#fbbf24", fontSize: "0.9em", marginTop: 4 }}>
+                          ⚠️ You are already a member of this channel.
+                        </div>
+                        <button
+                          type="button"
+                          className="message-action-btn"
+                          onClick={() => handleOpenChannel(channel)}
+                          style={{ background: "#3b82f6", color: "#fff" }}
+                        >
+                          Open Channel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="message-action-btn"
+                        onClick={() => handleJoinChannelResult(channel)}
+                        disabled={joiningChannelId === channel.id}
+                      >
+                        {joiningChannelId === channel.id ? "Joining..." : "Join"}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
