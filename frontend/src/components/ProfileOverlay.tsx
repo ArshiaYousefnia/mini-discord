@@ -318,9 +318,21 @@ export default function ProfileOverlay({
                               {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
                             </div>
                             <span className="member-name flex-1">{member.display_name}</span>
-                            <span className="badge mr-2" style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}>
-                              {member.role_name}
-                            </span>
+                            {/* Task #24 — a member can have multiple roles, so this
+                                renders every assigned role as its own badge
+                                (the backend's `roles` field for channel members is
+                                an array of names, not a single `role_name`). */}
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginRight: 8 }}>
+                              {(member.roles && member.roles.length > 0 ? member.roles : ["Member"]).map((roleName) => (
+                                <span
+                                  key={roleName}
+                                  className="badge"
+                                  style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}
+                                >
+                                  {roleName}
+                                </span>
+                              ))}
+                            </div>
                             
                             {/* Channel Remove Member Button */}
                             {channelPermissions?.can_manage_members && String(member.user_id) !== String(currentUserId) && onRemoveChannelMember && (
@@ -352,7 +364,7 @@ export default function ProfileOverlay({
                 </>
               )
             ) : (
-              /* --- NEW ROLES VIEW --- */
+              /* --- ROLES VIEW --- */
               <div className="roles-management-section">
                 <h3 style={{ marginTop: 0 }}>Channel Roles</h3>
                 
@@ -374,7 +386,8 @@ export default function ProfileOverlay({
                   </button>
                 </div>
 
-                {/* Render the RoleManagement Component */}
+                {/* Task #24 / #56 — role permission editing plus per-member
+                    role assignment/removal now lives in RoleManagement. */}
                 <RoleManagement 
                   channelId={channelProfile.id} 
                   roles={channelRoles || []} 
