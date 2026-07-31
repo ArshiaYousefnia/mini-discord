@@ -184,6 +184,14 @@ export default function HomePage() {
     setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
   };
 
+  // Task #55 — after joining a channel found via public-ID search, select
+  // it the same way we already do for group invite joins: set `?chat=` and
+  // reload the conversation list so the new channel appears in the sidebar.
+  const handleChannelJoined = async (channelId: string) => {
+    setSearchParams({ chat: channelId });
+    await loadChats(false, channelId);
+  };
+
   // Determine if the currently selected chat's other user is online.
   // We use String() representation here to match our normalized websocket state.
   const isOtherUserOnline =
@@ -202,6 +210,7 @@ export default function HomePage() {
           onStartDirectMessage={handleStartDirectMessage}
           onRefresh={() => loadChats(true)}
           onlineUsers={onlineUsers ?? {}}
+          onChannelJoined={handleChannelJoined}
         />
       )}
 
