@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Message } from "../types/chat";
 import { joinGroupByToken } from "../services/groupService";
-import { joinChannelByInviteLink } from "../services/channelService";
 import "../styles/chat.css";
 import CachedAttachment from "./CachedAttachment";
 
@@ -11,7 +11,11 @@ type Props = {
   currentUserId?: string | null;
   currentUsername?: string | null;
   replyMessage?: Message | null;
-  isGroupOwner?: boolean;
+  // Renamed from `isGroupOwner`: this now generically means "the current
+  // user is allowed to delete OTHER members' messages in this chat" —
+  // true for group owners, and for channel members/owners who have the
+  // "Delete others messages" permission (Task #29).
+  canDeleteOthers?: boolean;
   isGroupChat?: boolean;
   senderAvatarUrl?: string;
   canReply?: boolean;
@@ -20,8 +24,7 @@ type Props = {
   onDelete: (messageId: string) => Promise<void>;
   onAvatarClick?: (userId: string) => void;
   onGroupJoined?: (groupId: string) => void;
-  onChannelJoined?: (channelId: string) => void;
-  onChannelPreview?: (token: string) => void; // Used to trigger the preview modal for the user story
+  onChannelPreview?: (token: string) => void; // Optional override hook for the invite-preview flow
 };
 
 export default function MessageBubble({
@@ -29,7 +32,7 @@ export default function MessageBubble({
   currentUserId,
   currentUsername,
   replyMessage,
-  isGroupOwner = false,
+  canDeleteOthers = false,
   isGroupChat = false,
   senderAvatarUrl,
   canReply = true,
@@ -38,9 +41,9 @@ export default function MessageBubble({
   onDelete,
   onAvatarClick,
   onGroupJoined,
-  onChannelJoined,
   onChannelPreview,
 }: Props) {
+  const navigate = useNavigate();
   const messageText = message.content ?? "";
 
   const isMe =
@@ -49,7 +52,7 @@ export default function MessageBubble({
     (currentUsername != null && message.sender_username === currentUsername);
 
   const alignmentClass = isMe ? "outgoing" : "incoming";
-  const canDelete = isMe || isGroupOwner;
+  const canDelete = isMe || canDeleteOthers;
   const showSenderMeta = isGroupChat && !isMe;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -90,9 +93,9 @@ export default function MessageBubble({
   };
 
   const handleDelete = async () => {
-    const isModerationDelete = !isMe && isGroupOwner;
+    const isModerationDelete = !isMe && canDeleteOthers;
     const confirmText = isModerationDelete
-      ? "Delete this message for everyone in the group?"
+      ? "Delete this message for everyone in this chat?"
       : "Are you sure you want to delete this message?";
 
     if (!window.confirm(confirmText)) return;
@@ -134,41 +137,14 @@ export default function MessageBubble({
     }
   };
 
-  const handleJoinChannel = async (token: string) => {
-    // Fulfills the "Accessing a valid invite link should show a preview screen" requirement
+  const handleJoinChannel = (token: string) => {
+    // Task #20 — invite links always go through the read-only preview
+    // screen first ("preview first, then join"), never a direct join.
     if (onChannelPreview) {
       onChannelPreview(token);
       return;
     }
-
-    // Direct join fallback if no preview handler is provided
-    try {
-      setJoinLoading(true);
-      const data = await joinChannelByInviteLink(token);
-
-      const channelId = data?.channel_id || data?.id;
-
-      if (onChannelJoined && channelId) {
-        onChannelJoined(String(channelId));
-      } else {
-        alert("Successfully joined the channel!");
-      }
-    } catch (err: any) {
-      if (err.response?.status === 400) {
-        const channelId = err.response?.data?.channel_id;
-        if (onChannelJoined && channelId) {
-          onChannelJoined(String(channelId));
-        } else {
-          alert("You are already a channel member!");
-        }
-      } else if (err.response?.status === 404) {
-        alert("Invalid invite link");
-      } else {
-        alert(err.message || "Failed to join channel.");
-      }
-    } finally {
-      setJoinLoading(false);
-    }
+    navigate(`/channels/join/${token}`);
   };
 
   const renderContent = (text: string) => {
@@ -192,7 +168,7 @@ export default function MessageBubble({
                 key={index}
                 className="inline-invite-link"
                 onClick={() => isChannel ? handleJoinChannel(token) : handleJoinGroup(token)}
-                disabled={joinLoading}
+                disabled={!isChannel && joinLoading}
                 type="button"
                 style={{
                   background: "none",
@@ -205,7 +181,7 @@ export default function MessageBubble({
                   fontSize: "inherit",
                 }}
               >
-                {joinLoading ? "Joining..." : part}
+                {!isChannel && joinLoading ? "Joining..." : part}
               </button>
             );
           }

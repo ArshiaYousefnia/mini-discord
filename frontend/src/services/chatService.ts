@@ -229,6 +229,7 @@ export const chatService = {
     reply_to = null,
     recipient_id,
     files = [],
+    topic_id = null,
   }: SendConversationMessagePayload): Promise<Message> => {
     if (!content.trim() && (!files || files.length === 0)) {
       throw new Error("Message or attachment cannot be empty.");
@@ -239,6 +240,9 @@ export const chatService = {
       const formData = new FormData();
       if (content.trim()) formData.append("content", content.trim());
       if (reply_to) formData.append("reply_to", reply_to);
+      // Task #22/#49 — scope the message to a topic when sending in a
+      // channel. Ignored server-side for DM/GROUP conversations.
+      if (topic_id) formData.append("topic_id", topic_id);
 
       files.forEach((file) => {
         formData.append("uploaded_files", file);
@@ -286,7 +290,7 @@ export const chatService = {
       
       const response = await api.post<Message>(
         `/api/chat/conversations/${conversation_id}/messages/`,
-        { content, reply_to }
+        { content, reply_to, topic_id }
       );
       const message = response.data;
       upsertLocalMessage(message);
