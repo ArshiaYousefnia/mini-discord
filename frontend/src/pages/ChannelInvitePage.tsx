@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  getChannelPreview,
-  getChannelProfile,
-  joinChannelByInviteLink,
-  type ChannelPreview,
-} from "../services/channelService";
+import { getChannelPreview, joinChannelByInviteLink, type ChannelPreview } from "../services/channelService";
 
 export default function ChannelInvitePage() {
   const { inviteCode } = useParams<{ inviteCode: string }>();
@@ -14,12 +9,9 @@ export default function ChannelInvitePage() {
   const [preview, setPreview] = useState<ChannelPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [invalid, setInvalid] = useState(false);
-
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
-
-  const [isMember, setIsMember] = useState<boolean | null>(null); // null = unknown
-  const [membershipChecking, setMembershipChecking] = useState(false);
+  const [isMember, setIsMember] = useState(false);   // track already‑member state
 
   useEffect(() => {
     if (!inviteCode) {
@@ -48,40 +40,6 @@ export default function ChannelInvitePage() {
     };
   }, [inviteCode]);
 
-  useEffect(() => {
-    if (!preview || isMember !== null) return;
-
-    let isMounted = true;
-    setMembershipChecking(true);
-
-    const checkMembership = async () => {
-      try {
-        await getChannelProfile(preview.id);
-        if (isMounted) setIsMember(true);
-      } catch (err: any) {
-        if (isMounted) {
-          setIsMember(false);
-        }
-      } finally {
-        if (isMounted) setMembershipChecking(false);
-      }
-    };
-
-    checkMembership();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [preview, isMember]);
-
-  const goBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate("/HomePage/", { replace: true });
-    }
-  };
-
   const goHome = (openChatId?: string) => {
     navigate(openChatId ? `/HomePage/?chat=${openChatId}` : "/HomePage/", { replace: true });
   };
@@ -92,10 +50,13 @@ export default function ChannelInvitePage() {
     try {
       setJoining(true);
       setError("");
+      setIsMember(false);
       const data = await joinChannelByInviteLink(inviteCode);
+      // Success – navigate to the channel
       goHome(data?.id || preview?.id);
     } catch (err: any) {
       if (err?.response?.status === 400 && preview) {
+        // Already a member – show the "Open" state
         setIsMember(true);
         return;
       }
@@ -107,6 +68,11 @@ export default function ChannelInvitePage() {
     } finally {
       setJoining(false);
     }
+  };
+
+  const handleCancel = () => {
+    // Navigate back to home without opening the channel
+    goHome();
   };
 
   return (
@@ -143,7 +109,7 @@ export default function ChannelInvitePage() {
             </p>
             <button
               type="button"
-              onClick={goBack}
+              onClick={handleCancel}
               style={{
                 padding: "10px 20px",
                 borderRadius: 8,
@@ -154,7 +120,7 @@ export default function ChannelInvitePage() {
                 cursor: "pointer",
               }}
             >
-              Back
+              Back to Home
             </button>
           </>
         )}
@@ -186,10 +152,8 @@ export default function ChannelInvitePage() {
               </div>
             )}
 
-            {membershipChecking ? (
-              <div style={{ color: "#8b949e" }}>Checking membership…</div>
-            ) : isMember === true ? (
-              // Already a member – show Open and Cancel
+            {isMember ? (
+              // Already a member – show Open button
               <>
                 <div style={{ color: "#fbbf24", fontSize: 14, marginBottom: 12 }}>
                   You are already a member of this channel.
@@ -211,26 +175,9 @@ export default function ChannelInvitePage() {
                 >
                   Open Channel
                 </button>
-                <button
-                  type="button"
-                  onClick={goBack}
-                  style={{
-                    marginTop: 12,
-                    padding: "8px 16px",
-                    borderRadius: 6,
-                    border: "1px solid #30363d",
-                    background: "transparent",
-                    color: "#8b949e",
-                    cursor: "pointer",
-                    fontSize: 14,
-                    width: "100%",
-                  }}
-                >
-                  Cancel
-                </button>
               </>
             ) : (
-              // Not a member – show Join and Cancel
+              // Normal join flow
               <>
                 <button
                   type="button"
@@ -252,7 +199,7 @@ export default function ChannelInvitePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={goBack}
+                  onClick={handleCancel}
                   style={{
                     marginTop: 12,
                     padding: "8px 16px",

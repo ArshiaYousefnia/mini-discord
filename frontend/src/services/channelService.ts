@@ -136,3 +136,84 @@ export const deleteChannelRole = async (
 ): Promise<void> => {
   await api.delete(`/api/chat/channels/${channelId}/roles/${roleId}/`);
 };
+
+// ---------------------------------------------------------------------------
+// Task #20 — Join a Channel with Invite Link (read-only preview)
+// ---------------------------------------------------------------------------
+export interface ChannelPreview {
+  id: string;
+  name: string;
+  description: string;
+  avatar_url: string;
+  is_private: boolean;
+  public_id: string | null;
+}
+
+export async function getChannelPreview(inviteCode: string): Promise<ChannelPreview> {
+  const response = await api.get(`/api/chat/channels/preview/${inviteCode}/`);
+  return response.data;
+}
+
+// ---------------------------------------------------------------------------
+// Task #55 — Join a Channel with Public ID
+// ---------------------------------------------------------------------------
+export interface ChannelByPublicId {
+  id: string;
+  name: string;
+  avatar_url: string;
+  description: string;
+  public_id: string;
+}
+
+export async function getChannelByPublicId(publicId: string): Promise<ChannelByPublicId> {
+  const response = await api.get(`/api/chat/channels/public/${publicId}/`);
+  return response.data;
+}
+
+export const joinChannelByPublicId = async (publicId: string): Promise<any> => {
+  const response = await api.post(`/api/chat/channels/public/${publicId}/`);
+  return response.data;
+};
+
+// ---------------------------------------------------------------------------
+// Task #24 / #56 — Assign & remove roles from a channel member
+// ---------------------------------------------------------------------------
+
+/**
+ * NOTE FOR THE TEAM: the backend endpoint behind this call
+ * (`PATCH /channels/:id/members/:userId/role/`) currently *replaces* a member's
+ * entire role set with the single role provided, via
+ * `target_membership.roles.set([role])` in `ChannelMemberRoleUpdateView.patch`
+ * (backend/chat/views.py). It does not add to the existing set.
+ *
+ * That means: if a member already has "Role A" and you assign "Role B", they
+ * will end up with ONLY "Role B" — "Role A" gets silently removed. This
+ * conflicts with Task #24's requirement to "assign one or multiple roles".
+ *
+ * Since the backend is locked for this project, this is implemented against
+ * the endpoint as it currently exists. To properly support additive
+ * multi-role assignment, the backend team should change that line to
+ * `target_membership.roles.add(role)` (the *remove* endpoint below already
+ * behaves correctly/additively, via `.roles.remove(role)`).
+ */
+export const assignMemberRole = async (
+  channelId: string,
+  userId: string,
+  roleId: string
+): Promise<{ detail: string }> => {
+  const response = await api.patch(`/api/chat/channels/${channelId}/members/${userId}/role/`, {
+    role_id: roleId,
+  });
+  return response.data;
+};
+
+export const removeMemberRole = async (
+  channelId: string,
+  userId: string,
+  roleId: string
+): Promise<{ detail: string }> => {
+  const response = await api.delete(
+    `/api/chat/channels/${channelId}/members/${userId}/roles/${roleId}/`
+  );
+  return response.data;
+};
