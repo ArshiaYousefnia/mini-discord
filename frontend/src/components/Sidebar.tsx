@@ -2,7 +2,8 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import ChatItem from "./ChatItem";
 import type { ChatListItem } from "../types/chat";
 import type { BackendUserProfile } from "../types/user";
-import { searchUserByUsername } from "../services/userService";
+import { searchGlobal, type GlobalSearchResult, type ChannelSearchResult } from "../services/userService";
+import { joinChannelByPublicId } from "../services/channelService";
 import { useNavigate } from "react-router-dom";
 
 type Props = {
@@ -13,6 +14,9 @@ type Props = {
   onStartDirectMessage: (user: BackendUserProfile) => Promise<void>;
   onRefresh?: () => void; 
   onlineUsers?: Record<string, boolean>;
+  // Task #55 — called after successfully joining a channel via public-ID
+  // search, so the parent can select it / refresh the chat list.
+  onChannelJoined?: (channelId: string) => void;
 };
 
 function getLoggedInUsername(): string {
@@ -48,6 +52,7 @@ export default function Sidebar({
   onStartDirectMessage,
   onRefresh, 
   onlineUsers = {},
+  onChannelJoined,
 }: Props) {
   const navigate = useNavigate();
 
@@ -58,8 +63,9 @@ export default function Sidebar({
 
   const [search, setSearch] = useState("");
   const [searchingGlobal, setSearchingGlobal] = useState(false);
-  const [globalUser, setGlobalUser] = useState<BackendUserProfile | null>(null);
+  const [globalResults, setGlobalResults] = useState<GlobalSearchResult[]>([]);
   const [searchError, setSearchError] = useState("");
+  const [joiningChannelId, setJoiningChannelId] = useState<string | null>(null);
 
   const [loggedInUsername, setLoggedInUsername] = useState("");
 
@@ -117,6 +123,9 @@ export default function Sidebar({
     );
   }, [chats, search, isGlobalSearchQuery]);
 
+  // Task #55 — the "@..." global search bar now searches both usernames
+  // and channel public IDs against the same `api/users/search/` endpoint,
+  // rendering a user card or a channel card depending on the result shape.
   const handleGlobalSearch = async () => {
     const queryVal = search.trim().replace(/^@/, "");
     if (!queryVal) return;
@@ -124,17 +133,17 @@ export default function Sidebar({
     try {
       setSearchingGlobal(true);
       setSearchError("");
-      setGlobalUser(null);
+      setGlobalResults([]);
 
-      const user = await searchUserByUsername(queryVal);
+      const results = await searchGlobal(queryVal);
 
-      if (!user) {
-        setSearchError("User not found");
+      if (!results.length) {
+        setSearchError("No results found");
       } else {
-        setGlobalUser(user);
+        setGlobalResults(results);
       }
     } catch {
-      setSearchError("User not found");
+      setSearchError("No results found");
     } finally {
       setSearchingGlobal(false);
     }
@@ -144,21 +153,32 @@ export default function Sidebar({
     if (!user) return;
 
     setSearch("");
-    setGlobalUser(null);
+    setGlobalResults([]);
 
     await onStartDirectMessage(user);
   };
 
-  const searchedUsername = (globalUser?.username || "").trim().toLowerCase();
-  const isSelf =
-    searchedUsername !== "" &&
-    loggedInUsername !== "" &&
-    searchedUsername === loggedInUsername;
-
-  // Compute live online status for global search layout
-  const isGlobalUserOnline = globalUser
-    ? onlineUsers[String(globalUser.id)] ?? globalUser.is_online
-    : false;
+  const handleJoinChannelResult = async (channel: ChannelSearchResult) => {
+    try {
+      setJoiningChannelId(channel.id);
+      await joinChannelByPublicId(channel.public_id);
+      setSearch("");
+      setGlobalResults([]);
+      onChannelJoined?.(channel.id);
+      onRefresh?.();
+    } catch (err: any) {
+      if (err?.response?.status === 400) {
+        // Already a member — just open it.
+        setSearch("");
+        setGlobalResults([]);
+        onChannelJoined?.(channel.id);
+      } else {
+        alert("Failed to join channel.");
+      }
+    } finally {
+      setJoiningChannelId(null);
+    }
+  };
 
   return (
     <div className="sidebar">
@@ -179,12 +199,12 @@ export default function Sidebar({
         <div className="search-container">
           <input
             className="chat-search"
-            placeholder="Search chats or @username..."
+            placeholder="Search chats, @username or @public-id..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
               if (searchError) setSearchError("");
-              if (globalUser) setGlobalUser(null);
+              if (globalResults.length) setGlobalResults([]);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && isGlobalSearchQuery) {
@@ -206,7 +226,7 @@ export default function Sidebar({
       </div>
 
       <div className="chat-list">
-        {(globalUser || searchError) && isGlobalSearchQuery && (
+        {(globalResults.length > 0 || searchError) && isGlobalSearchQuery && (
           <div className="global-search-overlay">
             <div className="overlay-header">
               <span>Global Search Result</span>
@@ -214,7 +234,7 @@ export default function Sidebar({
                 type="button"
                 className="close-overlay-btn"
                 onClick={() => {
-                  setGlobalUser(null);
+                  setGlobalResults([]);
                   setSearchError("");
                   setSearch("");
                 }}
@@ -227,50 +247,89 @@ export default function Sidebar({
               <div className="search-error-message">{searchError}</div>
             )}
 
-            {globalUser && (
-              <div className="search-profile-card">
-                <img
-                  src={globalUser.avatar_url || "https://i.pravatar.cc/150?img=9"}
-                  alt={globalUser.username}
-                  className="search-profile-avatar"
-                />
-                <div className="search-profile-details">
-                  <div className="search-profile-name">
-                    {globalUser.display_name}
-                  </div>
-                  <div className="search-profile-username">
-                    @{globalUser.username}
-                    <span style={{ 
-                      marginLeft: "8px", 
-                      color: isGlobalUserOnline ? "#4ade80" : "#9ca3af",
-                      fontSize: "0.85em"
-                    }}>
-                      {isGlobalUserOnline ? "• Online" : "• Offline"}
-                    </span>
-                  </div>
+            {globalResults.map((result) => {
+              if (result.kind === "user") {
+                const user = result.data;
+                const searchedUsername = (user.username || "").trim().toLowerCase();
+                const isSelf =
+                  searchedUsername !== "" &&
+                  loggedInUsername !== "" &&
+                  searchedUsername === loggedInUsername;
+                const isUserOnline = onlineUsers[String(user.id)] ?? user.is_online;
 
-                  {globalUser.bio && (
-                    <div className="search-profile-bio">{globalUser.bio}</div>
-                  )}
+                return (
+                  <div className="search-profile-card" key={`user-${user.id}`}>
+                    <img
+                      src={user.avatar_url || "https://i.pravatar.cc/150?img=9"}
+                      alt={user.username}
+                      className="search-profile-avatar"
+                    />
+                    <div className="search-profile-details">
+                      <div className="search-profile-name">{user.display_name}</div>
+                      <div className="search-profile-username">
+                        @{user.username}
+                        <span
+                          style={{
+                            marginLeft: "8px",
+                            color: isUserOnline ? "#4ade80" : "#9ca3af",
+                            fontSize: "0.85em",
+                          }}
+                        >
+                          {isUserOnline ? "• Online" : "• Offline"}
+                        </span>
+                      </div>
 
-                  {isSelf ? (
-                    <span className="self-label">This is you</span>
-                  ) : (
+                      {user.bio && <div className="search-profile-bio">{user.bio}</div>}
+
+                      {isSelf ? (
+                        <span className="self-label">This is you</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="message-action-btn"
+                          onClick={() => handleStartChat(user)}
+                        >
+                          Message
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              // Task #55 — channel result: avatar, name, "Join" action.
+              const channel = result.data;
+              return (
+                <div className="search-profile-card" key={`channel-${channel.id}`}>
+                  <img
+                    src={channel.avatar_url || "https://i.pravatar.cc/150?img=9"}
+                    alt={channel.name}
+                    className="search-profile-avatar"
+                  />
+                  <div className="search-profile-details">
+                    <div className="search-profile-name">{channel.name}</div>
+                    <div className="search-profile-username">@{channel.public_id}</div>
+
+                    {channel.description && (
+                      <div className="search-profile-bio">{channel.description}</div>
+                    )}
+
                     <button
                       type="button"
                       className="message-action-btn"
-                      onClick={() => handleStartChat(globalUser)}
+                      onClick={() => handleJoinChannelResult(channel)}
+                      disabled={joiningChannelId === channel.id}
                     >
-                      Message
+                      {joiningChannelId === channel.id ? "Joining..." : "Join"}
                     </button>
-                  )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
         )}
 
-        {!searchError && !globalUser && (
+        {!searchError && globalResults.length === 0 && (
           filteredChats.length === 0 ? (
             <div className="empty-chat-list">No conversations found.</div>
           ) : (

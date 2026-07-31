@@ -38,7 +38,10 @@ export interface Message {
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
-  attachments?: Attachment[]; // Added
+  attachments?: Attachment[];
+  // Present when the conversation is a CHANNEL (ChannelMessageSerializer).
+  topic_id?: string | null;
+  topic_name?: string | null;
 }
 
 export interface SendConversationMessagePayload {
@@ -47,6 +50,9 @@ export interface SendConversationMessagePayload {
   reply_to?: string | null;
   recipient_id?: string;
   files?: File[]; // Added
+  // Task #22/#49 — scopes a channel message to a topic (channels only; the
+  // backend ignores this field for DM/GROUP conversations).
+  topic_id?: string | null;
 }
 
 
@@ -166,9 +172,22 @@ export type ChannelMember = {
   username: string;
   display_name: string;
   avatar_url: string | null;
-  role_name: string;
+  // NOTE: the backend's ChannelMemberSerializer returns a `roles` array of role
+  // *names* (not a single `role_name` string, unlike the group member serializer).
+  // This was previously mistyped here as `role_name`, which never matched the
+  // actual API response for channel members.
+  roles: string[];
   is_online: boolean;
 };
 
 export type ChannelMembers = ChannelMember[];
 
+// Task #22 / #49 — topics inside a channel.
+export type Topic = {
+  id: string;
+  name: string;
+  creator_id: string;
+  creator_display_name: string;
+  created_at: string;
+  updated_at: string;
+};

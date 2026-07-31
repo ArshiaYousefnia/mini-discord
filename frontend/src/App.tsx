@@ -7,6 +7,7 @@ import EditProfilePage from "./pages/EditProfilePage";
 import HomePage from "./pages/HomePage";
 import CreateGroupPage from "./pages/CreateGroupPage";
 import CreateChannelPage from "./pages/CreateChannelPage";
+import ChannelInvitePage from "./pages/ChannelInvitePage";
 
 // Helper component to handle root routing logic
 function RootRedirect() {
@@ -49,6 +50,16 @@ export default function App() {
       <Route path="/HomePage/" element={<HomePage />} />
       <Route path="/groups/create" element={<CreateGroupPage />} />
       <Route path="/channels/create" element={<CreateChannelPage />} />
+
+      {/* Task #20 — invite-link preview screen (preview first, then join) */}
+      <Route
+        path="/channels/join/:inviteCode"
+        element={
+          <ProtectedRoute>
+            <ChannelInvitePage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Fallback wildcard route placed at the end */}
       <Route path="*" element={<Navigate to="/" replace />} />
