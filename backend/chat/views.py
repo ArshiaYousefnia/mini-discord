@@ -1,11 +1,14 @@
+import mimetypes
+from django.http import FileResponse, HttpResponseNotFound
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-
 from rest_framework.views import APIView
+
+
 
 from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
     MinimalMessageSerializer, ChannelCreateSerializer, RoleSerializer, TopicSerializer, TopicUpdateSerializer, \
@@ -17,7 +20,7 @@ from django.db.models import OuterRef, Subquery, Count, Q, Value, Prefetch
 from django.db.models.functions import Coalesce
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, ChannelMessage
+from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, ChannelMessage, Attachment
 
 from .serializers import ChannelMemberRoleUpdateSerializer,ChannelMemberSerializer,ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
 
@@ -36,17 +39,13 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         Send a direct message to another user.
         """
         recipient_id = request.data.get('recipient_id')
-        content = request.data.get('content')
+        content = request.data.get('content', '')  # allow empty
         reply_to = request.data.get('reply_to')
+        uploaded_files = request.FILES.getlist('uploaded_files') if request.FILES else []
 
         if not recipient_id:
             return Response(
                 {"recipient_id": "This field is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if not content:
-            return Response(
-                {"content": "Message content is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -59,7 +58,6 @@ class SendDirectMessageView(viewsets.GenericViewSet):
             )
 
         # Find existing DM conversation between the two users
-        # A DM has exactly two members (the sender and recipient)
         conversation = Conversation.objects.filter(
             type=Conversation.Type.DM,
             members__user=request.user
@@ -70,24 +68,35 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         # If not found, create a new DM conversation and add both members
         if not conversation:
             conversation = Conversation.objects.create(type=Conversation.Type.DM)
-            # Add both users as members
             ConversationMember.objects.create(conversation=conversation, user=request.user)
             ConversationMember.objects.create(conversation=conversation, user=recipient)
 
-        # Validate message content via serializer
-        serializer = self.get_serializer(data={
-            'conversation': str(conversation.id),  # Need to pass UUID as string
+        # Build data dictionary for serializer
+        data = {
+            'conversation': str(conversation.id),
             'content': content,
             'reply_to': reply_to,
+        }
+        if uploaded_files:
+            data['uploaded_files'] = uploaded_files
 
-        })
+        # Validate using the serializer (it will require content or file)
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
 
-        # Save with sender = request.user
+        # Save the message
         message = serializer.save(sender=request.user, conversation=conversation)
 
-        # update last_read_message for sender (so they mark own message as read)
-        # Not required for the story, but useful later
+        # Create attachment records
+        for file in serializer.validated_data.get('uploaded_files', []):
+            Attachment.objects.create(
+                message=message,
+                file=file,
+                original_filename=file.name,
+                size=file.size,
+            )
+
+        # Update sender's last_read_message
         member = ConversationMember.objects.get(conversation=conversation, user=request.user)
         member.last_read_message = message
         member.save()
@@ -222,25 +231,28 @@ class MessageViewSet(
 
     def perform_create(self, serializer):
         conversation_id = self.kwargs.get("conversation_pk")
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_id,
-            members__user=self.request.user
-        )
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        # Membership check (keep existing logic)
+        if not ConversationMember.objects.filter(
+                conversation=conversation, user=self.request.user
+        ).exists():
+            raise PermissionDenied("You are not a member of this conversation.")
 
+        # Channel permission check (unchanged)
+        topic = None
         if conversation.type == Conversation.Type.CHANNEL:
             member = ConversationMember.objects.get(
                 conversation=conversation,
                 user=self.request.user
             )
-            if member.role is None or not member.role.can_send_messages:
+            if not member.roles.filter(can_send_messages=True).exists():
                 raise PermissionDenied("You do not have permission to send messages in this channel.")
-
             topic_id = self.request.data.get('topic_id')
-            topic = None
             if topic_id:
                 topic = get_object_or_404(Topic, id=topic_id, conversation=conversation)
 
+        # Create the message (choose ChannelMessage if channel)
+        if conversation.type == Conversation.Type.CHANNEL:
             message = ChannelMessage.objects.create(
                 conversation=conversation,
                 sender=self.request.user,
@@ -249,8 +261,21 @@ class MessageViewSet(
                 topic=topic,
             )
         else:
-            message = serializer.save(sender=self.request.user, conversation=conversation)
+            message = serializer.save(
+                sender=self.request.user, conversation=conversation
+            )
 
+        # Handle uploaded files (create Attachments)
+        uploaded_files = serializer.validated_data.get('uploaded_files', [])
+        for file in uploaded_files:
+            Attachment.objects.create(
+                message=message,
+                file=file,
+                original_filename=file.name,
+                size=file.size,
+            )
+
+        # Update last_read_message
         member = ConversationMember.objects.get(
             conversation=conversation,
             user=self.request.user
@@ -296,11 +321,11 @@ class MessageViewSet(
             can_delete = False
             if not is_owner:
                 try:
-                    membership = ConversationMember.objects.select_related('role').get(
+                    membership = ConversationMember.objects.prefetch_related('roles').get(
                         conversation=conversation,
                         user=request.user
                     )
-                    if membership.role and membership.role.can_delete_messages:
+                    if membership.roles.filter(can_delete_messages=True).exists():
                         can_delete = True
                 except ConversationMember.DoesNotExist:
                     pass
@@ -419,8 +444,8 @@ class GroupCreateView(APIView):
 
         detail_serializer = GroupDetailSerializer(conversation)
         return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
-    
-    
+
+
 
 class GroupJoinView(APIView):
     permission_classes = [IsAuthenticated]
@@ -455,16 +480,13 @@ class GroupJoinView(APIView):
                 'can_delete_messages': False,
                 'can_manage_members': False,
                 'can_manage_roles': False,
-                'can_view_invite_link':True,    
+                'can_view_invite_link':True,
                 'can_edit_channel_info':True,
             }
         )
 
-        ConversationMember.objects.create(
-            conversation=conversation,
-            user=user,
-            role=role
-        )
+        member = ConversationMember.objects.create(conversation=conversation, user=user)
+        member.roles.add(role)
 
         serializer = GroupDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -486,7 +508,7 @@ class GroupProfileView(APIView):
         )
 
         return Response(serializer.data)
-    
+
 class GroupMembersView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -513,9 +535,9 @@ class GroupMembersView(APIView):
         members = ConversationMember.objects.filter(
             conversation=conversation
         ).select_related(
-            'user',
-            'role'
+            'user'
         )
+        members.prefetch_related('roles')
 
         serializer = GroupMemberSerializer(
             members,
@@ -557,26 +579,28 @@ class GroupUpdateView(APIView):
         return Response(
             GroupDetailSerializer(conversation).data
         )
-    
+
 class GroupDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, conversation_id):
-
         group = get_object_or_404(
             Conversation,
             id=conversation_id,
             type=Conversation.Type.GROUP,
         )
 
-        if group.owner != request.user:
+        # Check that the requesting user is a member of the group
+        if not ConversationMember.objects.filter(
+            conversation=group,
+            user=request.user
+        ).exists():
             return Response(
-                {"detail": "Only the group owner can delete the group."},
+                {"detail": "You are not a member of this group."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         group.delete()
-
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -612,7 +636,7 @@ class ChannelCreateView(APIView):
             },
             status=status.HTTP_201_CREATED
         )
-    
+
 class ChannelProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -654,7 +678,7 @@ class ChannelJoinView(APIView):
                 {"detail": "Invalid link."},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         conversation = channel.conversation
         return Response({
             "name": conversation.name,
@@ -691,21 +715,18 @@ class ChannelJoinView(APIView):
                 'can_delete_messages': False,
                 'can_manage_members': False,
                 'can_manage_roles': False,
-                'can_view_invite_link':False,    
+                'can_view_invite_link':False,
                 'can_edit_channel_info':False,
                 'can_delete_channel':False,
             }
         )
 
-        ConversationMember.objects.create(
-            conversation=conversation,
-            user=user,
-            role=role
-        )
+        member = ConversationMember.objects.create(conversation=conversation, user=user)
+        member.roles.add(role)
 
         serializer = ChannelDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 
 class ChannelPublicIdView(APIView):
     permission_classes = [IsAuthenticated]
@@ -714,7 +735,7 @@ class ChannelPublicIdView(APIView):
 
         try:
             channel = Channel.objects.select_related('conversation').get(
-                public_id=public_id, 
+                public_id=public_id,
                 is_private=False
             )
         except Channel.DoesNotExist:
@@ -722,7 +743,7 @@ class ChannelPublicIdView(APIView):
                 {"detail": "Channel not found."},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         conversation = channel.conversation
         return Response({
             "id": conversation.id,
@@ -737,7 +758,7 @@ class ChannelPublicIdView(APIView):
 
         try:
             channel = Channel.objects.select_related('conversation').get(
-                public_id=public_id, 
+                public_id=public_id,
                 is_private=False
             )
         except Channel.DoesNotExist:
@@ -764,20 +785,17 @@ class ChannelPublicIdView(APIView):
                 'can_delete_messages': False,
                 'can_manage_members': False,
                 'can_manage_roles': False,
-                'can_view_invite_link':True,    
+                'can_view_invite_link':True,
                 'can_edit_channel_info':True
             }
         )
 
-        ConversationMember.objects.create(
-            conversation=conversation,
-            user=user,
-            role=role
-        )
+        member = ConversationMember.objects.create(conversation=conversation, user=user)
+        member.roles.add(role)
 
         serializer = ChannelDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 
 class ChannelUpdateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -790,7 +808,7 @@ class ChannelUpdateView(APIView):
         )
 
         try:
-            member = ConversationMember.objects.select_related('role').get(
+            member = ConversationMember.objects.prefetch_related('roles').get(
                 conversation=conversation,
                 user=request.user
             )
@@ -800,10 +818,9 @@ class ChannelUpdateView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        is_owner = (conversation.owner == request.user)
-        has_admin_role = member.role and member.role.can_manage_roles
+        can_edit_channel = member.roles.filter(can_edit_channel_info=True).exists()
 
-        if not (is_owner or has_admin_role):
+        if not (can_edit_channel):
             return Response(
                 {"detail": "You do not have permission to edit this channel's info."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -812,7 +829,7 @@ class ChannelUpdateView(APIView):
         serializer = ChannelUpdateSerializer(
             conversation,
             data=request.data,
-            partial=True, 
+            partial=True,
         )
 
         serializer.is_valid(raise_exception=True)
@@ -820,7 +837,7 @@ class ChannelUpdateView(APIView):
 
         detail_serializer = ChannelDetailSerializer(conversation, context={"request": request})
         return Response(detail_serializer.data, status=status.HTTP_200_OK)
-    
+
 
 class ChannelMembersListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -833,7 +850,7 @@ class ChannelMembersListView(APIView):
         )
 
         try:
-            requesting_member = ConversationMember.objects.select_related('role').get(
+            requesting_member = ConversationMember.objects.prefetch_related('roles').get(
                 conversation=conversation,
                 user=request.user
             )
@@ -844,8 +861,7 @@ class ChannelMembersListView(APIView):
             )
 
         is_owner = (conversation.owner == request.user)
-        can_manage = requesting_member.role and requesting_member.role.can_manage_members
-
+        can_manage = requesting_member.roles.filter(can_manage_members=True).exists()
         if not (is_owner or can_manage):
             return Response(
                 {"detail": "You do not have permission to view the members list."},
@@ -854,24 +870,23 @@ class ChannelMembersListView(APIView):
 
         members = ConversationMember.objects.filter(
             conversation=conversation
-        ).select_related('user', 'role')
+        ).select_related('user')
+        members.prefetch_related('roles')
 
         serializer = ChannelMemberSerializer(members, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 
 class ChannelRemoveMemberView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, conversation_id, user_id):
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_id,
-            type=Conversation.Type.CHANNEL
-        )
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        if conversation.type != Conversation.Type.CHANNEL:
+            return Response({"detail": "Not a channel."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            requester_membership = ConversationMember.objects.select_related('role').get(
+            requester_membership = ConversationMember.objects.prefetch_related('roles').get(
                 conversation=conversation,
                 user=request.user
             )
@@ -882,15 +897,14 @@ class ChannelRemoveMemberView(APIView):
             )
 
         is_owner = (conversation.owner == request.user)
-        can_manage = requester_membership.role and requester_membership.role.can_manage_members
-
+        can_manage = requester_membership.roles.filter(can_manage_members=True).exists()
         if not (is_owner or can_manage):
             return Response(
                 {"detail": "You do not have permission to remove users."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if str(conversation.owner.id) == str(user_id):
+        if conversation.owner and str(conversation.owner.id) == str(user_id):
             return Response(
                 {"detail": "The channel owner cannot be removed."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -909,26 +923,24 @@ class ChannelRemoveMemberView(APIView):
             )
             target_membership.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
-            
+
         except ConversationMember.DoesNotExist:
             return Response(
                 {"detail": "User is not a member of this channel."},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
 
 class ChannelMemberRoleUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, conversation_id, user_id):
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_id,
-            type=Conversation.Type.CHANNEL
-        )
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        if conversation.type != Conversation.Type.CHANNEL:
+            return Response({"detail": "Not a channel."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            requester_membership = ConversationMember.objects.select_related('role').get(
+            requester_membership = ConversationMember.objects.prefetch_related('roles').get(
                 conversation=conversation,
                 user=request.user
             )
@@ -939,7 +951,7 @@ class ChannelMemberRoleUpdateView(APIView):
             )
 
         is_owner = (conversation.owner == request.user)
-        can_manage_roles = requester_membership.role and requester_membership.role.can_manage_roles
+        can_manage_roles = requester_membership.roles.filter(can_manage_roles=True).exists()
 
         if not (is_owner or can_manage_roles):
             return Response(
@@ -947,7 +959,7 @@ class ChannelMemberRoleUpdateView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if str(conversation.owner.id) == str(user_id):
+        if conversation.owner and str(conversation.owner.id) == str(user_id):
             return Response(
                 {"detail": "You cannot change the role of the channel owner."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -976,26 +988,23 @@ class ChannelMemberRoleUpdateView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        target_membership.role = role
-        target_membership.save(update_fields=['role'])
+        target_membership.roles.set([role])
 
         return Response(
             {"detail": "Role updated successfully."},
             status=status.HTTP_200_OK
         )
-    
+
 class ChannelDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, conversation_id):
-        conversation = get_object_or_404(
-            Conversation,
-            id=conversation_id,
-            type=Conversation.Type.CHANNEL
-        )
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        if conversation.type != Conversation.Type.CHANNEL:
+            return Response({"detail": "Not a channel."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            membership = ConversationMember.objects.select_related('role').get(
+            membership = ConversationMember.objects.prefetch_related('roles').get(
                 conversation=conversation,
                 user=request.user
             )
@@ -1006,8 +1015,8 @@ class ChannelDeleteView(APIView):
             )
 
         is_owner = (conversation.owner == request.user)
-        can_delete = membership.role and (membership.role.can_delete_channel or membership.role.can_manage_roles)
 
+        can_delete = membership.roles.filter(Q(can_delete_channel=True) | Q(can_manage_roles=True)).exists()
         if not (is_owner or can_delete):
             return Response(
                 {"detail": "You do not have permission to delete this channel."},
@@ -1050,26 +1059,27 @@ class ChannelMyPermissionsView(APIView):
             return Response(permissions, status=status.HTTP_200_OK)
 
         try:
-            member = ConversationMember.objects.select_related('role').get(
+            member = ConversationMember.objects.prefetch_related('roles').get(
                 conversation=conversation,
                 user=request.user
             )
-            
-            if member.role:
-                permissions = {
-                    "is_owner": False,
-                    "can_send_messages": member.role.can_send_messages,
-                    "can_send_media": member.role.can_send_media,
-                    "can_delete_messages": member.role.can_delete_messages,
-                    "can_manage_members": member.role.can_manage_members,
-                    "can_manage_roles": member.role.can_manage_roles,
-                    "can_view_invite_link": member.role.can_view_invite_link,
-                    "can_edit_channel_info": member.role.can_edit_channel_info,
-                    "can_delete_channel": member.role.can_delete_channel,
-                    "can_create_topic": member.role.can_create_topic,
-                    "can_manage_others_topics": member.role.can_manage_others_topics,
-                }
-            
+
+            roles = member.roles.all()
+
+            permissions = {
+                "is_owner": False, # یا بررسی منطق مالکیت مانند: member.is_owner
+                "can_send_messages": any(r.can_send_messages for r in roles),
+                "can_send_media": any(r.can_send_media for r in roles),
+                "can_delete_messages": any(r.can_delete_messages for r in roles),
+                "can_manage_members": any(r.can_manage_members for r in roles),
+                "can_manage_roles": any(r.can_manage_roles for r in roles),
+                "can_view_invite_link": any(r.can_view_invite_link for r in roles),
+                "can_edit_channel_info": any(r.can_edit_channel_info for r in roles),
+                "can_delete_channel": any(r.can_delete_channel for r in roles),
+                "can_create_topic": any(r.can_create_topic for r in roles),
+                "can_manage_others_topics": any(r.can_manage_others_topics for r in roles),
+            }
+
             return Response(permissions, status=status.HTTP_200_OK)
 
         except ConversationMember.DoesNotExist:
@@ -1089,7 +1099,7 @@ class ChannelPreviewView(APIView):
                 {"detail": "Invalid invite link or channel does not exist."},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         conversation = channel.conversation
 
         messages = Message.objects.filter(
@@ -1106,7 +1116,7 @@ class ChannelPreviewView(APIView):
             "avatar_url": conversation.avatar_url,
             "is_private": channel.is_private,
             "public_id": channel.public_id,
-            "messages": message_serializer.data,  
+            "messages": message_serializer.data,
         }
 
         return Response(preview_data, status=status.HTTP_200_OK)
@@ -1175,6 +1185,13 @@ class ChannelRoleDetailView(APIView):
 
     def patch(self, request, conversation_id, role_id):
         role = self.get_role(conversation_id, role_id)
+
+        if role.name == 'Channel Owner':
+            return Response(
+                {"detail": "Cannot edit the Channel Owner role."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = RoleSerializer(role, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -1213,7 +1230,7 @@ class TopicListCreateView(APIView):
             members__user=request.user,
         )
         member = ConversationMember.objects.get(conversation=conversation, user=request.user)
-        if member.role is None or not member.role.can_create_topic:
+        if not member.roles.filter(can_create_topic=True).exists():
             raise PermissionDenied("You do not have permission to create topics.")
 
         serializer = TopicCreateSerializer(data=request.data)
@@ -1221,6 +1238,8 @@ class TopicListCreateView(APIView):
         topic = serializer.save(conversation=conversation, creator=request.user)
         output = TopicSerializer(topic)
         return Response(output.data, status=status.HTTP_201_CREATED)
+
+
 
 
 class TopicDetailView(APIView):
@@ -1243,7 +1262,12 @@ class TopicDetailView(APIView):
     def patch(self, request, conversation_id, topic_id):
         topic = self.get_topic(conversation_id, topic_id)
         member = ConversationMember.objects.get(conversation=topic.conversation, user=request.user)
-        if topic.creator != request.user and not (member.role and member.role.can_manage_others_topics):
+
+        is_owner = (topic.conversation.owner == request.user)
+        is_creator = (topic.creator == request.user)
+        can_manage = member.roles.filter(can_manage_others_topics=True).exists()
+
+        if not (is_owner or is_creator or can_manage):
             raise PermissionDenied("You do not have permission to edit this topic.")
 
         serializer = TopicUpdateSerializer(topic, data=request.data, partial=True)
@@ -1254,8 +1278,123 @@ class TopicDetailView(APIView):
     def delete(self, request, conversation_id, topic_id):
         topic = self.get_topic(conversation_id, topic_id)
         member = ConversationMember.objects.get(conversation=topic.conversation, user=request.user)
-        if topic.creator != request.user and not (member.role and member.role.can_manage_others_topics):
+
+        is_owner = (topic.conversation.owner == request.user)
+        is_creator = (topic.creator == request.user)
+        can_manage = member.roles.filter(can_manage_others_topics=True).exists()
+
+        if not (is_owner or is_creator or can_manage):
             raise PermissionDenied("You do not have permission to delete this topic.")
+
         topic.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+class AttachmentDownloadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, attachment_id):
+        attachment = get_object_or_404(Attachment.objects.select_related(
+            'message__conversation'
+        ), id=attachment_id)
+
+        # Verify the requesting user is a member of the conversation
+        conversation = attachment.message.conversation
+        if not ConversationMember.objects.filter(
+            conversation=conversation,
+            user=request.user
+        ).exists():
+            return Response(
+                {"detail": "You do not have access to this file."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        file_field = attachment.file
+        if not file_field:
+            return Response(
+                {"detail": "File not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Determine MIME type from the original filename
+        mime_type, _ = mimetypes.guess_type(attachment.original_filename)
+        if not mime_type:
+            mime_type = 'application/octet-stream'
+
+        # Open the file from storage and serve it as an attachment
+        try:
+            file_handle = file_field.open('rb')
+        except FileNotFoundError:
+            return Response(
+                {"detail": "File not found on storage."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        response = FileResponse(
+            file_handle,
+            content_type=mime_type,
+            as_attachment=True,
+            filename=attachment.original_filename,
+        )
+        return response
+
+
+
+class ChannelMemberRoleRemoveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, conversation_id, user_id, role_id):
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        if conversation.type != Conversation.Type.CHANNEL:
+            return Response({"detail": "Not a channel."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            requester_membership = ConversationMember.objects.prefetch_related('roles').get(
+                conversation=conversation,
+                user=request.user
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "You are not a member of this channel."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        is_owner = (conversation.owner == request.user)
+        can_manage_roles = requester_membership.roles.filter(can_manage_roles=True).exists()
+
+        if not (is_owner or can_manage_roles):
+            return Response(
+                {"detail": "You do not have permission to manage roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if conversation.owner and str(conversation.owner.id) == str(user_id):
+            return Response(
+                {"detail": "You cannot change the role of the channel owner."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            target_membership = ConversationMember.objects.get(
+                conversation=conversation,
+                user_id=user_id
+            )
+        except ConversationMember.DoesNotExist:
+            return Response(
+                {"detail": "Target user is not a member of this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            role = Role.objects.get(id=role_id, conversation=conversation)
+        except Role.DoesNotExist:
+            return Response(
+                {"detail": "Role not found in this channel."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        target_membership.roles.remove(role)
+
+        return Response(
+            {"detail": "Role removed successfully."},
+            status=status.HTTP_200_OK
+        )
