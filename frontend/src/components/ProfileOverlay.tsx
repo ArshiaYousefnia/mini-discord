@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react"; // Added useEffect
 import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
-import type { UserProfile } from "../types/user";
+import type { BackendUserProfile, UserProfile } from "../types/user";
 import { formatJoinLink } from "../utils/linkFormat";
 import RoleManagement from "./RoleManagement";
 
@@ -33,6 +33,9 @@ interface ProfileOverlayProps {
   onDeleteChannelRequest?: () => void;
   onlineUsers?: Record<string, boolean>; // ADDED: real-time online mapping
   onRefreshProfile?: () => void; // ADDED: optional callback to refetch user data
+  onStartDirectMessage?: (
+  user: BackendUserProfile | UserProfile
+) => Promise<void> | void;
 }
 
 export default function ProfileOverlay({
@@ -63,7 +66,8 @@ export default function ProfileOverlay({
   channelMembers,
   channelRoles,
   onlineUsers = {}, // DEFAULT: empty map
-  onRefreshProfile
+  onRefreshProfile,
+  onStartDirectMessage,
 }: ProfileOverlayProps) {
   // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -184,13 +188,14 @@ export default function ProfileOverlay({
   return (
     <div className="group-profile-overlay slideInRight">
       <div className="group-profile-header">
-        {profileViewType === "user" && groupProfile ? (
-          <button className="back-to-group-btn back-button" onClick={profileSource === "CHAT" ? onClose : onBackToGroup} type="button">
-            {profileSource === "CHAT" ? "← Close" : "← Back to Group"}
+        {profileViewType === "user" && profileSource === "GROUP_PROFILE" && groupProfile ? (
+          <button className="back-to-group-btn back-button" onClick={onBackToGroup} type="button">
+            ← Back to Group
           </button>
         ) : (
           <button className="back-button" onClick={onClose} type="button">← Close</button>
         )}
+
         
         <h3>
           {profileViewType === "group" ? "Group Profile" : profileViewType === "channel" ? "Channel Profile" : "User Profile"}
@@ -483,13 +488,43 @@ export default function ProfileOverlay({
           </div>
         ) : profileViewType === "user" && userProfile ? (
           <div className="group-profile-card">
-            <img src={userProfile.avatar_url} alt={userProfile.display_name} className="group-profile-avatar-large" />
+            <img
+              src={userProfile.avatar_url || "/default-avatar.svg"}
+              alt={userProfile.display_name}
+              className="group-profile-avatar-large"
+            />
+
             <h2 className="group-profile-name">{userProfile.display_name}</h2>
+
             <p className="group-profile-meta">@{userProfile.username}</p>
-            {userProfile.bio && <div className="group-profile-description">{userProfile.bio}</div>}
-            <div className="group-profile-meta" style={{ color: isUserOnline(userProfile.id) ? "#4ade80" : "#9ca3af", marginTop: "8px" }}>
+
+            {userProfile.bio && (
+              <div className="group-profile-description">
+                {userProfile.bio}
+              </div>
+            )}
+
+            <div
+              className="group-profile-meta"
+              style={{
+                color: isUserOnline(userProfile.id) ? "#4ade80" : "#9ca3af",
+                marginTop: "8px",
+              }}
+            >
               {isUserOnline(userProfile.id) ? "Online" : "Offline"}
             </div>
+
+            {/* Do not show a DM button on the current user's own profile. */}
+            {String(userProfile.id) !== String(currentUserId) &&
+              onStartDirectMessage && (
+                <button
+                  type="button"
+                  className="start-direct-message-btn"
+                  onClick={() => void onStartDirectMessage(userProfile)}
+                >
+                  Message
+                </button>
+              )}
           </div>
         ) : (
           <div className="chat-placeholder">Failed to load profile.</div>
