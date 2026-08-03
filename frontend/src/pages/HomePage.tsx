@@ -8,7 +8,7 @@ import {
   sortChatsByRecent,
 } from "../services/chatMapper";
 import type { ChatListItem, Conversation } from "../types/chat";
-import type { BackendUserProfile } from "../types/user";
+import type { BackendUserProfile, UserProfile } from "../types/user";
 import "../styles/home.css";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
 
@@ -34,10 +34,15 @@ export default function HomePage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
 
+
+
   // Hook now tracks live websocket updates only.
   // Initial DM presence is hydrated from REST conversation data below.
   const { onlineUsers, setOnlineUsers } = useOnlineStatus();
   const [pendingDirectMessageUser, setPendingDirectMessageUser] =
+  useState<BackendUserProfile | null>(null);
+
+  const [profileUserToOpen, setProfileUserToOpen] =
   useState<BackendUserProfile | null>(null);
 
 
@@ -156,6 +161,7 @@ export default function HomePage() {
       unreadCount: 0,
     };
 
+    setProfileUserToOpen(null);
     setPendingDirectMessageUser(null);
     setSelectedChat(readChat);
 
@@ -172,12 +178,16 @@ export default function HomePage() {
   };
 
 
-  const handleStartDirectMessage = async (user: BackendUserProfile) => {
+  const handleStartDirectMessage = async (
+    user: BackendUserProfile | UserProfile
+  ) => {
     const existingChat = chatItems.find(
       (chat) =>
         chat.type === "DM" &&
         String(chat.other_user_id) === String(user.id)
     );
+
+    setProfileUserToOpen(null);
 
     if (existingChat) {
       handleSelectChat(existingChat);
@@ -185,7 +195,13 @@ export default function HomePage() {
     }
 
     setSelectedChat(null);
-    setPendingDirectMessageUser(user);
+    setPendingDirectMessageUser(user as BackendUserProfile);
+  };
+
+  const handleOpenUserProfile = (user: BackendUserProfile) => {
+    setSelectedChat(null);
+    setPendingDirectMessageUser(null);
+    setProfileUserToOpen(user);
   };
 
   const handleDirectMessageCreated = async (conversationId: string) => {
@@ -216,20 +232,21 @@ export default function HomePage() {
 
   return (
   <div className="home-page">
-    {(!isMobile || (!selectedChat && !pendingDirectMessageUser)) && (
+    {(!isMobile || (!selectedChat && !pendingDirectMessageUser && !profileUserToOpen)) && (
       <Sidebar
         chats={chatItems}
         selectedChatId={selectedChat?.id ?? null}
         onSelectChat={handleSelectChat}
         currentUsername={currentUsername}
         onStartDirectMessage={handleStartDirectMessage}
+        onOpenUserProfile={handleOpenUserProfile}
         onRefresh={() => loadChats(true)}
         onlineUsers={onlineUsers ?? {}}
         onChannelJoined={handleChannelJoined}
       />
     )}
 
-    {(!isMobile || selectedChat || pendingDirectMessageUser) && (
+    {(!isMobile || selectedChat || pendingDirectMessageUser || profileUserToOpen) && (
       <div className="chat-area">
         {loading ? (
           <div className="chat-placeholder">Loading...</div>
@@ -239,11 +256,15 @@ export default function HomePage() {
           <ChatView
             chat={selectedChat}
             pendingDirectMessageUser={pendingDirectMessageUser}
+            profileUserToOpen={profileUserToOpen}
+            onProfileUserOpened={() => setProfileUserToOpen(null)}
+            onStartDirectMessage={handleStartDirectMessage}
             onDirectMessageCreated={handleDirectMessageCreated}
             isMobile={isMobile}
             onBack={() => {
               setSelectedChat(null);
               setPendingDirectMessageUser(null);
+              setProfileUserToOpen(null);
             }}
             onGroupExit={handleGroupExit}
             onGroupJoined={async (groupId) => {

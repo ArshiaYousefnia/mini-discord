@@ -61,6 +61,17 @@ interface Props {
   isOtherUserOnline?: boolean;
   onlineUsers: Record<string, boolean>;
   pendingDirectMessageUser?: BackendUserProfile | null;
+
+  // User selected from Sidebar global search to open in ProfileOverlay.
+  profileUserToOpen?: BackendUserProfile | null;
+  onProfileUserOpened?: () => void;
+
+  // Lets ProfileOverlay's Message button use HomePage's existing-DM /
+  // pending-DM logic.
+  onStartDirectMessage?: (
+    user: BackendUserProfile | UserProfile
+  ) => Promise<void> | void;
+
   onDirectMessageCreated?: (conversationId: string) => Promise<void>;
 }
 
@@ -73,8 +84,12 @@ export default function ChatView({
   isOtherUserOnline,
   onlineUsers,
   pendingDirectMessageUser,
+  profileUserToOpen,
+  onProfileUserOpened,
+  onStartDirectMessage,
   onDirectMessageCreated,
 }: Props) {
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -158,7 +173,25 @@ export default function ChatView({
     } as ChatListItem;
   }, [pendingDirectMessageUser]);
 
-  const headerChat = chat ?? pendingChat;
+  // Used only while a profile has been opened from global search.
+  // There is no real chat yet, but ChatHeader requires a ChatListItem.
+  const profileOpeningChat = useMemo<ChatListItem | null>(() => {
+    if (!profileUserToOpen) return null;
+
+    return {
+      id: `profile-${profileUserToOpen.id}`,
+      type: "DM",
+      name:
+        profileUserToOpen.display_name ||
+        profileUserToOpen.username ||
+        "User profile",
+      avatar: profileUserToOpen.avatar_url || "",
+      other_user_id: String(profileUserToOpen.id),
+    } as ChatListItem;
+  }, [profileUserToOpen]);
+
+  const headerChat = chat ?? pendingChat ?? profileOpeningChat;
+
 
   const isCurrentUserOwner =
     String(groupProfile?.owner_id) === String(currentUserId) ||
@@ -588,6 +621,19 @@ export default function ChatView({
     }
   };
 
+  // A global-search user result was clicked in Sidebar.
+  // Fetch the full profile and open the same ProfileOverlay used elsewhere.
+  useEffect(() => {
+    if (!profileUserToOpen) return;
+
+    void handleUserClick(String(profileUserToOpen.id));
+    onProfileUserOpened?.();
+    // handleUserClick is intentionally not included because it is recreated
+    // during renders; this effect should run only for a newly supplied user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileUserToOpen, onProfileUserOpened]);
+
+
   const handleHeaderClick = async () => {
     // Pending DMs do not have a real chat yet, but must open the same
     // user ProfileOverlay flow as established DM conversations.
@@ -926,7 +972,12 @@ export default function ChatView({
     );
   }, [messages, chatType, activeTopicId]);
 
-  if (!chat && !pendingDirectMessageUser) {
+    if (
+    !chat &&
+    !pendingDirectMessageUser &&
+    !profileUserToOpen &&
+    !showProfile
+  ) {
     return (
       <div
         className="chat-placeholder"
@@ -1046,7 +1097,15 @@ export default function ChatView({
         chatAvatar={headerChat?.avatar || ""}
         isCurrentUserOwner={isCurrentUserOwner}
         currentUserId={currentUserId}
-        onClose={() => setShowProfile(false)}
+        onClose={() => {
+                          setShowProfile(false);
+
+                          // If this screen exists only because a global-search profile was opened,
+                          // return to the sidebar after closing the overlay.
+                          if (!chat && !pendingDirectMessageUser) {
+                            onBack();
+                          }
+                        }}
         onBackToGroup={() => setProfileViewType("group")}
         onSaveGroupEdit={handleSaveGroupEdit}
         onSaveChannelEdit={handleSaveChannelEdit}
@@ -1062,6 +1121,10 @@ export default function ChatView({
         onRefreshProfile={() =>
           userProfile?.id && handleUserClick(userProfile.id)
         }
+        onStartDirectMessage={async (user) => {
+          setShowProfile(false);
+          await onStartDirectMessage?.(user);
+        }}
       />
 
       <div className="chat-view-body">
@@ -1137,17 +1200,19 @@ export default function ChatView({
         )}
       </div>
 
-      <MessageInput
-        activeReplyTo={activeReplyTo}
-        onCancelReply={() => setActiveReplyTo(null)}
-        onSendMessage={handleSendMessage}
-        disabled={loading || sendingMessage}
-        canSendMessages={
-          chatType === "CHANNEL"
-            ? (channelPermissions?.can_send_messages ?? false)
-            : true
-        }
-      />
+      {(chat || pendingDirectMessageUser) && (
+        <MessageInput
+          activeReplyTo={activeReplyTo}
+          onCancelReply={() => setActiveReplyTo(null)}
+          onSendMessage={handleSendMessage}
+          disabled={loading || sendingMessage}
+          canSendMessages={
+            chatType === "CHANNEL"
+              ? (channelPermissions?.can_send_messages ?? false)
+              : true
+          }
+        />
+      )}
     </div>
   );
 }
