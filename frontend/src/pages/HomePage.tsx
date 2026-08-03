@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
-import {
-  createDirectMessage,
-  getConversations,
-} from "../services/chatService";
+import { getConversations } from "../services/chatService";
 import {
   mapConversationToChatListItem,
   sortChatsByRecent,
@@ -40,6 +37,9 @@ export default function HomePage() {
   // Hook now tracks live websocket updates only.
   // Initial DM presence is hydrated from REST conversation data below.
   const { onlineUsers, setOnlineUsers } = useOnlineStatus();
+  const [pendingDirectMessageUser, setPendingDirectMessageUser] =
+  useState<BackendUserProfile | null>(null);
+
 
   useEffect(() => {
     setCurrentUsername(getCurrentUsername());
@@ -156,6 +156,7 @@ export default function HomePage() {
       unreadCount: 0,
     };
 
+    setPendingDirectMessageUser(null);
     setSelectedChat(readChat);
 
     setChatItems((prevChats) =>
@@ -170,14 +171,28 @@ export default function HomePage() {
     );
   };
 
+
   const handleStartDirectMessage = async (user: BackendUserProfile) => {
-    try {
-      await createDirectMessage(user.id, "Hello!");
-      await loadChats();
-    } catch (err) {
-      alert("Failed to initialize conversation.");
+    const existingChat = chatItems.find(
+      (chat) =>
+        chat.type === "DM" &&
+        String(chat.other_user_id) === String(user.id)
+    );
+
+    if (existingChat) {
+      handleSelectChat(existingChat);
+      return;
     }
+
+    setSelectedChat(null);
+    setPendingDirectMessageUser(user);
   };
+
+  const handleDirectMessageCreated = async (conversationId: string) => {
+    setPendingDirectMessageUser(null);
+    await loadChats(false, conversationId);
+  };
+
 
   const handleGroupExit = (groupId: string) => {
     setChatItems((prev) => prev.filter((c) => c.id !== groupId));
@@ -200,42 +215,47 @@ export default function HomePage() {
       : undefined;
 
   return (
-    <div className="home-page">
-      {(!isMobile || !selectedChat) && (
-        <Sidebar
-          chats={chatItems}
-          selectedChatId={selectedChat?.id ?? null}
-          onSelectChat={handleSelectChat}
-          currentUsername={currentUsername}
-          onStartDirectMessage={handleStartDirectMessage}
-          onRefresh={() => loadChats(true)}
-          onlineUsers={onlineUsers ?? {}}
-          onChannelJoined={handleChannelJoined}
-        />
-      )}
+  <div className="home-page">
+    {(!isMobile || (!selectedChat && !pendingDirectMessageUser)) && (
+      <Sidebar
+        chats={chatItems}
+        selectedChatId={selectedChat?.id ?? null}
+        onSelectChat={handleSelectChat}
+        currentUsername={currentUsername}
+        onStartDirectMessage={handleStartDirectMessage}
+        onRefresh={() => loadChats(true)}
+        onlineUsers={onlineUsers ?? {}}
+        onChannelJoined={handleChannelJoined}
+      />
+    )}
 
-      {(!isMobile || selectedChat) && (
-        <div className="chat-area">
-          {loading ? (
-            <div className="chat-placeholder">Loading...</div>
-          ) : pageError ? (
-            <div className="chat-placeholder">{pageError}</div>
-          ) : (
-            <ChatView
-              chat={selectedChat}
-              isMobile={isMobile}
-              onBack={() => setSelectedChat(null)}
-              onGroupExit={handleGroupExit}
-              onGroupJoined={async (groupId) => {
-                setSearchParams({ chat: groupId });
-                await loadChats(false, groupId);
-              }}
-              isOtherUserOnline={isOtherUserOnline}
-              onlineUsers={onlineUsers}
-            />
-          )}
-        </div>
-      )}
-    </div>
+    {(!isMobile || selectedChat || pendingDirectMessageUser) && (
+      <div className="chat-area">
+        {loading ? (
+          <div className="chat-placeholder">Loading...</div>
+        ) : pageError ? (
+          <div className="chat-placeholder">{pageError}</div>
+        ) : (
+          <ChatView
+            chat={selectedChat}
+            pendingDirectMessageUser={pendingDirectMessageUser}
+            onDirectMessageCreated={handleDirectMessageCreated}
+            isMobile={isMobile}
+            onBack={() => {
+              setSelectedChat(null);
+              setPendingDirectMessageUser(null);
+            }}
+            onGroupExit={handleGroupExit}
+            onGroupJoined={async (groupId) => {
+              setSearchParams({ chat: groupId });
+              await loadChats(false, groupId);
+            }}
+            isOtherUserOnline={isOtherUserOnline}
+            onlineUsers={onlineUsers}
+          />
+        )}
+      </div>
+    )}
+  </div>
   );
 }

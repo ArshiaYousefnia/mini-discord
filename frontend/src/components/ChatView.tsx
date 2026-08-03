@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  createDirectMessage,
   getConversationMessages,
   markConversationRead,
   sendConversationMessage,
@@ -25,7 +26,7 @@ import type {
   ChannelMembers,
   Topic,
 } from "../types/chat";
-import type { UserProfile } from "../types/user";
+import type { BackendUserProfile, UserProfile } from "../types/user";
 
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
@@ -54,6 +55,8 @@ interface Props {
   onGroupJoined?: (groupId: string) => void;
   isOtherUserOnline?: boolean;
   onlineUsers: Record<string, boolean>; 
+  pendingDirectMessageUser?: BackendUserProfile | null;
+  onDirectMessageCreated?: (conversationId: string) => Promise<void>;
 }
 
 export default function ChatView({
@@ -64,7 +67,10 @@ export default function ChatView({
   onGroupJoined,
   isOtherUserOnline,
   onlineUsers,
+  pendingDirectMessageUser,
+  onDirectMessageCreated,
 }: Props) {
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -381,10 +387,27 @@ export default function ChatView({
   }, [chat, chatType]);
 
   const handleSendMessage = async (text: string, files: File[] = []) => {
-    if (!chat) return;
+    if (!chat && !pendingDirectMessageUser) return;
 
     try {
       setSendingMessage(true);
+
+      if (pendingDirectMessageUser) {
+        if (!text.trim() && files.length === 0) return;
+
+        const firstMessage = await createDirectMessage(
+          String(pendingDirectMessageUser.id),
+          text,
+          activeReplyTo?.id || null,
+          files
+        );
+
+        setActiveReplyTo(null);
+        await onDirectMessageCreated?.(String(firstMessage.conversation));
+        return;
+      }
+
+      if (!chat) return;
 
       const recipientId =
         chatType === "DM" && chat.other_user_id
@@ -397,8 +420,6 @@ export default function ChatView({
         reply_to: activeReplyTo?.id || null,
         recipient_id: recipientId,
         files,
-        // Task #22/#49 — scope the message to whichever topic tab is active.
-        // `null` (the "General" tab) sends an unscoped channel message.
         topic_id: chatType === "CHANNEL" ? activeTopicId : undefined,
       });
 
@@ -413,6 +434,8 @@ export default function ChatView({
       setSendingMessage(false);
     }
   };
+
+
 
   const handleEditMessage = async (messageId: string, newText: string) => {
     if (!chat) return;
@@ -732,9 +755,58 @@ export default function ChatView({
     return messages.filter((m) => (m.topic_id ?? null) === activeTopicId);
   }, [messages, chatType, activeTopicId]);
 
+  if (!chat && pendingDirectMessageUser) {
+    const pendingUserName =
+      pendingDirectMessageUser.display_name ||
+      pendingDirectMessageUser.username ||
+      "New message";
+
+    return (
+      <div className="chat-view" style={{ position: "relative", overflow: "hidden" }}>
+        <div className="chat-header">
+          {isMobile && (
+            <button
+              type="button"
+              className="back-button"
+              onClick={onBack}
+              aria-label="Back"
+            >
+              ←
+            </button>
+          )}
+
+          <div className="chat-header-info">
+            <div className="chat-header-name">{pendingUserName}</div>
+          </div>
+        </div>
+
+        <div className="chat-view-body">
+          <div className="chat-placeholder">No messages yet.</div>
+
+          {sendingMessage && (
+            <div className="sticky bottom-0 left-0 right-0 bg-[#1db954]/20 text-[#1db954] px-4 py-1.5 text-xs text-center font-medium backdrop-blur-sm border-t border-[#1db954]/30 animate-pulse">
+              Sending message...
+            </div>
+          )}
+        </div>
+
+        <MessageInput
+          activeReplyTo={null}
+          onCancelReply={() => undefined}
+          onSendMessage={handleSendMessage}
+          disabled={sendingMessage}
+          canSendMessages={true}
+        />
+      </div>
+    );
+  }
+
   if (!chat) {
     return (
-      <div className="chat-placeholder" style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+      <div
+        className="chat-placeholder"
+        style={{ display: "flex", flexDirection: "column", gap: "2rem" }}
+      >
         <div>Select a chat to start messaging</div>
       </div>
     );
