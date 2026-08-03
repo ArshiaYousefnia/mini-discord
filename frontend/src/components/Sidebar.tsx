@@ -15,6 +15,7 @@ type Props = {
   onRefresh?: () => void;
   onlineUsers?: Record<string, boolean>;
   onChannelJoined?: (channelId: string) => void;
+  onOpenUserProfile: (user: BackendUserProfile) => void;
 };
 
 function getLoggedInUsername(): string {
@@ -45,10 +46,12 @@ export default function Sidebar({
   onSelectChat,
   currentUsername,
   onStartDirectMessage,
+  onOpenUserProfile,
   onRefresh,
   onlineUsers = {},
   onChannelJoined,
 }: Props) {
+
   const navigate = useNavigate();
 
   const [displayName, setDisplayName] = useState<string>("My Profile");
@@ -253,14 +256,40 @@ export default function Sidebar({
                 const isUserOnline = onlineUsers[String(user.id)] ?? user.is_online;
 
                 return (
-                  <div className="search-profile-card" key={`user-${user.id}`}>
+                  <div
+                    className="search-profile-card"
+                    key={`user-${user.id}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setSearch("");
+                      setGlobalResults([]);
+                      setSearchError("");
+                      setMembershipStatus({});
+                      onOpenUserProfile(user);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+
+                        setSearch("");
+                        setGlobalResults([]);
+                        setSearchError("");
+                        setMembershipStatus({});
+                        onOpenUserProfile(user);
+                      }
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
                     <img
                       src={user.avatar_url || "https://i.pravatar.cc/150?img=9"}
                       alt={user.username}
                       className="search-profile-avatar"
                     />
+
                     <div className="search-profile-details">
                       <div className="search-profile-name">{user.display_name}</div>
+
                       <div className="search-profile-username">
                         @{user.username}
                         <span
@@ -273,14 +302,19 @@ export default function Sidebar({
                           {isUserOnline ? "• Online" : "• Offline"}
                         </span>
                       </div>
+
                       {user.bio && <div className="search-profile-bio">{user.bio}</div>}
+
                       {isSelf ? (
                         <span className="self-label">This is you</span>
                       ) : (
                         <button
                           type="button"
                           className="message-action-btn"
-                          onClick={() => handleStartChat(user)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleStartChat(user);
+                          }}
                         >
                           Message
                         </button>
