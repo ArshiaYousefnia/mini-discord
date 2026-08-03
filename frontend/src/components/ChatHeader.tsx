@@ -1,7 +1,7 @@
 import type { ChatListItem } from "../types/chat";
 
 interface ChatHeaderProps {
-  chat: ChatListItem;
+  chat: ChatListItem | null;
   localChatInfo: { name: string; avatar: string } | null;
   isMobile: boolean;
   onBack: () => void;
@@ -17,6 +17,11 @@ export default function ChatHeader({
   onHeaderClick,
   onToggleSearch,
 }: ChatHeaderProps) {
+
+    if (!chat) {
+    return null;
+  }
+
   const chatType = chat.type.toUpperCase();
   const isClickable = chatType === "GROUP" || chatType === "DM";
 

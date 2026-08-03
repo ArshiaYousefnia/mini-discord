@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react"; // Added useEffect
 import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
-import type { UserProfile } from "../types/user";
+import type { BackendUserProfile, UserProfile } from "../types/user";
 import { formatJoinLink } from "../utils/linkFormat";
 import RoleManagement from "./RoleManagement";
 
@@ -31,7 +31,11 @@ interface ProfileOverlayProps {
   onDeleteGroupRequest: () => void;
   onLeaveChannelRequest?: () => void; 
   onDeleteChannelRequest?: () => void;
-  
+  onlineUsers?: Record<string, boolean>; // ADDED: real-time online mapping
+  onRefreshProfile?: () => void; // ADDED: optional callback to refetch user data
+  onStartDirectMessage?: (
+  user: BackendUserProfile | UserProfile
+) => Promise<void> | void;
 }
 
 export default function ProfileOverlay({
@@ -60,8 +64,10 @@ export default function ProfileOverlay({
   channelProfile,
   channelPermissions,
   channelMembers,
-  channelRoles
-  
+  channelRoles,
+  onlineUsers = {}, // DEFAULT: empty map
+  onRefreshProfile,
+  onStartDirectMessage,
 }: ProfileOverlayProps) {
   // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -85,7 +91,22 @@ export default function ProfileOverlay({
   const [inviteCopied, setInviteCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Listen to profile changes to update local user profile if needed
+  useEffect(() => {
+    if (!show || !onRefreshProfile) return;
+    const handleProfileUpdate = () => {
+      onRefreshProfile();
+    };
+    window.addEventListener("profileUpdated", handleProfileUpdate);
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdate);
+    };
+  }, [show, onRefreshProfile]);
+
   if (!show) return null;
+
+  // Helpers to resolve online status cleanly
+  const isUserOnline = (userId: string | number) => !!onlineUsers[String(userId)];
 
   // --- Group Edit Handlers ---
   const handleStartEdit = () => {
@@ -167,13 +188,14 @@ export default function ProfileOverlay({
   return (
     <div className="group-profile-overlay slideInRight">
       <div className="group-profile-header">
-        {profileViewType === "user" && groupProfile ? (
-          <button className="back-to-group-btn back-button" onClick={profileSource === "CHAT" ? onClose : onBackToGroup} type="button">
-            {profileSource === "CHAT" ? "← Close" : "← Back to Group"}
+        {profileViewType === "user" && profileSource === "GROUP_PROFILE" && groupProfile ? (
+          <button className="back-to-group-btn back-button" onClick={onBackToGroup} type="button">
+            ← Back to Group
           </button>
         ) : (
           <button className="back-button" onClick={onClose} type="button">← Close</button>
         )}
+
         
         <h3>
           {profileViewType === "group" ? "Group Profile" : profileViewType === "channel" ? "Channel Profile" : "User Profile"}
@@ -298,11 +320,24 @@ export default function ProfileOverlay({
                           >
                             <div className="member-avatar-wrapper">
                               <img src={member.avatar_url || "/default-avatar.svg"} alt={member.display_name} />
+                              {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
                             </div>
                             <span className="member-name flex-1">{member.display_name}</span>
-                            <span className="badge mr-2" style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}>
-                              {member.role_name}
-                            </span>
+                            {/* Task #24 — a member can have multiple roles, so this
+                                renders every assigned role as its own badge
+                                (the backend's `roles` field for channel members is
+                                an array of names, not a single `role_name`). */}
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginRight: 8 }}>
+                              {(member.roles && member.roles.length > 0 ? member.roles : ["Member"]).map((roleName) => (
+                                <span
+                                  key={roleName}
+                                  className="badge"
+                                  style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}
+                                >
+                                  {roleName}
+                                </span>
+                              ))}
+                            </div>
                             
                             {/* Channel Remove Member Button */}
                             {channelPermissions?.can_manage_members && String(member.user_id) !== String(currentUserId) && onRemoveChannelMember && (
@@ -334,7 +369,7 @@ export default function ProfileOverlay({
                 </>
               )
             ) : (
-              /* --- NEW ROLES VIEW --- */
+              /* --- ROLES VIEW --- */
               <div className="roles-management-section">
                 <h3 style={{ marginTop: 0 }}>Channel Roles</h3>
                 
@@ -356,7 +391,8 @@ export default function ProfileOverlay({
                   </button>
                 </div>
 
-                {/* Render the RoleManagement Component */}
+                {/* Task #24 / #56 — role permission editing plus per-member
+                    role assignment/removal now lives in RoleManagement. */}
                 <RoleManagement 
                   channelId={channelProfile.id} 
                   roles={channelRoles || []} 
@@ -426,7 +462,7 @@ export default function ProfileOverlay({
                         <div key={member.user_id} className="member-row group" onClick={() => onUserClick(member.user_id)}>
                           <div className="member-avatar-wrapper">
                             <img src={member.avatar_url || "/default-avatar.svg"} alt={member.display_name} />
-                            {member.is_online && <span className="status-indicator online"></span>}
+                            {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
                           </div>
                           <span className="member-name flex-1">{member.display_name}</span>
                           {String(member.user_id) === String(groupProfile.owner_id) && <span className="badge owner-badge mr-2">Owner</span>}
@@ -452,13 +488,43 @@ export default function ProfileOverlay({
           </div>
         ) : profileViewType === "user" && userProfile ? (
           <div className="group-profile-card">
-            <img src={userProfile.avatar_url} alt={userProfile.display_name} className="group-profile-avatar-large" />
+            <img
+              src={userProfile.avatar_url || "/default-avatar.svg"}
+              alt={userProfile.display_name}
+              className="group-profile-avatar-large"
+            />
+
             <h2 className="group-profile-name">{userProfile.display_name}</h2>
+
             <p className="group-profile-meta">@{userProfile.username}</p>
-            {userProfile.bio && <div className="group-profile-description">{userProfile.bio}</div>}
-            <div className="group-profile-meta" style={{ color: userProfile.is_online ? "#4ade80" : "#9ca3af", marginTop: "8px" }}>
-              {userProfile.is_online ? "Online" : "Offline"}
+
+            {userProfile.bio && (
+              <div className="group-profile-description">
+                {userProfile.bio}
+              </div>
+            )}
+
+            <div
+              className="group-profile-meta"
+              style={{
+                color: isUserOnline(userProfile.id) ? "#4ade80" : "#9ca3af",
+                marginTop: "8px",
+              }}
+            >
+              {isUserOnline(userProfile.id) ? "Online" : "Offline"}
             </div>
+
+            {/* Do not show a DM button on the current user's own profile. */}
+            {String(userProfile.id) !== String(currentUserId) &&
+              onStartDirectMessage && (
+                <button
+                  type="button"
+                  className="start-direct-message-btn"
+                  onClick={() => void onStartDirectMessage(userProfile)}
+                >
+                  Message
+                </button>
+              )}
           </div>
         ) : (
           <div className="chat-placeholder">Failed to load profile.</div>

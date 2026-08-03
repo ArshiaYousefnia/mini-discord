@@ -2,17 +2,15 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
-import {
-  createDirectMessage,
-  getConversations,
-} from "../services/chatService";
+import { getConversations } from "../services/chatService";
 import {
   mapConversationToChatListItem,
   sortChatsByRecent,
 } from "../services/chatMapper";
 import type { ChatListItem, Conversation } from "../types/chat";
-import type { BackendUserProfile } from "../types/user";
+import type { BackendUserProfile, UserProfile } from "../types/user";
 import "../styles/home.css";
+import { useOnlineStatus } from "../hooks/useOnlineStatus";
 
 // Retrieve current logged in user config
 function getCurrentUsername(): string {
@@ -33,8 +31,20 @@ export default function HomePage() {
   const [pageError, setPageError] = useState("");
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [currentUsername, setCurrentUsername] = useState("");
-  
-  const [searchParams, setSearchParams] = useSearchParams(); 
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+
+
+  // Hook now tracks live websocket updates only.
+  // Initial DM presence is hydrated from REST conversation data below.
+  const { onlineUsers, setOnlineUsers } = useOnlineStatus();
+  const [pendingDirectMessageUser, setPendingDirectMessageUser] =
+  useState<BackendUserProfile | null>(null);
+
+  const [profileUserToOpen, setProfileUserToOpen] =
+  useState<BackendUserProfile | null>(null);
+
 
   useEffect(() => {
     setCurrentUsername(getCurrentUsername());
@@ -43,7 +53,6 @@ export default function HomePage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // NEW: Added isBackgroundRefresh parameter to prevent UI flickering on polls
   const loadChats = async (isBackgroundRefresh = false, targetGroupId?: string) => {
     try {
       if (!isBackgroundRefresh) {
@@ -52,6 +61,25 @@ export default function HomePage() {
       }
 
       const conversations: Conversation[] = await getConversations();
+
+      // Hydrate initial online state for DM sidebar entries from REST.
+      // WebSocket events will overwrite these values as users go online/offline.
+      const initialStatuses: Record<string, boolean> = {};
+      conversations.forEach((conversation) => {
+        if (
+          conversation.type === "DM" &&
+          conversation.other_user_id
+        ) {
+          initialStatuses[String(conversation.other_user_id)] = Boolean(
+            conversation.other_user_is_online
+          );
+        }
+      });
+
+      setOnlineUsers((prev) => ({
+        ...prev,
+        ...initialStatuses,
+      }));
 
       const mappedChats = await Promise.all(
         conversations.map(async (conversation) => {
@@ -65,26 +93,23 @@ export default function HomePage() {
 
       let sorted = sortChatsByRecent(mappedChats);
 
-      // Prioritize the directly passed targetGroupId, fallback to URL parameter
       const chatIdFromUrl = searchParams.get("chat");
       const idToSelect = targetGroupId || chatIdFromUrl;
-      
+
       if (idToSelect) {
         const chatToSelect = sorted.find((c) => c.id === idToSelect);
-        
+
         if (chatToSelect) {
           const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
-          
-          // Auto-select if it's the initial load OR if an explicit targetGroupId was provided
+
           if (!isBackgroundRefresh || targetGroupId) {
             setSelectedChat(readChat);
           }
-          
+
           sorted = sorted.map((c) =>
             c.id === idToSelect ? readChat : c
           );
 
-          // Only delete the URL parameter if we actually used it
           if (!targetGroupId && chatIdFromUrl) {
             searchParams.delete("chat");
             setSearchParams(searchParams, { replace: true });
@@ -92,38 +117,26 @@ export default function HomePage() {
         }
       }
 
-      // If a chat is already selected, make sure we update it with new backend data (like a new avatar/name)
-      // If a chat is already selected, make sure we update it with new backend data
-      // Inside your loadChats or fetchConversations function:
       if (selectedChat) {
-        // Check if the currently open chat still exists in the fresh data from the backend
-        const updatedSelectedChat = sorted.find(c => c.id === selectedChat.id);
-        
+        const updatedSelectedChat = sorted.find((c) => c.id === selectedChat.id);
+
         if (!updatedSelectedChat) {
-          // The chat was deleted or the user was kicked out.
-          // This will unmount ChatView and show the blank "Select a chat" screen.
           setSelectedChat(null);
-          
-          // Also clear the URL parameter so it doesn't try to reload it on refresh
+
           if (searchParams.get("chat") === selectedChat.id) {
             searchParams.delete("chat");
             setSearchParams(searchParams, { replace: true });
           }
         } else if (
-          updatedSelectedChat.name !== selectedChat.name || 
+          updatedSelectedChat.name !== selectedChat.name ||
           updatedSelectedChat.avatar !== selectedChat.avatar
         ) {
-          // Update name/avatar if they changed
-          setSelectedChat({ ...updatedSelectedChat, unreadCount: selectedChat.unreadCount });
+          setSelectedChat({
+            ...updatedSelectedChat,
+            unreadCount: selectedChat.unreadCount,
+          });
         }
       }
-
-// Update the sidebar items
-setChatItems(sorted);
-
-
-      setChatItems(sorted);
-
 
       setChatItems(sorted);
     } catch (err) {
@@ -137,10 +150,10 @@ setChatItems(sorted);
     }
   };
 
-
   useEffect(() => {
-    loadChats(); // Initial load
-  }, []); 
+    loadChats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
@@ -148,6 +161,8 @@ setChatItems(sorted);
       unreadCount: 0,
     };
 
+    setProfileUserToOpen(null);
+    setPendingDirectMessageUser(null);
     setSelectedChat(readChat);
 
     setChatItems((prevChats) =>
@@ -162,58 +177,106 @@ setChatItems(sorted);
     );
   };
 
-  const handleStartDirectMessage = async (user: BackendUserProfile) => {
-    try {
-      await createDirectMessage(user.id, "Hello!");
-      await loadChats();
-    } catch (err) {
-      alert("Failed to initialize conversation.");
+
+  const handleStartDirectMessage = async (
+    user: BackendUserProfile | UserProfile
+  ) => {
+    const existingChat = chatItems.find(
+      (chat) =>
+        chat.type === "DM" &&
+        String(chat.other_user_id) === String(user.id)
+    );
+
+    setProfileUserToOpen(null);
+
+    if (existingChat) {
+      handleSelectChat(existingChat);
+      return;
     }
+
+    setSelectedChat(null);
+    setPendingDirectMessageUser(user as BackendUserProfile);
   };
 
-  // Tasks #15 / #35: called by ChatView after the user leaves or deletes
-  // a group, so it disappears from the chat list immediately for them.
+  const handleOpenUserProfile = (user: BackendUserProfile) => {
+    setSelectedChat(null);
+    setPendingDirectMessageUser(null);
+    setProfileUserToOpen(user);
+  };
+
+  const handleDirectMessageCreated = async (conversationId: string) => {
+    setPendingDirectMessageUser(null);
+    await loadChats(false, conversationId);
+  };
+
+
   const handleGroupExit = (groupId: string) => {
     setChatItems((prev) => prev.filter((c) => c.id !== groupId));
     setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
   };
 
-  return (
-    <div className="home-page">
-      {(!isMobile || !selectedChat) && (
-        <Sidebar
-          chats={chatItems}
-          selectedChatId={selectedChat?.id ?? null}
-          onSelectChat={handleSelectChat}
-          currentUsername={currentUsername}
-          onStartDirectMessage={handleStartDirectMessage}
-          // NEW: Pass the loadChats function, specifically tagging it as a background refresh
-          onRefresh={() => loadChats(true)} 
-        />
-      )}
+  // Task #55 — after joining a channel found via public-ID search, select
+  // it the same way we already do for group invite joins: set `?chat=` and
+  // reload the conversation list so the new channel appears in the sidebar.
+  const handleChannelJoined = async (channelId: string) => {
+    setSearchParams({ chat: channelId });
+    await loadChats(false, channelId);
+  };
 
-      {(!isMobile || selectedChat) && (
-        <div className="chat-area">
-          {loading ? (
-            <div className="chat-placeholder">Loading...</div>
-          ) : pageError ? (
-            <div className="chat-placeholder">{pageError}</div>
-          ) : (
-            <ChatView
-              chat={selectedChat}
-              isMobile={isMobile}
-              onBack={() => setSelectedChat(null)}
-              onGroupExit={handleGroupExit}
-              onGroupJoined={async (groupId) => {
-              // 1. Set the URL param so loadChats knows which chat to auto-select
+  // Determine if the currently selected chat's other user is online.
+  // We use String() representation here to match our normalized websocket state.
+  const isOtherUserOnline =
+    selectedChat?.other_user_id
+      ? !!onlineUsers[String(selectedChat.other_user_id)]
+      : undefined;
+
+  return (
+  <div className="home-page">
+    {(!isMobile || (!selectedChat && !pendingDirectMessageUser && !profileUserToOpen)) && (
+      <Sidebar
+        chats={chatItems}
+        selectedChatId={selectedChat?.id ?? null}
+        onSelectChat={handleSelectChat}
+        currentUsername={currentUsername}
+        onStartDirectMessage={handleStartDirectMessage}
+        onOpenUserProfile={handleOpenUserProfile}
+        onRefresh={() => loadChats(true)}
+        onlineUsers={onlineUsers ?? {}}
+        onChannelJoined={handleChannelJoined}
+      />
+    )}
+
+    {(!isMobile || selectedChat || pendingDirectMessageUser || profileUserToOpen) && (
+      <div className="chat-area">
+        {loading ? (
+          <div className="chat-placeholder">Loading...</div>
+        ) : pageError ? (
+          <div className="chat-placeholder">{pageError}</div>
+        ) : (
+          <ChatView
+            chat={selectedChat}
+            pendingDirectMessageUser={pendingDirectMessageUser}
+            profileUserToOpen={profileUserToOpen}
+            onProfileUserOpened={() => setProfileUserToOpen(null)}
+            onStartDirectMessage={handleStartDirectMessage}
+            onDirectMessageCreated={handleDirectMessageCreated}
+            isMobile={isMobile}
+            onBack={() => {
+              setSelectedChat(null);
+              setPendingDirectMessageUser(null);
+              setProfileUserToOpen(null);
+            }}
+            onGroupExit={handleGroupExit}
+            onGroupJoined={async (groupId) => {
               setSearchParams({ chat: groupId });
-              // 2. Fetch the updated list of conversations (including the newly joined one)
               await loadChats(false, groupId);
             }}
-            />
-          )}
-        </div>
-      )}
-    </div>
+            isOtherUserOnline={isOtherUserOnline}
+            onlineUsers={onlineUsers}
+          />
+        )}
+      </div>
+    )}
+  </div>
   );
 }
