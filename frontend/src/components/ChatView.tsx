@@ -45,7 +45,12 @@ import {
   getChannelRoles,
   createChannelRole,
 } from "../services/channelService";
-import { getTopics, createTopic, renameTopic, deleteTopic } from "../services/topicService";
+import {
+  getTopics,
+  createTopic,
+  renameTopic,
+  deleteTopic,
+} from "../services/topicService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -54,7 +59,7 @@ interface Props {
   onGroupExit?: (groupId: string) => void;
   onGroupJoined?: (groupId: string) => void;
   isOtherUserOnline?: boolean;
-  onlineUsers: Record<string, boolean>; 
+  onlineUsers: Record<string, boolean>;
   pendingDirectMessageUser?: BackendUserProfile | null;
   onDirectMessageCreated?: (conversationId: string) => Promise<void>;
 }
@@ -70,20 +75,26 @@ export default function ChatView({
   pendingDirectMessageUser,
   onDirectMessageCreated,
 }: Props) {
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeReplyTo, setActiveReplyTo] = useState<Message | null>(null);
-  const [localChatInfo, setLocalChatInfo] = useState<{ name: string; avatar: string } | null>(null);
+  const [localChatInfo, setLocalChatInfo] = useState<{
+    name: string;
+    avatar: string;
+  } | null>(null);
 
   const [showProfile, setShowProfile] = useState(false);
-  const [profileViewType, setProfileViewType] = useState<"group" | "user" | "channel" | null>(null);
+  const [profileViewType, setProfileViewType] = useState<
+    "group" | "user" | "channel" | null
+  >(null);
   const [groupProfile, setGroupProfile] = useState<GroupProfile | null>(null);
   const [groupMembers, setGroupMembers] = useState<GroupMembers | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [profileSource, setProfileSource] = useState<"CHAT" | "GROUP_PROFILE">("GROUP_PROFILE");
+  const [profileSource, setProfileSource] = useState<
+    "CHAT" | "GROUP_PROFILE"
+  >("GROUP_PROFILE");
 
   const [memberToRemove, setMemberToRemove] = useState<any>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -91,13 +102,17 @@ export default function ChatView({
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState(false);
   const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
-  const [showDeleteChannelConfirm, setShowDeleteChannelConfirm] = useState(false);
+  const [showDeleteChannelConfirm, setShowDeleteChannelConfirm] =
+    useState(false);
   const [deleteChannelLoading, setDeleteChannelLoading] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
 
-  const [channelProfile, setChannelProfile] = useState<ChannelProfile | null>(null);
-  const [channelPermissions, setChannelPermissions] = useState<ChannelPermissions | null>(null);
-  const [channelMembers, setChannelMembers] = useState<ChannelMembers | null>(null);
+  const [channelProfile, setChannelProfile] =
+    useState<ChannelProfile | null>(null);
+  const [channelPermissions, setChannelPermissions] =
+    useState<ChannelPermissions | null>(null);
+  const [channelMembers, setChannelMembers] =
+    useState<ChannelMembers | null>(null);
   const [channelRoles, setChannelRoles] = useState<any[] | null>(null);
 
   // Task #22 / #49 — topics inside a channel.
@@ -111,11 +126,15 @@ export default function ChatView({
 
   const currentUserId = localStorage.getItem("Id");
   const currentUsername = (() => {
-  const raw = localStorage.getItem("username");
+    const raw = localStorage.getItem("username");
     if (!raw) return null;
+
     try {
       const parsed = JSON.parse(raw);
-      return typeof parsed === "object" && parsed?.username ? String(parsed.username) : String(parsed);
+
+      return typeof parsed === "object" && parsed?.username
+        ? String(parsed.username)
+        : String(parsed);
     } catch {
       return raw;
     }
@@ -123,19 +142,53 @@ export default function ChatView({
 
   const chatType = chat?.type?.toUpperCase() ?? "";
 
+  // UI-only temporary DM used before the first message creates a real conversation.
+  const pendingChat = useMemo<ChatListItem | null>(() => {
+    if (!pendingDirectMessageUser) return null;
+
+    return {
+      id: `pending-dm-${pendingDirectMessageUser.id}`,
+      type: "DM",
+      name:
+        pendingDirectMessageUser.display_name ||
+        pendingDirectMessageUser.username ||
+        "New message",
+      avatar: pendingDirectMessageUser.avatar_url || "",
+      other_user_id: String(pendingDirectMessageUser.id),
+    } as ChatListItem;
+  }, [pendingDirectMessageUser]);
+
+  const headerChat = chat ?? pendingChat;
 
   const isCurrentUserOwner =
     String(groupProfile?.owner_id) === String(currentUserId) ||
     (chatType === "CHANNEL" && channelPermissions?.is_owner === true);
 
   const activeOtherUserOnline = useMemo(() => {
-    if (chatType !== "DM" || !chat?.other_user_id) return !!isOtherUserOnline;
-    
+    if (pendingDirectMessageUser) {
+      const userId = String(pendingDirectMessageUser.id);
+
+      return userId in onlineUsers
+        ? onlineUsers[userId]
+        : !!pendingDirectMessageUser.is_online;
+    }
+
+    if (chatType !== "DM" || !chat?.other_user_id) {
+      return !!isOtherUserOnline;
+    }
+
     const userId = String(chat.other_user_id);
-    // If the user is in our WebSocket map, that is the "live" truth.
-    // If not, fall back to the initial API state.
-    return userId in onlineUsers ? onlineUsers[userId] : !!isOtherUserOnline;
-  }, [chatType, chat, onlineUsers, isOtherUserOnline]);
+
+    return userId in onlineUsers
+      ? onlineUsers[userId]
+      : !!isOtherUserOnline;
+  }, [
+    pendingDirectMessageUser,
+    chatType,
+    chat,
+    onlineUsers,
+    isOtherUserOnline,
+  ]);
 
   // Task #29 — who can delete OTHER members' messages in this chat.
   // Groups: the group owner. Channels: the owner, or anyone with the
@@ -144,14 +197,13 @@ export default function ChatView({
     chatType === "GROUP"
       ? isCurrentUserOwner
       : chatType === "CHANNEL"
-      ? !!(channelPermissions?.is_owner || channelPermissions?.can_delete_messages)
-      : false;
-
-
+        ? !!(
+            channelPermissions?.is_owner ||
+            channelPermissions?.can_delete_messages
+          )
+        : false;
 
   const [sendingMessage, setSendingMessage] = useState(false);
-
-
 
   useEffect(() => {
     if (chat) {
@@ -171,6 +223,7 @@ export default function ChatView({
     }
 
     let isMounted = true;
+
     setShowProfile(false);
     setProfileViewType(null);
     setShowLeaveConfirm(false);
@@ -189,11 +242,14 @@ export default function ChatView({
       try {
         setLoading(true);
         setError("");
+
         const data = await getConversationMessages(chat.id);
         if (!isMounted) return;
 
         const sortedMessages = [...data].sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          (a, b) =>
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime()
         );
 
         shouldScrollToBottomRef.current = true;
@@ -201,11 +257,16 @@ export default function ChatView({
         setMessages(sortedMessages);
 
         if (sortedMessages.length) {
-          await markConversationRead(chat.id, sortedMessages[sortedMessages.length - 1].id);
+          await markConversationRead(
+            chat.id,
+            sortedMessages[sortedMessages.length - 1].id
+          );
         }
       } catch (err) {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : "Failed to load messages");
+          setError(
+            err instanceof Error ? err.message : "Failed to load messages"
+          );
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -237,8 +298,12 @@ export default function ChatView({
         setGroupProfile(profileData);
         setGroupMembers(membersData);
         setLocalChatInfo((prev) =>
-          prev?.name !== profileData.name || prev?.avatar !== (profileData.avatar_url || chat.avatar)
-            ? { name: profileData.name, avatar: profileData.avatar_url || chat.avatar }
+          prev?.name !== profileData.name ||
+          prev?.avatar !== (profileData.avatar_url || chat.avatar)
+            ? {
+                name: profileData.name,
+                avatar: profileData.avatar_url || chat.avatar,
+              }
             : prev
         );
       } catch (error) {
@@ -266,15 +331,19 @@ export default function ChatView({
         if (!isMounted) return;
 
         const sorted = [...data].sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          (a, b) =>
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime()
         );
 
         setMessages((prev) => {
           if (JSON.stringify(prev) === JSON.stringify(sorted)) return prev;
+
           if (sorted.length > prev.length) {
             shouldScrollToBottomRef.current = true;
             scrollBehaviorRef.current = "smooth";
           }
+
           return sorted;
         });
       } catch (err) {
@@ -293,7 +362,9 @@ export default function ChatView({
   useEffect(() => {
     if (!loading && shouldScrollToBottomRef.current) {
       requestAnimationFrame(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: scrollBehaviorRef.current });
+        messagesEndRef.current?.scrollIntoView({
+          behavior: scrollBehaviorRef.current,
+        });
         shouldScrollToBottomRef.current = false;
       });
     }
@@ -315,13 +386,12 @@ export default function ChatView({
     };
   }, [chat, chatType]);
 
-  // Task #24 / #56 — poll the current user's own channel permissions so
-  // that if the owner changes their role (assigning/removing roles), the
-  // effect is reflected here without a manual page refresh.
+  // Task #24 / #56 — poll current user's channel permissions.
   useEffect(() => {
     if (!chat || chatType !== "CHANNEL") return;
 
     let isMounted = true;
+
     const intervalId = setInterval(() => {
       getPermissions(chat.id)
         .then((permissions) => {
@@ -336,19 +406,27 @@ export default function ChatView({
     };
   }, [chat, chatType]);
 
-  // Keep the channel member list (shown in the profile overlay, with role
-  // badges) fresh while it's open, so role changes made elsewhere show up
-  // without a manual refresh.
+  // Keep channel members fresh while the channel profile overlay is open.
   useEffect(() => {
-    if (!chat || chatType !== "CHANNEL" || !showProfile || profileViewType !== "channel") return;
+    if (
+      !chat ||
+      chatType !== "CHANNEL" ||
+      !showProfile ||
+      profileViewType !== "channel"
+    ) {
+      return;
+    }
 
     let isMounted = true;
+
     const intervalId = setInterval(() => {
       getChannelMembers(chat.id)
         .then((membersData) => {
           if (isMounted) setChannelMembers(membersData);
         })
-        .catch((err) => console.error("Failed to refresh channel members:", err));
+        .catch((err) =>
+          console.error("Failed to refresh channel members:", err)
+        );
     }, 5000);
 
     return () => {
@@ -357,7 +435,7 @@ export default function ChatView({
     };
   }, [chat, chatType, showProfile, profileViewType]);
 
-  // Task #22 / #49 — load & poll the channel's topics.
+  // Task #22 / #49 — load and poll a channel's topics.
   useEffect(() => {
     if (!chat || chatType !== "CHANNEL") {
       setTopics([]);
@@ -392,6 +470,7 @@ export default function ChatView({
     try {
       setSendingMessage(true);
 
+      // The first actual submitted message creates the DM conversation.
       if (pendingDirectMessageUser) {
         if (!text.trim() && files.length === 0) return;
 
@@ -427,6 +506,7 @@ export default function ChatView({
       scrollBehaviorRef.current = "smooth";
       setMessages((prev) => [...prev, newMessage]);
       setActiveReplyTo(null);
+
       await markConversationRead(chat.id, newMessage.id);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to send message");
@@ -435,21 +515,30 @@ export default function ChatView({
     }
   };
 
-
-
   const handleEditMessage = async (messageId: string, newText: string) => {
     if (!chat) return;
+
     const updatedMessage = await editMessage(chat.id, messageId, newText);
-    setMessages((prev) => prev.map((msg) => (msg.id === messageId ? updatedMessage : msg)));
+
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === messageId ? updatedMessage : msg))
+    );
   };
 
   const handleDeleteMessage = async (messageId: string) => {
     if (!chat) return;
+
     await deleteMessage(chat.id, messageId);
+
     setMessages((prev) =>
       prev.map((msg) =>
         msg.id === messageId
-          ? { ...msg, content: null, is_deleted: true, updated_at: new Date().toISOString() }
+          ? {
+              ...msg,
+              content: null,
+              is_deleted: true,
+              updated_at: new Date().toISOString(),
+            }
           : msg
       )
     );
@@ -458,24 +547,33 @@ export default function ChatView({
   // --- Topic Handlers (Task #22 / #49) ---
   const handleCreateTopic = async (name: string) => {
     if (!chat) return;
+
     const topic = await createTopic(chat.id, name);
     setTopics((prev) => [...prev, topic]);
   };
 
   const handleRenameTopic = async (topicId: string, name: string) => {
     if (!chat) return;
+
     const updated = await renameTopic(chat.id, topicId, name);
     setTopics((prev) => prev.map((t) => (t.id === topicId ? updated : t)));
   };
 
   const handleDeleteTopic = async (topicId: string) => {
     if (!chat) return;
+
     await deleteTopic(chat.id, topicId);
     setTopics((prev) => prev.filter((t) => t.id !== topicId));
-    if (activeTopicId === topicId) setActiveTopicId(null);
+
+    if (activeTopicId === topicId) {
+      setActiveTopicId(null);
+    }
   };
 
-  const handleUserClick = async (userId: string, source: "CHAT" | "GROUP_PROFILE" = "GROUP_PROFILE") => {
+  const handleUserClick = async (
+    userId: string,
+    source: "CHAT" | "GROUP_PROFILE" = "GROUP_PROFILE"
+  ) => {
     setProfileSource(source);
     setShowProfile(true);
     setProfileViewType("user");
@@ -491,6 +589,16 @@ export default function ChatView({
   };
 
   const handleHeaderClick = async () => {
+    // Pending DMs do not have a real chat yet, but must open the same
+    // user ProfileOverlay flow as established DM conversations.
+    if (!chat && pendingDirectMessageUser) {
+      await handleUserClick(
+        String(pendingDirectMessageUser.id),
+        "GROUP_PROFILE"
+      );
+      return;
+    }
+
     if (!chat) return;
 
     if (chatType === "GROUP") {
@@ -499,11 +607,13 @@ export default function ChatView({
 
       if (!groupProfile || groupProfile.id !== chat.id) {
         setProfileLoading(true);
+
         try {
           const [profileData, membersData] = await Promise.all([
             getGroupProfile(chat.id),
             getGroupMembers(chat.id),
           ]);
+
           setGroupProfile(profileData);
           setGroupMembers(membersData);
         } catch (err) {
@@ -512,15 +622,25 @@ export default function ChatView({
           setProfileLoading(false);
         }
       }
-      } else if (chatType === "DM") {
-        const otherUserId = chat.other_user_id ? String(chat.other_user_id) : null;
-        if (otherUserId) handleUserClick(otherUserId);
-      } else if (chatType === "CHANNEL") {
+    } else if (chatType === "DM") {
+      const otherUserId = chat.other_user_id
+        ? String(chat.other_user_id)
+        : null;
+
+      if (otherUserId) {
+        handleUserClick(otherUserId);
+      }
+    } else if (chatType === "CHANNEL") {
       setShowProfile(true);
       setProfileViewType("channel");
 
-      if (!channelProfile || channelProfile.id !== chat.id || !channelPermissions) {
+      if (
+        !channelProfile ||
+        channelProfile.id !== chat.id ||
+        !channelPermissions
+      ) {
         setProfileLoading(true);
+
         try {
           const [profileData, permissionsData] = await Promise.all([
             getChannelProfile(chat.id),
@@ -530,7 +650,10 @@ export default function ChatView({
           setChannelProfile(profileData);
           setChannelPermissions(permissionsData);
 
-          if (permissionsData.is_owner || permissionsData.can_manage_members) {
+          if (
+            permissionsData.is_owner ||
+            permissionsData.can_manage_members
+          ) {
             const membersData = await getChannelMembers(chat.id);
             setChannelMembers(membersData);
           }
@@ -548,26 +671,50 @@ export default function ChatView({
     }
   };
 
-  const handleSaveGroupEdit = async (name: string, desc: string, avatar: File | null) => {
+  const handleSaveGroupEdit = async (
+    name: string,
+    desc: string,
+    avatar: File | null
+  ) => {
     if (!chat) return;
 
     try {
-      const updatedProfile = await updateGroupProfile(chat.id, { name, description: desc, avatar });
+      const updatedProfile = await updateGroupProfile(chat.id, {
+        name,
+        description: desc,
+        avatar,
+      });
+
       setGroupProfile(updatedProfile);
-      setLocalChatInfo({ name: updatedProfile.name, avatar: updatedProfile.avatar_url || chat.avatar });
+      setLocalChatInfo({
+        name: updatedProfile.name,
+        avatar: updatedProfile.avatar_url || chat.avatar,
+      });
     } catch (error) {
       console.error("Failed to update group:", error);
       alert("Failed to update group details.");
     }
   };
 
-  const handleSaveChannelEdit = async (name: string, desc: string, avatar: File | null) => {
+  const handleSaveChannelEdit = async (
+    name: string,
+    desc: string,
+    avatar: File | null
+  ) => {
     if (!chat) return;
 
     try {
-      const updatedProfile = await updateChannel(chat.id, { name, description: desc, avatar });
+      const updatedProfile = await updateChannel(chat.id, {
+        name,
+        description: desc,
+        avatar,
+      });
+
       setChannelProfile(updatedProfile);
-      setLocalChatInfo({ name: updatedProfile.name, avatar: updatedProfile.avatar_url || chat.avatar });
+      setLocalChatInfo({
+        name: updatedProfile.name,
+        avatar: updatedProfile.avatar_url || chat.avatar,
+      });
     } catch (error) {
       console.error("Failed to update channel:", error);
       throw error;
@@ -579,10 +726,17 @@ export default function ChatView({
 
     try {
       await removeGroupMember(chat.id, memberToRemove.user_id);
-      setGroupMembers((prev) => (prev ? prev.filter((m) => m.user_id !== memberToRemove.user_id) : null));
+
+      setGroupMembers((prev) =>
+        prev
+          ? prev.filter((m) => m.user_id !== memberToRemove.user_id)
+          : null
+      );
+
       setGroupProfile((prev) =>
         prev ? { ...prev, member_count: Number(prev.member_count) - 1 } : null
       );
+
       setMemberToRemove(null);
     } catch (error) {
       console.error("Failed to remove member:", error);
@@ -596,13 +750,16 @@ export default function ChatView({
     const isConfirmed = window.confirm(
       `Are you sure you want to remove ${member.display_name} from the channel?`
     );
+
     if (!isConfirmed) return;
 
     try {
       await removeChannelMember(chat.id, member.user_id);
 
       if (channelMembers) {
-        setChannelMembers(channelMembers.filter((m) => m.user_id !== member.user_id));
+        setChannelMembers(
+          channelMembers.filter((m) => m.user_id !== member.user_id)
+        );
       }
     } catch (error) {
       console.error("Failed to remove channel member:", error);
@@ -713,10 +870,10 @@ export default function ChatView({
 
     setShowSearch(false);
 
-    // If the target message belongs to a different topic than the one
-    // currently active, switch to it first so it's actually rendered.
+    // If a result belongs to another channel topic, switch topics first.
     if (chatType === "CHANNEL") {
       const targetTopicId = targetMessage.topic_id ?? null;
+
       if (targetTopicId !== activeTopicId) {
         setActiveTopicId(targetTopicId);
       }
@@ -728,13 +885,22 @@ export default function ChatView({
       (async () => {
         try {
           const data = await getConversationMessages(chat.id);
+
           const sorted = [...data].sort(
-            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            (a, b) =>
+              new Date(a.created_at).getTime() -
+              new Date(b.created_at).getTime()
           );
+
           setMessages(sorted);
-          requestAnimationFrame(() => requestAnimationFrame(scrollAndHighlight));
+          requestAnimationFrame(() =>
+            requestAnimationFrame(scrollAndHighlight)
+          );
         } catch (err) {
-          console.error("Failed to load message history for search result:", err);
+          console.error(
+            "Failed to load message history for search result:",
+            err
+          );
         }
       })();
     });
@@ -742,66 +908,25 @@ export default function ChatView({
 
   const senderAvatarById = useMemo(() => {
     const map: Record<string, string> = {};
+
     groupMembers?.forEach((m) => {
       map[String(m.user_id)] = m.avatar_url || "";
     });
+
     return map;
   }, [groupMembers]);
 
-  // Task #22/#49 — a channel's messages are split by topic. `null` means
-  // the default "General" topic (messages with no topic_id).
+  // Task #22/#49 — channel messages are separated by topic.
+  // `null` represents the default General topic.
   const displayedMessages = useMemo(() => {
     if (chatType !== "CHANNEL") return messages;
-    return messages.filter((m) => (m.topic_id ?? null) === activeTopicId);
+
+    return messages.filter(
+      (message) => (message.topic_id ?? null) === activeTopicId
+    );
   }, [messages, chatType, activeTopicId]);
 
-  if (!chat && pendingDirectMessageUser) {
-    const pendingUserName =
-      pendingDirectMessageUser.display_name ||
-      pendingDirectMessageUser.username ||
-      "New message";
-
-    return (
-      <div className="chat-view" style={{ position: "relative", overflow: "hidden" }}>
-        <div className="chat-header">
-          {isMobile && (
-            <button
-              type="button"
-              className="back-button"
-              onClick={onBack}
-              aria-label="Back"
-            >
-              ←
-            </button>
-          )}
-
-          <div className="chat-header-info">
-            <div className="chat-header-name">{pendingUserName}</div>
-          </div>
-        </div>
-
-        <div className="chat-view-body">
-          <div className="chat-placeholder">No messages yet.</div>
-
-          {sendingMessage && (
-            <div className="sticky bottom-0 left-0 right-0 bg-[#1db954]/20 text-[#1db954] px-4 py-1.5 text-xs text-center font-medium backdrop-blur-sm border-t border-[#1db954]/30 animate-pulse">
-              Sending message...
-            </div>
-          )}
-        </div>
-
-        <MessageInput
-          activeReplyTo={null}
-          onCancelReply={() => undefined}
-          onSendMessage={handleSendMessage}
-          disabled={sendingMessage}
-          canSendMessages={true}
-        />
-      </div>
-    );
-  }
-
-  if (!chat) {
+  if (!chat && !pendingDirectMessageUser) {
     return (
       <div
         className="chat-placeholder"
@@ -813,13 +938,17 @@ export default function ChatView({
   }
 
   return (
-    <div className="chat-view" style={{ position: "relative", overflow: "hidden" }}>
+    <div
+      className="chat-view"
+      style={{ position: "relative", overflow: "hidden" }}
+    >
       <ConfirmModal
         isOpen={!!memberToRemove}
         title="Remove Member"
         message={
           <>
-            Are you sure you want to remove <span>{memberToRemove?.display_name}</span> from the group?
+            Are you sure you want to remove{" "}
+            <span>{memberToRemove?.display_name}</span> from the group?
           </>
         }
         confirmText="Remove"
@@ -862,7 +991,9 @@ export default function ChatView({
         isOpen={showDeleteChannelConfirm}
         title="Delete Channel"
         message="This will permanently delete this channel and all its messages and media for every member. This action cannot be undone."
-        confirmText={deleteChannelLoading ? "Deleting..." : "Delete Channel"}
+        confirmText={
+          deleteChannelLoading ? "Deleting..." : "Delete Channel"
+        }
         isLoading={deleteChannelLoading}
         isDanger={true}
         onConfirm={handleDeleteChannel}
@@ -870,20 +1001,29 @@ export default function ChatView({
       />
 
       <ChatHeader
-        chat={chat}
-        localChatInfo={localChatInfo}
+        chat={headerChat!}
+        localChatInfo={
+          chat
+            ? localChatInfo
+            : {
+                name: headerChat?.name || "New message",
+                avatar: headerChat?.avatar || "",
+              }
+        }
         isMobile={isMobile}
         onBack={onBack}
         onHeaderClick={handleHeaderClick}
         onToggleSearch={() => {
+          // A pending DM has no actual conversation ID to search.
+          if (!chat) return;
+
           setShowProfile(false);
           setShowSearch((prev) => !prev);
         }}
         isOtherUserOnline={activeOtherUserOnline}
       />
 
-
-      {showSearch && (
+      {showSearch && chat && (
         <MessageSearchPanel
           conversationId={chat.id}
           onClose={() => setShowSearch(false)}
@@ -903,7 +1043,7 @@ export default function ChatView({
         channelRoles={channelRoles || undefined}
         groupMembers={groupMembers}
         userProfile={userProfile}
-        chatAvatar={chat.avatar}
+        chatAvatar={headerChat?.avatar || ""}
         isCurrentUserOwner={isCurrentUserOwner}
         currentUserId={currentUserId}
         onClose={() => setShowProfile(false)}
@@ -919,7 +1059,9 @@ export default function ChatView({
         onLeaveChannelRequest={() => setShowLeaveChannelConfirm(true)}
         onDeleteChannelRequest={() => setShowDeleteChannelConfirm(true)}
         onlineUsers={onlineUsers}
-        onRefreshProfile={() => userProfile?.id && handleUserClick(userProfile.id)}
+        onRefreshProfile={() =>
+          userProfile?.id && handleUserClick(userProfile.id)
+        }
       />
 
       <div className="chat-view-body">
@@ -929,7 +1071,12 @@ export default function ChatView({
             activeTopicId={activeTopicId}
             onSelectTopic={setActiveTopicId}
             canCreateTopic={!!channelPermissions.can_create_topic}
-            canManageOthersTopics={!!(channelPermissions.can_manage_others_topics || channelPermissions.is_owner)}
+            canManageOthersTopics={
+              !!(
+                channelPermissions.can_manage_others_topics ||
+                channelPermissions.is_owner
+              )
+            }
             currentUserId={currentUserId}
             onCreateTopic={handleCreateTopic}
             onRenameTopic={handleRenameTopic}
@@ -937,8 +1084,14 @@ export default function ChatView({
           />
         )}
 
-        {loading && <div className="chat-placeholder">Loading messages...</div>}
-        {!loading && error && <div className="chat-placeholder">{error}</div>}
+        {loading && (
+          <div className="chat-placeholder">Loading messages...</div>
+        )}
+
+        {!loading && error && (
+          <div className="chat-placeholder">{error}</div>
+        )}
+
         {!loading && !error && displayedMessages.length === 0 && (
           <div className="chat-placeholder">No messages yet.</div>
         )}
@@ -946,23 +1099,33 @@ export default function ChatView({
         {!loading && !error && displayedMessages.length > 0 && (
           <div className="message-history">
             {displayedMessages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  currentUserId={currentUserId}
-                  currentUsername={currentUsername}
-                  replyMessage={msg.reply_to ? messages.find((m) => m.id === msg.reply_to) : null}
-                  canDeleteOthers={canDeleteOthersMessages}
-                  isGroupChat={chatType === "GROUP"}
-                  senderAvatarUrl={senderAvatarById[String(msg.sender)]}
-                  canReply={chatType === "CHANNEL" ? (channelPermissions?.can_send_messages ?? false) : true}
-                  onReply={setActiveReplyTo}
-                  onEdit={handleEditMessage}
-                  onDelete={handleDeleteMessage}
-                  onAvatarClick={(userId) => handleUserClick(userId, "CHAT")}
-                  onGroupJoined={onGroupJoined}
-                />
-              ))}
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                currentUserId={currentUserId}
+                currentUsername={currentUsername}
+                replyMessage={
+                  msg.reply_to
+                    ? messages.find((message) => message.id === msg.reply_to) ||
+                      null
+                    : null
+                }
+                canDeleteOthers={canDeleteOthersMessages}
+                isGroupChat={chatType === "GROUP"}
+                senderAvatarUrl={senderAvatarById[String(msg.sender)]}
+                canReply={
+                  chatType === "CHANNEL"
+                    ? (channelPermissions?.can_send_messages ?? false)
+                    : true
+                }
+                onReply={setActiveReplyTo}
+                onEdit={handleEditMessage}
+                onDelete={handleDeleteMessage}
+                onAvatarClick={(userId) => handleUserClick(userId, "CHAT")}
+                onGroupJoined={onGroupJoined}
+              />
+            ))}
+
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -979,7 +1142,11 @@ export default function ChatView({
         onCancelReply={() => setActiveReplyTo(null)}
         onSendMessage={handleSendMessage}
         disabled={loading || sendingMessage}
-        canSendMessages={chatType === "CHANNEL" ? (channelPermissions?.can_send_messages ?? false) : true}
+        canSendMessages={
+          chatType === "CHANNEL"
+            ? (channelPermissions?.can_send_messages ?? false)
+            : true
+        }
       />
     </div>
   );
