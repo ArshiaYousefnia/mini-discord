@@ -4,6 +4,7 @@ from django.core.validators import EmailValidator, MinLengthValidator
 from django.core.exceptions import ValidationError
 
 from .fields import JalaliDateField
+from chat.models import Channel
 from .models import User
 import re
 
@@ -56,8 +57,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         """Validate username."""
         if len(value) < 4:
             raise serializers.ValidationError('Username must be at least 4 characters.')
-        if User.objects.filter(username=value).exists():
-            raise serializers.ValidationError('This username is already taken.')
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError('This username is already taken by another user.')
+        if Channel.objects.filter(public_id__iexact=value).exists():
+            raise serializers.ValidationError('This username is already taken by a public channel.')
+            
         return value
 
     def validate_password(self, value):
