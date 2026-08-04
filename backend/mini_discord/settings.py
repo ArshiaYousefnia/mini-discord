@@ -17,6 +17,7 @@ import environ
 
 from datetime import timedelta
 
+import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -60,6 +61,7 @@ INSTALLED_APPS = [
     'storages',
     'users',
     'chat',
+    'django_celery_beat',
 ]
 
 SIMPLE_JWT = {
@@ -69,14 +71,23 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,}
 
 ASGI_APPLICATION = 'mini_discord.asgi.application'
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',  # dev only
-        # For production use Redis:
-        # 'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        # 'CONFIG': {"hosts": [('127.0.0.1', 6379)]},
-    },
-}
+if 'test' in sys.argv or os.environ.get('TESTING', 'False') == 'True':
+    # Use in‑memory for tests (fast, no extra dependencies)
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
+else:
+    # Use Redis for development/production
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                "hosts": [os.environ.get('REDIS_URL', 'redis://redis:6379/0')],
+            },
+        },
+    }
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -122,8 +133,6 @@ DATABASES = {
    }
 }
 
-
-import sys
 
 if 'test' in sys.argv:
     DATABASES = {
@@ -213,9 +222,18 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
 }
 
+# Celery settings
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
 CELERY_BEAT_SCHEDULE = {
     'send-scheduled-messages': {
         'task': 'chat.tasks.send_scheduled_messages_task',
-        'schedule': 60.0,  # every minute
+        'schedule': 60.0,
     },
 }
