@@ -1215,7 +1215,7 @@ class ChannelRoleDetailView(APIView):
         if role.name in self.PROTECTED_ROLES:
             return Response(
                 {"detail": f"The '{role.name}' role is a default system role and cannot be modified."},
-                status=status.HTTP_403_FORBIDDEN,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         serializer = RoleSerializer(role, data=request.data, partial=True)
@@ -1228,7 +1228,7 @@ class ChannelRoleDetailView(APIView):
         if role.name in self.PROTECTED_ROLES:
             return Response(
                 {"detail": f"The '{role.name}' role is a default system role and cannot be deleted."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         role.delete()
