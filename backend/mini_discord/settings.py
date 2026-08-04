@@ -212,3 +212,10 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Backend API",
     "VERSION": "1.0.0",
 }
+
+CELERY_BEAT_SCHEDULE = {
+    'send-scheduled-messages': {
+        'task': 'chat.tasks.send_scheduled_messages_task',
+        'schedule': 60.0,  # every minute
+    },
+}

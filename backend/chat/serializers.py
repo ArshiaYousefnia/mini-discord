@@ -2,7 +2,8 @@ import os
 from django.db import transaction
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, Attachment
+from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, Attachment, Notification, \
+    ScheduledAttachment, ScheduledMessage
 
 from django.urls import reverse
 
@@ -516,3 +517,102 @@ class TopicSerializer(serializers.ModelSerializer):
         model = Topic
         fields = ['id', 'name', 'creator_id', 'creator_display_name', 'created_at', 'updated_at']
         read_only_fields = ['id', 'creator_id', 'creator_display_name', 'created_at', 'updated_at']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
+    sender_avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'type', 'message_preview', 'created_at', 'is_read',
+            'sender_display_name', 'sender_avatar', 'conversation_id', 'message_id'
+        ]
+        read_only_fields = '__all__'
+
+    def get_sender_avatar(self, obj):
+        return obj.sender.avatar_url if obj.sender else None
+
+
+class ScheduledAttachmentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScheduledAttachment
+        fields = ['id', 'file_url', 'original_filename', 'size', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def get_file_url(self, obj):
+        if obj.file:
+            return obj.file.url
+        return None
+
+
+class ScheduledMessageSerializer(serializers.ModelSerializer):
+    attachments = ScheduledAttachmentSerializer(many=True, read_only=True)
+    uploaded_files = serializers.ListField(
+        child=serializers.FileField(
+            max_length=None,
+            allow_empty_file=False,
+            use_url=False
+        ),
+        write_only=True,
+        required=False,
+    )
+    conversation_name = serializers.CharField(source='conversation.name', read_only=True)
+    topic_id = serializers.UUIDField(write_only=True, required=False)
+    topic = serializers.SerializerMethodField()
+    failed = serializers.BooleanField(read_only=True)
+    failure_reason = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = ScheduledMessage
+        fields = [
+            'id', 'conversation', 'conversation_name', 'content', 'reply_to',
+            'scheduled_at', 'sent', 'failed', 'failure_reason',
+            'created_at', 'updated_at',
+            'attachments', 'uploaded_files', 'topic_id', 'topic'
+        ]
+        read_only_fields = ['id', 'sent', 'failed', 'failure_reason', 'created_at', 'updated_at']
+
+    def get_topic(self, obj):
+        if obj.topic:
+            return {
+                'id': str(obj.topic.id),
+                'name': obj.topic.name,
+                'creator': obj.topic.creator.display_name
+            }
+        return None
+
+    def validate_scheduled_at(self, value):
+        from django.utils import timezone
+        if value <= timezone.now():
+            raise serializers.ValidationError("Scheduled time must be in the future.")
+        return value
+
+    def validate_content(self, value):
+        if value and len(value) > 2000:
+            raise serializers.ValidationError("Message must be 2000 characters or fewer.")
+        return value
+
+    def validate(self, data):
+        if not data.get('content') and not data.get('uploaded_files'):
+            raise serializers.ValidationError("Either content or at least one file is required.")
+        if data.get('content') and not data.get('content').strip():
+            raise serializers.ValidationError("Message cannot be empty.")
+        return data
+
+    def create(self, validated_data):
+        uploaded_files = validated_data.pop('uploaded_files', [])
+        instance = super().create(validated_data)
+
+        for file in uploaded_files:
+            ScheduledAttachment.objects.create(
+                scheduled_message=instance,
+                file=file,
+                original_filename=file.name,
+                size=file.size,
+            )
+
+        return instance

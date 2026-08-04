@@ -1,5 +1,5 @@
 import mimetypes
-from django.http import FileResponse, HttpResponseNotFound
+from django.http import FileResponse
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, mixins
@@ -7,8 +7,48 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.generics import ListAPIView, UpdateAPIView
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from .models import Notification
+from .serializers import NotificationSerializer
 
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+from .serializers import MessageSerializer, ChannelMessageSerializer, NotificationSerializer
 
+from rest_framework.generics import CreateAPIView, ListAPIView, DestroyAPIView
+from rest_framework.exceptions import PermissionDenied
+from .models import ScheduledMessage, ScheduledAttachment
+from .serializers import ScheduledMessageSerializer
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+
+def broadcast_new_message(message):
+    channel_layer = get_channel_layer()
+    # Choose the correct serializer based on conversation type
+    if message.conversation.type == Conversation.Type.CHANNEL:
+        data = ChannelMessageSerializer(message).data
+    else:
+        data = MessageSerializer(message).data
+    async_to_sync(channel_layer.group_send)(
+        f"conversation_{message.conversation_id}",
+        {
+            "type": "new_message",   # matches the method in ChatConsumer
+            "data": data,
+        }
+    )
+
+def broadcast_notification(user_id, notification_data):
+    """Send notification to a specific user's personal group."""
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"user_{user_id}",
+        {
+            "type": "notification",
+            "data": notification_data,
+        }
+    )
 
 from .serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
     MinimalMessageSerializer, ChannelCreateSerializer, RoleSerializer, TopicSerializer, TopicUpdateSerializer, \
@@ -20,7 +60,8 @@ from django.db.models import OuterRef, Subquery, Count, Q, Value, Prefetch
 from django.db.models.functions import Coalesce
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, ChannelMessage, Attachment
+from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, ChannelMessage, Attachment, \
+    Notification
 
 from .serializers import ChannelMemberRoleUpdateSerializer,ChannelMemberSerializer,ChannelUpdateSerializer,ChannelDetailSerializer,GroupUpdateSerializer,GroupMemberSerializer,ConversationListSerializer, GroupCreateSerializer, GroupDetailSerializer, ChannelDetailSerializer
 
@@ -100,6 +141,21 @@ class SendDirectMessageView(viewsets.GenericViewSet):
         member = ConversationMember.objects.get(conversation=conversation, user=request.user)
         member.last_read_message = message
         member.save()
+
+        broadcast_new_message(message)
+
+        notification = Notification.objects.create(
+            recipient=recipient,
+            sender=request.user,
+            type=Notification.Type.DM,
+            message_preview=content[:150] if content else '[Attachment]',
+            conversation_id=conversation.id,
+            message_id=message.id,
+        )
+
+        # Broadcast via WebSocket
+        notif_serializer = NotificationSerializer(notification)
+        broadcast_notification(recipient.id, notif_serializer.data)
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -282,6 +338,9 @@ class MessageViewSet(
         )
         member.last_read_message = message
         member.save(update_fields=['last_read_message'])
+
+        broadcast_new_message(message)
+
         return message
 
     def create(self, request, *args, **kwargs):
@@ -1398,3 +1457,194 @@ class ChannelMemberRoleRemoveView(APIView):
             {"detail": "Role removed successfully."},
             status=status.HTTP_200_OK
         )
+
+
+class NotificationListView(ListAPIView):
+    """List all notifications for the authenticated user."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = NotificationSerializer
+
+    def get_queryset(self):
+        return Notification.objects.filter(recipient=self.request.user)
+
+
+class NotificationMarkReadView(UpdateAPIView):
+    """Mark a specific notification as read."""
+    permission_classes = [IsAuthenticated]
+    queryset = Notification.objects.all()
+    serializer_class = NotificationSerializer
+    lookup_field = 'id'
+
+    def perform_update(self, serializer):
+        serializer.save(is_read=True)
+
+    def get_queryset(self):
+        # Users can only update their own notifications
+        return super().get_queryset().filter(recipient=self.request.user)
+
+
+class NotificationMarkAllReadView(APIView):
+    """Mark all notifications as read for the authenticated user."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        count = Notification.objects.filter(
+            recipient=request.user,
+            is_read=False
+        ).update(is_read=True)
+        return Response({'marked_read_count': count})
+
+
+class UnreadNotificationCountView(APIView):
+    """Get the count of unread notifications."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        count = Notification.objects.filter(
+            recipient=request.user,
+            is_read=False
+        ).count()
+        return Response({'unread_count': count})
+
+
+class ScheduledMessageCreateView(CreateAPIView):
+    """
+    Schedule a message for future delivery.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = ScheduledMessageSerializer
+
+    def perform_create(self, serializer):
+        conversation_id = self.kwargs.get('conversation_id')
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+
+        # Check membership
+        if not ConversationMember.objects.filter(
+                conversation=conversation,
+                user=self.request.user
+        ).exists():
+            raise PermissionDenied("You are not a member of this conversation.")
+
+        # For channels, check if user has permission to send messages
+        if conversation.type == Conversation.Type.CHANNEL:
+            try:
+                member = ConversationMember.objects.prefetch_related('roles').get(
+                    conversation=conversation,
+                    user=self.request.user
+                )
+                if not member.roles.filter(can_send_messages=True).exists():
+                    raise PermissionDenied(
+                        "You do not have permission to send messages in this channel."
+                    )
+            except ConversationMember.DoesNotExist:
+                raise PermissionDenied("You are not a member of this channel.")
+
+        # Check if scheduled time is in the future (already validated by serializer)
+        serializer.save(sender=self.request.user, conversation=conversation)
+
+
+class ScheduledMessageListView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ScheduledMessageSerializer
+
+    def get_queryset(self):
+        # By default show pending (not sent, not failed)
+        # Could add query param to show all
+        return ScheduledMessage.objects.filter(
+            sender=self.request.user,
+            sent=False,
+            failed=False
+        ).order_by('scheduled_at')
+
+
+class ScheduledMessageDeleteView(DestroyAPIView):
+    """
+    Delete a scheduled message (only if not sent yet).
+    """
+    permission_classes = [IsAuthenticated]
+    queryset = ScheduledMessage.objects.all()
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            sender=self.request.user,
+            sent=False
+        )
+
+    def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # Also delete associated attachments from storage
+        for attachment in instance.attachments.all():
+            if attachment.file:
+                try:
+                    attachment.file.delete(save=False)
+                except:
+                    pass
+        return super().delete(request, *args, **kwargs)
+
+
+class ScheduledMessageCancelAllView(APIView):
+    """
+    Cancel all pending scheduled messages for a conversation.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, conversation_id):
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+
+        # Check membership
+        if not ConversationMember.objects.filter(
+                conversation=conversation,
+                user=request.user
+        ).exists():
+            return Response(
+                {"detail": "You are not a member of this conversation."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        scheduled_messages = ScheduledMessage.objects.filter(
+            conversation=conversation,
+            sender=request.user,
+            sent=False
+        )
+
+        # Delete attachments from storage
+        for sm in scheduled_messages:
+            for attachment in sm.attachments.all():
+                if attachment.file:
+                    try:
+                        attachment.file.delete(save=False)
+                    except:
+                        pass
+
+        count = scheduled_messages.count()
+        scheduled_messages.delete()
+
+        return Response(
+            {"detail": f"Cancelled {count} scheduled messages."},
+            status=status.HTTP_200_OK
+        )
+
+
+class ScheduledMessageRetryView(APIView):
+    """
+    Retry a failed scheduled message.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id):
+        scheduled = get_object_or_404(
+            ScheduledMessage,
+            id=id,
+            sender=request.user,
+            failed=True,
+            sent=False
+        )
+        # Reset failed status so it will be picked up by the management command
+        scheduled.failed = False
+        scheduled.failure_reason = None
+        scheduled.save()
+
+        # Optionally, you could also immediately try to send it now
+        # But it's simpler to let the periodic task handle it.
+        return Response({"detail": "Scheduled message will be retried."})
