@@ -58,10 +58,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if len(value) < 4:
             raise serializers.ValidationError('Username must be at least 4 characters.')
         if User.objects.filter(username__iexact=value).exists():
-            raise serializers.ValidationError('This username is already taken by another user.')
-        if Channel.objects.filter(public_id__iexact=value).exists():
-            raise serializers.ValidationError('This username is already taken by a public channel.')
+            raise serializers.ValidationError('This username is already taken.')
             
+        if Channel.objects.filter(public_id__iexact=value).exists():
+            raise serializers.ValidationError('This username is already taken.')
         return value
 
     def validate_password(self, value):
