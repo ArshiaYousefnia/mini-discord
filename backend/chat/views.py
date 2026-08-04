@@ -1181,7 +1181,7 @@ class ChannelRolesView(APIView):
 class ChannelRoleDetailView(APIView):
     permission_classes = [IsAuthenticated]
     
-    PROTECTED_ROLES = ['Member', 'Owner', 'Channel Owner'] 
+    PROTECTED_ROLES = ['Member', 'Channel Member', 'Owner', 'Channel Owner', 'Group Owner'] 
 
     def get_role(self, conversation_id, role_id):
         conversation = get_object_or_404(
@@ -1227,7 +1227,8 @@ class ChannelRoleDetailView(APIView):
         role = self.get_role(conversation_id, role_id)
         if role.name in self.PROTECTED_ROLES:
             return Response(
-                {"detail": "Cannot delete the Channel Owner role."}, 
+                {"detail": "Cannot delete the Channel Owner role."},
+                status=status.HTTP_400_BAD_REQUEST  
             )
 
         role.delete()
