@@ -287,7 +287,7 @@ class GroupUpdateSerializer(serializers.ModelSerializer):
 
 class ChannelCreateSerializer(serializers.ModelSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=False, allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True, max_length=500)
     avatar = serializers.ImageField(required=False)
     is_private = serializers.BooleanField(default=True)
     public_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -427,6 +427,7 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
 
 
 class ChannelUpdateSerializer(serializers.ModelSerializer):
+    description = serializers.CharField(required=False, allow_blank=True, max_length=500)
     class Meta:
         model = Conversation
         fields = ['name', 'description', 'avatar']
@@ -435,6 +436,16 @@ class ChannelUpdateSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Channel name cannot be empty.")
         return value.strip()
+
+    def validate_avatar(self, value):
+        if value:
+            if value.size > 2 * 1024 * 1024:
+                raise serializers.ValidationError("Avatar must be smaller than 2MB.")
+
+            if not value.content_type in ["image/jpeg", "image/png", "image/gif"]:
+                raise serializers.ValidationError("Only valid image formats (JPG, PNG, GIF) are allowed.")
+
+        return value
 
 
 class ChannelMemberSerializer(serializers.ModelSerializer):
