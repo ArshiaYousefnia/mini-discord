@@ -1214,7 +1214,7 @@ class ChannelRoleDetailView(APIView):
 
         if role.name in self.PROTECTED_ROLES:
             return Response(
-                {"detail": f"The '{role.name}' role is a default system role and cannot be modified."},
+                {"detail": "Cannot edit the Channel Owner role."},  
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1227,8 +1227,7 @@ class ChannelRoleDetailView(APIView):
         role = self.get_role(conversation_id, role_id)
         if role.name in self.PROTECTED_ROLES:
             return Response(
-                {"detail": f"The '{role.name}' role is a default system role and cannot be deleted."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Cannot delete the Channel Owner role."}, 
             )
 
         role.delete()
