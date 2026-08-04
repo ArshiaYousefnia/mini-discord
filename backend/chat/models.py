@@ -1,4 +1,6 @@
 import uuid
+import os
+from datetime import datetime
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db import models
@@ -96,11 +98,10 @@ class ConversationMember(models.Model):
         related_name='conversation_memberships',
     )
     # role is nullable and not used for DM
-    role = models.ForeignKey(
-        'Role',  # we'll skip this model for now; can be added later
-        on_delete=models.SET_NULL,
-        null=True,
+    roles = models.ManyToManyField(
+        'Role',
         blank=True,
+        related_name='members',
     )
     last_read_message = models.ForeignKey(
         'Message',
@@ -209,3 +210,126 @@ class ChannelMessage(Message):
         blank=True,
         related_name='messages',
     )
+
+def attachment_upload_path(instance, filename):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ext = os.path.splitext(filename)[1]
+    new_filename = f"{uuid.uuid4()}_{timestamp}{ext}"
+    return f"attachments/{new_filename}"
+
+
+class Attachment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+    )
+    file = models.FileField(upload_to=attachment_upload_path)
+    original_filename = models.CharField(max_length=255)
+    size = models.PositiveIntegerField()  # in bytes
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Attachment {self.id} for message {self.message_id}"
+
+class Notification(models.Model):
+    class Type(models.TextChoices):
+        DM = 'DM', 'Direct Message'
+        REPLY = 'REPLY', 'Reply'
+        GROUP_ADDED = 'GROUP_ADDED', 'Added to group'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notifications'
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='sent_notifications'
+    )
+    type = models.CharField(max_length=20, choices=Type.choices)
+    message_preview = models.CharField(max_length=150)
+    conversation_id = models.UUIDField(null=True, blank=True)
+    message_id = models.UUIDField(null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient', 'is_read']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.type} for {self.recipient.username} from {self.sender.username if self.sender else 'system'}"
+
+
+class ScheduledMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='scheduled_messages'
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='scheduled_messages'
+    )
+    content = models.TextField(blank=True, null=True)
+    reply_to = models.ForeignKey(
+        Message,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    scheduled_at = models.DateTimeField()
+    sent = models.BooleanField(default=False)
+    failed = models.BooleanField(default=False)  # New field
+    failure_reason = models.TextField(blank=True, null=True)  # Optional
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Topic is only applicable for channels
+    topic = models.ForeignKey(
+        'Topic',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='scheduled_messages'
+    )
+
+    class Meta:
+        ordering = ['scheduled_at']
+        indexes = [
+            models.Index(fields=['scheduled_at', 'sent', 'failed']),
+            models.Index(fields=['sender', 'sent']),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        status = "sent" if self.sent else "failed" if self.failed else "pending"
+        return f"Scheduled for {self.scheduled_at} by {self.sender.username} ({status})"
+
+class ScheduledAttachment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scheduled_message = models.ForeignKey(
+        ScheduledMessage,
+        on_delete=models.CASCADE,
+        related_name='attachments'
+    )
+    file = models.FileField(upload_to=attachment_upload_path)
+    original_filename = models.CharField(max_length=255)
+    size = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Attachment for scheduled message {self.scheduled_message_id}"

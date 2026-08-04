@@ -17,6 +17,7 @@ import environ
 
 from datetime import timedelta
 
+import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,6 +46,8 @@ AUTH_USER_MODEL = 'users.User'
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -58,6 +61,7 @@ INSTALLED_APPS = [
     'storages',
     'users',
     'chat',
+    'django_celery_beat',
 ]
 
 SIMPLE_JWT = {
@@ -65,6 +69,25 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,}
+
+ASGI_APPLICATION = 'mini_discord.asgi.application'
+if 'test' in sys.argv or os.environ.get('TESTING', 'False') == 'True':
+    # Use in‑memory for tests (fast, no extra dependencies)
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
+else:
+    # Use Redis for development/production
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                "hosts": [os.environ.get('REDIS_URL', 'redis://redis:6379/0')],
+            },
+        },
+    }
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -110,8 +133,6 @@ DATABASES = {
    }
 }
 
-
-import sys
 
 if 'test' in sys.argv:
     DATABASES = {
@@ -199,4 +220,20 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "My API",
     "DESCRIPTION": "Backend API",
     "VERSION": "1.0.0",
+}
+
+# Celery settings
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+CELERY_BEAT_SCHEDULE = {
+    'send-scheduled-messages': {
+        'task': 'chat.tasks.send_scheduled_messages_task',
+        'schedule': 60.0,
+    },
 }
