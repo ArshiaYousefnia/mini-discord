@@ -5,7 +5,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import ChannelPreviewView, ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelDeleteView, \
     ChannelPublicIdView, ChannelJoinView, GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, \
-    ConversationViewSet, AttachmentDownloadView
+    ConversationViewSet, AttachmentDownloadView, ScheduledMessageRetryView
 from .views import ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelDeleteView, ChannelPublicIdView, \
     ChannelJoinView, GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     ChannelRolesView, ChannelRoleDetailView, TopicListCreateView, TopicDetailView
@@ -14,6 +14,16 @@ from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDe
 from .views import ChannelMemberRoleRemoveView,ChannelMyPermissionsView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
     MessageViewSet, ConversationListView, \
     ChannelRemoveMemberView,ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
+
+from .views import (NotificationListView,
+    NotificationMarkReadView,
+    NotificationMarkAllReadView,
+    UnreadNotificationCountView,
+    ScheduledMessageCreateView,
+    ScheduledMessageListView,
+    ScheduledMessageDeleteView,
+    ScheduledMessageCancelAllView
+    )
 
 router = DefaultRouter()
 router.register(r'dm', SendDirectMessageView, basename='direct-message')
@@ -198,4 +208,29 @@ urlpatterns = [
         ChannelMemberRoleRemoveView.as_view(),
         name='channel-member-role-remove'
     ),
+    path('notifications/', NotificationListView.as_view(), name='notification-list'),
+    path('notifications/<uuid:id>/read/', NotificationMarkReadView.as_view(), name='notification-mark-read'),
+    path('notifications/mark-all-read/', NotificationMarkAllReadView.as_view(), name='notification-mark-all-read'),
+    path('notifications/unread-count/', UnreadNotificationCountView.as_view(), name='notification-unread-count'),
+    path(
+        'conversations/<uuid:conversation_id>/schedule/',
+        ScheduledMessageCreateView.as_view(),
+        name='schedule-message'
+    ),
+    path(
+        'scheduled-messages/',
+        ScheduledMessageListView.as_view(),
+        name='scheduled-messages-list'
+    ),
+    path(
+        'scheduled-messages/<uuid:id>/',
+        ScheduledMessageDeleteView.as_view(),
+        name='scheduled-message-delete'
+    ),
+    path(
+    'conversations/<uuid:conversation_id>/schedule/cancel-all/',
+    ScheduledMessageCancelAllView.as_view(),
+    name='schedule-cancel-all'
+    ),
+    path('scheduled-messages/<uuid:id>/retry/', ScheduledMessageRetryView.as_view(), name='scheduled-message-retry'),
 ]
