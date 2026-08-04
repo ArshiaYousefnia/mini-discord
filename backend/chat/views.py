@@ -1514,6 +1514,12 @@ class ScheduledMessageCreateView(CreateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ScheduledMessageSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        conversation_id = self.kwargs.get('conversation_id')
+        context['conversation'] = get_object_or_404(Conversation, id=conversation_id)
+        return context
+
     def perform_create(self, serializer):
         conversation_id = self.kwargs.get('conversation_id')
         conversation = get_object_or_404(Conversation, id=conversation_id)
@@ -1627,24 +1633,16 @@ class ScheduledMessageCancelAllView(APIView):
 
 
 class ScheduledMessageRetryView(APIView):
-    """
-    Retry a failed scheduled message.
-    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, id):
-        scheduled = get_object_or_404(
-            ScheduledMessage,
+        ScheduledMessage.objects.filter(
             id=id,
             sender=request.user,
             failed=True,
             sent=False
+        ).update(
+            failed=False,
+            failure_reason=None
         )
-        # Reset failed status so it will be picked up by the management command
-        scheduled.failed = False
-        scheduled.failure_reason = None
-        scheduled.save()
-
-        # Optionally, you could also immediately try to send it now
-        # But it's simpler to let the periodic task handle it.
         return Response({"detail": "Scheduled message will be retried."})

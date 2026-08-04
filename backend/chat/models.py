@@ -311,27 +311,6 @@ class ScheduledMessage(models.Model):
             models.Index(fields=['sender', 'sent']),
         ]
 
-    def clean(self):
-        from django.core.exceptions import ValidationError
-        from django.utils import timezone
-
-        if self.scheduled_at <= timezone.now():
-            raise ValidationError({
-                'scheduled_at': "Scheduled time must be in the future."
-            })
-
-        # Validate that topic is only set for channel conversations
-        if self.topic and self.conversation.type != Conversation.Type.CHANNEL:
-            raise ValidationError({
-                'topic': "Topics are only available in channels."
-            })
-
-        # Validate that topic belongs to this conversation
-        if self.topic and self.topic.conversation != self.conversation:
-            raise ValidationError({
-                'topic': "Topic does not belong to this conversation."
-            })
-
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)

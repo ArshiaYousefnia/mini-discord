@@ -46,9 +46,11 @@ class Command(BaseCommand):
                     )
                 except ConversationMember.DoesNotExist:
                     # User is no longer a member - fail the scheduled message
-                    sm.failed = True
-                    sm.failure_reason = "Sender is no longer a member of this conversation"
-                    sm.save()
+                    ScheduledMessage.objects.filter(id=sm.id).update(
+                        sent=False,
+                        failed=True,
+                        failure_reason="Sender is no longer a member of this conversation"
+                    )
                     failed_count += 1
                     self.stdout.write(
                         self.style.WARNING(
@@ -61,25 +63,19 @@ class Command(BaseCommand):
                 if conversation.type == Conversation.Type.CHANNEL:
                     # Check if the member has any role with can_send_messages=True
                     has_permission = member.roles.filter(can_send_messages=True).exists()
-                    # Also, channel owner always has permission (already checked via roles)
                     if not has_permission and conversation.owner != user:
-                        # Allow owner even if not in roles? Owner might not have a role with send perm,
-                        # but owner should always be able to send.
-                        # But owner is always a member and can have roles. We'll check explicitly.
-                        # Actually, owner can be added with role; we already have owner check above.
-                        # Let's just check if owner, or roles.
-                        if conversation.owner != user:
-                            sm.failed = True
-                            sm.failure_reason = "User no longer has permission to send messages in this channel"
-                            sm.save()
-                            failed_count += 1
-                            self.stdout.write(
-                                self.style.WARNING(
-                                    f"Scheduled message {sm.id} failed: User lost send permission"
-                                )
+                        ScheduledMessage.objects.filter(id=sm.id).update(
+                            sent=False,
+                            failed=True,
+                            failure_reason="User no longer has permission to send messages in this channel"
+                        )
+                        failed_count += 1
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"Scheduled message {sm.id} failed: User lost send permission"
                             )
-                            continue
-                        # else: owner has permission even without role
+                        )
+                        continue
 
                 # ===== DELIVERY =====
                 # Create the actual message based on conversation type
@@ -118,9 +114,12 @@ class Command(BaseCommand):
                         )
                         # Continue without attachment; we could mark partial failure
 
-                # Mark scheduled message as sent
-                sm.sent = True
-                sm.save()
+                # Mark scheduled message as sent (bypass validation)
+                ScheduledMessage.objects.filter(id=sm.id).update(
+                    sent=True,
+                    failed=False,
+                    failure_reason=None
+                )
 
                 # Broadcast the message
                 broadcast_new_message(message)
@@ -133,10 +132,12 @@ class Command(BaseCommand):
                 )
 
             except Exception as e:
-                # Unexpected error - mark as failed
-                sm.failed = True
-                sm.failure_reason = str(e)[:255]
-                sm.save()
+                # Unexpected error - mark as failed (bypass validation)
+                ScheduledMessage.objects.filter(id=sm.id).update(
+                    sent=False,
+                    failed=True,
+                    failure_reason=str(e)[:255]
+                )
                 failed_count += 1
                 self.stdout.write(
                     self.style.ERROR(

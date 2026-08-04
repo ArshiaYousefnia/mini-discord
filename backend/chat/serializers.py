@@ -529,7 +529,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             'id', 'type', 'message_preview', 'created_at', 'is_read',
             'sender_display_name', 'sender_avatar', 'conversation_id', 'message_id'
         ]
-        read_only_fields = '__all__'
+        read_only_fields = fields
 
     def get_sender_avatar(self, obj):
         return obj.sender.avatar_url if obj.sender else None
@@ -574,7 +574,10 @@ class ScheduledMessageSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
             'attachments', 'uploaded_files', 'topic_id', 'topic'
         ]
-        read_only_fields = ['id', 'sent', 'failed', 'failure_reason', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'conversation', 'sender', 'sent', 'failed',
+            'failure_reason', 'created_at', 'updated_at', 'conversation_name', 'topic'
+        ]
 
     def get_topic(self, obj):
         if obj.topic:
@@ -601,6 +604,35 @@ class ScheduledMessageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Either content or at least one file is required.")
         if data.get('content') and not data.get('content').strip():
             raise serializers.ValidationError("Message cannot be empty.")
+
+        # Get conversation from context
+        conversation = self.context.get('conversation')
+        topic_id = data.get('topic_id')
+
+        if conversation:
+            if conversation.type == Conversation.Type.CHANNEL:
+                if topic_id:
+                    from .models import Topic
+                    try:
+                        topic = Topic.objects.get(id=topic_id, conversation=conversation)
+                        data['topic'] = topic
+                    except Topic.DoesNotExist:
+                        raise serializers.ValidationError({
+                            'topic_id': "Topic not found in this channel."
+                        })
+            else:
+                # Groups and DMs should not have topic_id
+                if topic_id:
+                    raise serializers.ValidationError({
+                        'topic_id': "Topics are only available in channels."
+                    })
+        else:
+            # If no conversation in context, we can't validate the topic
+            # This is a fallback - it shouldn't happen in normal usage
+            if topic_id:
+                # Still validate that it's a valid UUID, but can't check conversation type
+                pass
+
         return data
 
     def create(self, validated_data):
