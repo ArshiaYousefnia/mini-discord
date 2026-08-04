@@ -1,11 +1,15 @@
+import uuid
 from unittest import mock
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
-from chat.models import Conversation, ConversationMember, Message, Notification
+from chat.models import Conversation, ConversationMember, Message, Notification, Role
 from chat.serializers import NotificationSerializer
 
 User = get_user_model()
+
+def mock_broadcast_notification(user_id, data):
+    pass
 
 class NotificationTests(TestCase):
     def setUp(self):
@@ -27,7 +31,7 @@ class NotificationTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user1)
 
-    @mock.patch('chat.views.views.broadcast_notification')
+    @mock.patch('chat.views.broadcast_notification')
     def test_dm_creates_notification_for_recipient(self, mock_broadcast):
         url = '/api/chat/dm/'
         data = {

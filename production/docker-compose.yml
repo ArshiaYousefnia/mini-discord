@@ -36,7 +36,7 @@ services:
 
   redis:
     image: redis:alpine
-    container_name: redis-cache
+    container_name: redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -94,6 +94,51 @@ services:
         exit 0;
       "
     restart: "no"
+
+  celery_worker:
+    build: ./backend
+    command: celery -A mini_discord worker --loglevel=info
+    volumes:
+      - ./backend:/app
+      - /app/.venv  # optional: keep venv isolated
+    environment:
+      - DJANGO_SETTINGS_MODULE=mini_discord.settings
+      - DB_HOST=postgres
+      - DB_NAME=${DB_NAME:-django_db}
+      - DB_USER=${DB_USER:-django_user}
+      - DB_PASSWORD=${DB_PASSWORD:-django_password}
+      - DB_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build: ./backend
+    command: celery -A mini_discord beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+    environment:
+      - DJANGO_SETTINGS_MODULE=mini_discord.settings
+      - DB_HOST=postgres
+      - DB_NAME=${DB_NAME:-django_db}
+      - DB_USER=${DB_USER:-django_user}
+      - DB_PASSWORD=${DB_PASSWORD:-django_password}
+      - DB_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
