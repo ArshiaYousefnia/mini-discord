@@ -5,8 +5,7 @@ from chat.models import (
     ScheduledMessage, Message, ChannelMessage,
     Attachment, ConversationMember, Conversation
 )
-from chat.serializers import MinimalMessageSerializer
-from chat.views.views_realtime_utils import broadcast_new_message, broadcast_conversation_update
+from chat.views import broadcast_new_message
 
 
 class Command(BaseCommand):
@@ -124,13 +123,6 @@ class Command(BaseCommand):
 
                 # Broadcast the message
                 broadcast_new_message(message)
-
-                last_message_data = MinimalMessageSerializer(message).data
-                broadcast_conversation_update(
-                    conversation,
-                    'new_message',
-                    {'last_message': last_message_data}
-                )
 
                 count += 1
                 self.stdout.write(
