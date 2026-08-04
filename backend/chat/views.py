@@ -1136,10 +1136,11 @@ class ChannelRolesView(APIView):
                 {"detail": "Only the channel owner can manage roles."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        roles = conversation.roles.all()
+        default_roles = ['Member', 'Owner']
+        roles = Role.objects.filter(conversation=conversation).exclude(name__in=default_roles)
+        
         serializer = RoleSerializer(roles, many=True)
-        return Response(serializer.data)
-
+        return Response(serializer.data, status=status.HTTP_200_OK)
     def post(self, request, conversation_id):
         conversation = get_object_or_404(
             Conversation,
@@ -1158,14 +1159,29 @@ class ChannelRolesView(APIView):
                 {"name": "Role name is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+            
+        clean_name = name.strip()
+        
+        if len(clean_name) > 100:
+            return Response(
+                {"name": "Role name cannot exceed 100 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        # Create role with default permissions
-        role = Role.objects.create(conversation=conversation, name=name.strip())
+        if Role.objects.filter(conversation=conversation, name__iexact=clean_name).exists():
+            return Response(
+                {"name": "A role with this name already exists."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        role = Role.objects.create(conversation=conversation, name=clean_name)
         serializer = RoleSerializer(role)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
+    
 class ChannelRoleDetailView(APIView):
     permission_classes = [IsAuthenticated]
+    
+    PROTECTED_ROLES = ['Member', 'Channel Member', 'Owner', 'Channel Owner', 'Group Owner'] 
 
     def get_role(self, conversation_id, role_id):
         conversation = get_object_or_404(
@@ -1175,20 +1191,30 @@ class ChannelRoleDetailView(APIView):
         )
         if conversation.owner != self.request.user:
             raise PermissionDenied("Only the channel owner can manage roles.")
+            
         role = get_object_or_404(Role, id=role_id, conversation=conversation)
         return role
 
-    def get(self, request, conversation_id, role_id):
-        role = self.get_role(conversation_id, role_id)
-        serializer = RoleSerializer(role)
-        return Response(serializer.data)
-
+    def get(self, request, conversation_id):
+        conversation = get_object_or_404(
+            Conversation, 
+            id=conversation_id, 
+            type=Conversation.Type.CHANNEL
+        )
+        
+        PROTECTED_ROLES = ['Member', 'Owner', 'Channel Owner']
+        
+        roles = Role.objects.filter(conversation=conversation).exclude(name__in=PROTECTED_ROLES)
+        
+        serializer = RoleSerializer(roles, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
     def patch(self, request, conversation_id, role_id):
         role = self.get_role(conversation_id, role_id)
 
-        if role.name == 'Channel Owner':
+        if role.name in self.PROTECTED_ROLES:
             return Response(
-                {"detail": "Cannot edit the Channel Owner role."},
+                {"detail": "Cannot edit the Channel Owner role."},  
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1199,15 +1225,15 @@ class ChannelRoleDetailView(APIView):
 
     def delete(self, request, conversation_id, role_id):
         role = self.get_role(conversation_id, role_id)
-        # Prevent deleting the "Channel Owner" role
-        if role.name == 'Channel Owner':
+        if role.name in self.PROTECTED_ROLES:
             return Response(
                 {"detail": "Cannot delete the Channel Owner role."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_400_BAD_REQUEST  
             )
+
         role.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-
+    
 class TopicListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
