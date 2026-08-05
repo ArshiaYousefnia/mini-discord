@@ -1047,7 +1047,7 @@ class ChannelMemberRoleUpdateView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        target_membership.roles.set([role])
+        target_membership.roles.add(role)
 
         return Response(
             {"detail": "Role updated successfully."},

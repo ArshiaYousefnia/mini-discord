@@ -40,7 +40,11 @@ class ChannelRoleAssignmentTests(APITestCase):
         response = self.client.patch(self.assign_url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.target_membership.refresh_from_db()
-        self.assertEqual(self.target_membership.roles.first(), self.new_custom_role)
+        # Check that the new role is in the roles
+        self.assertIn(self.new_custom_role, self.target_membership.roles.all())
+        # Also verify the old role is still there
+        self.assertIn(self.basic_role, self.target_membership.roles.all())
+        self.assertEqual(self.target_membership.roles.count(), 2)
 
     def test_normal_member_cannot_assign_roles(self):
         self.client.force_authenticate(user=self.normal_member)
