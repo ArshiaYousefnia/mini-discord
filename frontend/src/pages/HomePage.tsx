@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
 import { getConversations } from "../services/chatService";
@@ -14,17 +14,26 @@ import { useOnlineStatus } from "../hooks/useOnlineStatus";
 
 // Retrieve current logged in user config
 function getCurrentUsername(): string {
+  const rawUser = localStorage.getItem("username");
+
+  if (!rawUser) return "";
+
   try {
-    const rawUser = localStorage.getItem("username");
-    if (!rawUser) return "";
     const parsed = JSON.parse(rawUser);
+
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+
     return parsed?.username || "";
   } catch {
-    return "";
+    return rawUser;
   }
 }
 
 export default function HomePage() {
+  const navigate = useNavigate();
+
   const [chatItems, setChatItems] = useState<ChatListItem[]>([]);
   const [selectedChat, setSelectedChat] = useState<ChatListItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,26 +43,44 @@ export default function HomePage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
 
-
-
   // Hook now tracks live websocket updates only.
   // Initial DM presence is hydrated from REST conversation data below.
   const { onlineUsers, setOnlineUsers } = useOnlineStatus();
+
   const [pendingDirectMessageUser, setPendingDirectMessageUser] =
-  useState<BackendUserProfile | null>(null);
+    useState<BackendUserProfile | null>(null);
 
   const [profileUserToOpen, setProfileUserToOpen] =
-  useState<BackendUserProfile | null>(null);
-
+    useState<BackendUserProfile | null>(null);
 
   useEffect(() => {
-    setCurrentUsername(getCurrentUsername());
-    const handleResize = () => setIsMobile(window.innerWidth <= 768);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    const token = localStorage.getItem("accessToken");
 
-  const loadChats = async (isBackgroundRefresh = false, targetGroupId?: string) => {
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    setCurrentUsername(getCurrentUsername());
+
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+
+    window.addEventListener("resize", handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, [navigate]);
+
+  const loadChats = async (
+    isBackgroundRefresh = false,
+    targetGroupId?: string
+  ) => {
+    const token = localStorage.getItem("accessToken");
+
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
     try {
       if (!isBackgroundRefresh) {
         setLoading(true);
@@ -65,11 +92,9 @@ export default function HomePage() {
       // Hydrate initial online state for DM sidebar entries from REST.
       // WebSocket events will overwrite these values as users go online/offline.
       const initialStatuses: Record<string, boolean> = {};
+
       conversations.forEach((conversation) => {
-        if (
-          conversation.type === "DM" &&
-          conversation.other_user_id
-        ) {
+        if (conversation.type === "DM" && conversation.other_user_id) {
           initialStatuses[String(conversation.other_user_id)] = Boolean(
             conversation.other_user_is_online
           );
@@ -83,11 +108,7 @@ export default function HomePage() {
 
       const mappedChats = await Promise.all(
         conversations.map(async (conversation) => {
-          try {
-            return mapConversationToChatListItem(conversation);
-          } catch {
-            return mapConversationToChatListItem(conversation);
-          }
+          return mapConversationToChatListItem(conversation);
         })
       );
 
@@ -100,7 +121,10 @@ export default function HomePage() {
         const chatToSelect = sorted.find((c) => c.id === idToSelect);
 
         if (chatToSelect) {
-          const readChat: ChatListItem = { ...chatToSelect, unreadCount: 0 };
+          const readChat: ChatListItem = {
+            ...chatToSelect,
+            unreadCount: 0,
+          };
 
           if (!isBackgroundRefresh || targetGroupId) {
             setSelectedChat(readChat);
@@ -111,21 +135,25 @@ export default function HomePage() {
           );
 
           if (!targetGroupId && chatIdFromUrl) {
-            searchParams.delete("chat");
-            setSearchParams(searchParams, { replace: true });
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("chat");
+            setSearchParams(nextParams, { replace: true });
           }
         }
       }
 
       if (selectedChat) {
-        const updatedSelectedChat = sorted.find((c) => c.id === selectedChat.id);
+        const updatedSelectedChat = sorted.find(
+          (c) => c.id === selectedChat.id
+        );
 
         if (!updatedSelectedChat) {
           setSelectedChat(null);
 
           if (searchParams.get("chat") === selectedChat.id) {
-            searchParams.delete("chat");
-            setSearchParams(searchParams, { replace: true });
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("chat");
+            setSearchParams(nextParams, { replace: true });
           }
         } else if (
           updatedSelectedChat.name !== selectedChat.name ||
@@ -139,7 +167,12 @@ export default function HomePage() {
       }
 
       setChatItems(sorted);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.response?.status === 401) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
       if (!isBackgroundRefresh) {
         setPageError("Failed to fetch conversations.");
       }
@@ -151,9 +184,17 @@ export default function HomePage() {
   };
 
   useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
     loadChats();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [navigate]);
 
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
@@ -176,7 +217,6 @@ export default function HomePage() {
       )
     );
   };
-
 
   const handleStartDirectMessage = async (
     user: BackendUserProfile | UserProfile
@@ -209,7 +249,6 @@ export default function HomePage() {
     await loadChats(false, conversationId);
   };
 
-
   const handleGroupExit = (groupId: string) => {
     setChatItems((prev) => prev.filter((c) => c.id !== groupId));
     setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
@@ -231,52 +270,56 @@ export default function HomePage() {
       : undefined;
 
   return (
-  <div className="home-page">
-    {(!isMobile || (!selectedChat && !pendingDirectMessageUser && !profileUserToOpen)) && (
-      <Sidebar
-        chats={chatItems}
-        selectedChatId={selectedChat?.id ?? null}
-        onSelectChat={handleSelectChat}
-        currentUsername={currentUsername}
-        onStartDirectMessage={handleStartDirectMessage}
-        onOpenUserProfile={handleOpenUserProfile}
-        onRefresh={() => loadChats(true)}
-        onlineUsers={onlineUsers ?? {}}
-        onChannelJoined={handleChannelJoined}
-      />
-    )}
+    <div className="home-page">
+      {(!isMobile ||
+        (!selectedChat && !pendingDirectMessageUser && !profileUserToOpen)) && (
+        <Sidebar
+          chats={chatItems}
+          selectedChatId={selectedChat?.id ?? null}
+          onSelectChat={handleSelectChat}
+          currentUsername={currentUsername}
+          onStartDirectMessage={handleStartDirectMessage}
+          onOpenUserProfile={handleOpenUserProfile}
+          onRefresh={() => loadChats(true)}
+          onlineUsers={onlineUsers ?? {}}
+          onChannelJoined={handleChannelJoined}
+        />
+      )}
 
-    {(!isMobile || selectedChat || pendingDirectMessageUser || profileUserToOpen) && (
-      <div className="chat-area">
-        {loading ? (
-          <div className="chat-placeholder">Loading...</div>
-        ) : pageError ? (
-          <div className="chat-placeholder">{pageError}</div>
-        ) : (
-          <ChatView
-            chat={selectedChat}
-            pendingDirectMessageUser={pendingDirectMessageUser}
-            profileUserToOpen={profileUserToOpen}
-            onProfileUserOpened={() => setProfileUserToOpen(null)}
-            onStartDirectMessage={handleStartDirectMessage}
-            onDirectMessageCreated={handleDirectMessageCreated}
-            isMobile={isMobile}
-            onBack={() => {
-              setSelectedChat(null);
-              setPendingDirectMessageUser(null);
-              setProfileUserToOpen(null);
-            }}
-            onGroupExit={handleGroupExit}
-            onGroupJoined={async (groupId) => {
-              setSearchParams({ chat: groupId });
-              await loadChats(false, groupId);
-            }}
-            isOtherUserOnline={isOtherUserOnline}
-            onlineUsers={onlineUsers}
-          />
-        )}
-      </div>
-    )}
-  </div>
+      {(!isMobile ||
+        selectedChat ||
+        pendingDirectMessageUser ||
+        profileUserToOpen) && (
+        <div className="chat-area">
+          {loading ? (
+            <div className="chat-placeholder">Loading...</div>
+          ) : pageError ? (
+            <div className="chat-placeholder">{pageError}</div>
+          ) : (
+            <ChatView
+              chat={selectedChat}
+              pendingDirectMessageUser={pendingDirectMessageUser}
+              profileUserToOpen={profileUserToOpen}
+              onProfileUserOpened={() => setProfileUserToOpen(null)}
+              onStartDirectMessage={handleStartDirectMessage}
+              onDirectMessageCreated={handleDirectMessageCreated}
+              isMobile={isMobile}
+              onBack={() => {
+                setSelectedChat(null);
+                setPendingDirectMessageUser(null);
+                setProfileUserToOpen(null);
+              }}
+              onGroupExit={handleGroupExit}
+              onGroupJoined={async (groupId) => {
+                setSearchParams({ chat: groupId });
+                await loadChats(false, groupId);
+              }}
+              isOtherUserOnline={isOtherUserOnline}
+              onlineUsers={onlineUsers}
+            />
+          )}
+        </div>
+      )}
+    </div>
   );
 }

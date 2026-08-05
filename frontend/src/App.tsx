@@ -11,22 +11,24 @@ import ChannelInvitePage from "./pages/ChannelInvitePage";
 
 // Helper component to handle root routing logic
 function RootRedirect() {
-  // Check if user exists in localStorage. 
-  // IMPORTANT: Change "user" to the exact key your LoginForm saves (e.g., "token", "access_token", or "userData")
+  // Check if user exists in localStorage.
+  // IMPORTANT: Change "username" to the exact key your LoginForm saves
+  // e.g. "token", "access_token", "userData", etc.
   const isAuthenticated = !!localStorage.getItem("username");
 
   if (isAuthenticated) {
     return <Navigate to="/HomePage/" replace />;
   }
+
   return <Navigate to="/login" replace />;
 }
 
 export default function App() {
   return (
     <Routes>
-      {/* Root path now uses the redirect component */}
+      {/* Root path redirects based on auth state */}
       <Route path="/" element={<RootRedirect />} />
-      
+
       <Route path="/register" element={<Register />} />
       <Route path="/login" element={<Login />} />
 
@@ -38,6 +40,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/profile/"
         element={
@@ -46,12 +49,35 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-  
-      <Route path="/HomePage/" element={<HomePage />} />
-      <Route path="/groups/create" element={<CreateGroupPage />} />
-      <Route path="/channels/create" element={<CreateChannelPage />} />
 
-      {/* Task #20 — invite-link preview screen (preview first, then join) */}
+      <Route
+        path="/HomePage/"
+        element={
+          <ProtectedRoute>
+            <HomePage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/groups/create"
+        element={
+          <ProtectedRoute>
+            <CreateGroupPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/channels/create"
+        element={
+          <ProtectedRoute>
+            <CreateChannelPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Task #20 — invite-link preview screen */}
       <Route
         path="/channels/join/:inviteCode"
         element={
@@ -61,7 +87,7 @@ export default function App() {
         }
       />
 
-      {/* Fallback wildcard route placed at the end */}
+      {/* Fallback wildcard route */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
