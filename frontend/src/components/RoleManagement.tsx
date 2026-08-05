@@ -15,6 +15,10 @@ interface RoleManagementProps {
   isOwner: boolean;
 }
 
+type RoleEditState = RolePermissions & {
+  name: string;
+};
+
 const PERMISSION_LABELS: { key: keyof RolePermissions; label: string }[] = [
   { key: "can_send_messages", label: "Send Messages" },
   { key: "can_send_media", label: "Send Media" },
@@ -28,25 +32,19 @@ const PERMISSION_LABELS: { key: keyof RolePermissions; label: string }[] = [
   { key: "can_manage_others_topics", label: "Manage Others' Topics" },
 ];
 
-// Task #24 — assign one or more roles to a channel member.
-// Task #56 — remove a previously assigned role from a member via an "X" on
-// its chip.
-//
-// IMPORTANT CAVEAT (see the long comment on `assignMemberRole` in
-// channelService.ts): the backend's role-assignment endpoint currently
-// REPLACES a member's whole role set with the single role you send it,
-// rather than adding to it. This UI is built against that endpoint as it
-// exists today, so assigning a second role to a member will remove any
-// role they already had. Flag this to whoever owns the backend — the fix
-// is a one-line change (`.set([role])` -> `.add(role)`).
 export default function RoleManagement({ channelId, roles, isOwner }: RoleManagementProps) {
   const [members, setMembers] = useState<ChannelMembers>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
-  const [roleEdits, setRoleEdits] = useState<Record<string, RolePermissions>>({});
+  const [roleEdits, setRoleEdits] = useState<Record<string, RoleEditState>>({});
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [assignSelection, setAssignSelection] = useState<Record<string, string>>({});
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+
+  // Filter out the built-in roles so they don't appear in lists, chips, or assignments
+  const customRoles = roles.filter(
+    (r) => r.name !== "Channel Owner" && r.name !== "Channel Member"
+  );
 
   const loadMembers = async () => {
     try {
@@ -70,17 +68,12 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
     return <div className="chat-placeholder">Only the channel owner can manage roles.</div>;
   }
 
-  // The channel members API only returns role *names* for each member (see
-  // types/chat.ts note on ChannelMember.roles), so we cross-reference by
-  // name against the full role list (which has IDs) to know which role
-  // objects are assigned. This can misbehave if two custom roles share the
-  // exact same name — worth avoiding when naming roles.
   const getAssignedRoles = (member: ChannelMember): ChannelRole[] =>
-    roles.filter((r) => member.roles?.includes(r.name));
+    customRoles.filter((r) => member.roles?.includes(r.name));
 
   const getUnassignedRoles = (member: ChannelMember): ChannelRole[] => {
     const assignedNames = new Set(member.roles || []);
-    return roles.filter((r) => !assignedNames.has(r.name) && r.name !== "Channel Owner");
+    return customRoles.filter((r) => !assignedNames.has(r.name));
   };
 
   const handleToggleRoleEditor = (role: ChannelRole) => {
@@ -88,10 +81,12 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
       setExpandedRoleId(null);
       return;
     }
+
     setExpandedRoleId(role.id);
     setRoleEdits((prev) => ({
       ...prev,
       [role.id]: {
+        name: role.name,
         can_send_messages: role.can_send_messages,
         can_send_media: role.can_send_media,
         can_delete_messages: role.can_delete_messages,
@@ -106,6 +101,16 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
     }));
   };
 
+  const handleRoleNameChange = (roleId: string, name: string) => {
+    setRoleEdits((prev) => ({
+      ...prev,
+      [roleId]: {
+        ...prev[roleId],
+        name,
+      },
+    }));
+  };
+
   const handlePermissionToggle = (roleId: string, key: keyof RolePermissions) => {
     setRoleEdits((prev) => ({
       ...prev,
@@ -114,22 +119,35 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
   };
 
   const handleSaveRole = async (roleId: string) => {
+    const role = customRoles.find((r) => r.id === roleId);
+    if (!role) return;
+
     const edits = roleEdits[roleId];
     if (!edits) return;
+
+    if (!edits.name.trim()) {
+      alert("Role name cannot be empty.");
+      return;
+    }
+
     try {
       setSavingRoleId(roleId);
-      await updateChannelRole(channelId, roleId, edits);
+
+      await updateChannelRole(channelId, roleId, {
+        ...edits,
+        name: edits.name.trim(),
+      });
+
       setExpandedRoleId(null);
     } catch (err) {
       console.error("Failed to update role:", err);
-      alert("Failed to update role permissions.");
+      alert("Failed to update role.");
     } finally {
       setSavingRoleId(null);
     }
   };
 
   const handleDeleteRole = async (role: ChannelRole) => {
-    if (role.name === "Channel Owner") return;
     if (!window.confirm(`Delete the "${role.name}" role? Members with this role will lose it.`)) return;
     try {
       await deleteChannelRole(channelId, role.id);
@@ -173,31 +191,36 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
     <div className="role-management-wrapper" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
         <h4 style={{ marginBottom: 8 }}>Existing Roles</h4>
-        {roles.length === 0 && <div style={{ opacity: 0.7, fontSize: 14 }}>No custom roles yet.</div>}
+        {customRoles.length === 0 && <div style={{ opacity: 0.7, fontSize: 14 }}>No custom roles yet.</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {roles.map((role) => (
-            <div
-              key={role.id}
-              style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 12px" }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontWeight: 600 }}>{role.name}</span>
-                <div style={{ display: "flex", gap: 8 }}>
+          {customRoles.map((role) => (
+            <div key={role.id} className="role-card">
+              <div className="role-card-header">
+                <span className="role-name">{role.name}</span>
+                <div className="role-card-actions">
                   <button type="button" className="edit-group-btn" onClick={() => handleToggleRoleEditor(role)}>
                     {expandedRoleId === role.id ? "Close" : "Edit"}
                   </button>
-                  {role.name !== "Channel Owner" && (
-                    <button type="button" className="remove-member-btn" onClick={() => handleDeleteRole(role)}>
-                      Delete
-                    </button>
-                  )}
+                  <button type="button" className="remove-member-btn" onClick={() => handleDeleteRole(role)}>
+                    Delete
+                  </button>
                 </div>
               </div>
 
               {expandedRoleId === role.id && roleEdits[role.id] && (
-                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div className="role-edit-form">
+                  <label className="role-edit-name-label">
+                    Role Name
+                    <input
+                      type="text"
+                      className="edit-input"
+                      value={roleEdits[role.id].name}
+                      onChange={(e) => handleRoleNameChange(role.id, e.target.value)}
+                    />
+                  </label>
+
                   {PERMISSION_LABELS.map(({ key, label }) => (
-                    <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                    <label key={key} className="role-permission-label">
                       <input
                         type="checkbox"
                         checked={!!roleEdits[role.id][key]}
@@ -206,6 +229,7 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
                       {label}
                     </label>
                   ))}
+
                   <button
                     type="button"
                     className="save-edit-btn"
@@ -213,7 +237,7 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
                     disabled={savingRoleId === role.id}
                     style={{ alignSelf: "flex-start", marginTop: 6 }}
                   >
-                    {savingRoleId === role.id ? "Saving..." : "Save Permissions"}
+                    {savingRoleId === role.id ? "Saving..." : "Save Role"}
                   </button>
                 </div>
               )}
@@ -230,6 +254,7 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
             const assigned = getAssignedRoles(member);
             const unassigned = getUnassignedRoles(member);
             const isOwnerRow = member.roles?.includes("Channel Owner");
+            
             return (
               <div
                 key={member.user_id}
@@ -245,7 +270,7 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
                 </div>
 
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                  {assigned.length === 0 && <span style={{ fontSize: 12, opacity: 0.6 }}>No roles assigned</span>}
+                  {assigned.length === 0 && <span style={{ fontSize: 12, opacity: 0.6 }}>No custom roles</span>}
                   {assigned.map((role) => (
                     <span
                       key={role.id}
@@ -261,7 +286,7 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
                       }}
                     >
                       {role.name}
-                      {!isOwnerRow && role.name !== "Channel Owner" && (
+                      {!isOwnerRow && (
                         <button
                           type="button"
                           onClick={() => handleRemoveRole(member, role)}
