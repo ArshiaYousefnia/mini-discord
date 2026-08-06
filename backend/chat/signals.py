@@ -2,7 +2,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import Message, Notification
 from .serializers import NotificationSerializer
-from .views import broadcast_notification
+from chat.views.views_realtime_utils import broadcast_notification
 
 
 @receiver(post_save, sender=Message)
