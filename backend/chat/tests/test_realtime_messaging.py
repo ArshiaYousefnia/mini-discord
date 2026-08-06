@@ -8,9 +8,6 @@ from chat.models import Conversation, ConversationMember, Message, Channel, Chan
 
 User = get_user_model()
 
-def mock_broadcast_new_message(message):
-    pass
-
 class RealtimeMessagingTests(TestCase):
     def setUp(self):
         self.user1 = User.objects.create_user(
@@ -29,7 +26,7 @@ class RealtimeMessagingTests(TestCase):
         ConversationMember.objects.create(conversation=self.conv, user=self.user1)
         ConversationMember.objects.create(conversation=self.conv, user=self.user2)
 
-    @mock.patch('chat.views.broadcast_new_message')
+    @mock.patch('chat.views.views.broadcast_new_message')
     def test_message_creation_triggers_broadcast(self, mock_broadcast):
         url = '/api/chat/dm/'
         data = {
@@ -42,7 +39,7 @@ class RealtimeMessagingTests(TestCase):
         message = Message.objects.first()
         mock_broadcast.assert_called_with(message)
 
-    @mock.patch('chat.views.broadcast_new_message')
+    @mock.patch('chat.views.views.broadcast_new_message')
     def test_channel_message_triggers_broadcast(self, mock_broadcast):
         channel_conv = Conversation.objects.create(
             type=Conversation.Type.CHANNEL,
@@ -78,7 +75,6 @@ class RealtimeMessagingTests(TestCase):
             with mock.patch.object(consumer, 'accept', return_value=mock.AsyncMock()):
                 with mock.patch.object(consumer, 'is_member', return_value=mock.AsyncMock(return_value=True)):
                     async_to_sync(consumer.connect)()
-                    # Verify both groups were joined
                     expected_calls = [
                         mock.call(consumer.group_name, consumer.channel_name),
                         mock.call(consumer.user_group, consumer.channel_name)
