@@ -7,8 +7,7 @@ from rest_framework.views import APIView
 
 from chat.models import Conversation, ConversationMember, Role
 from chat.serializers import GroupCreateSerializer, GroupDetailSerializer, GroupMemberSerializer, GroupUpdateSerializer
-from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update, \
-    broadcast_conversation_deleted, broadcast_unread_update_for_conversation, broadcast_member_joined_notification
+from chat.views.views_realtime_utils import broadcast_conversation_update
 
 
 class GroupCreateView(APIView):
@@ -68,13 +67,6 @@ class GroupJoinView(APIView):
         member = ConversationMember.objects.create(conversation=conversation, user=user)
         member.roles.add(role)
 
-        latest_message = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
-        if latest_message:
-            member.last_read_message = latest_message
-            member.save(update_fields=['last_read_message'])
-
-        broadcast_unread_update_for_conversation(conversation)
-
         serializer = GroupDetailSerializer(conversation, context={'request': request})
 
         # After adding member
@@ -83,8 +75,6 @@ class GroupJoinView(APIView):
             'member_joined',
             {'user_id': str(user.id)}
         )
-
-        broadcast_member_joined_notification(conversation, user)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -175,19 +165,6 @@ class GroupUpdateView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        broadcast_conversation_metadata_update(conversation)
-
-        # Broadcast group info update to all members
-        broadcast_conversation_update(
-            conversation,
-            'group_updated',
-            {
-                'name': conversation.name,
-                'description': conversation.description,
-                'avatar_url': conversation.avatar_url
-            }
-        )
-
         return Response(
             GroupDetailSerializer(conversation).data
         )
@@ -212,9 +189,6 @@ class GroupDeleteView(APIView):
                 {"detail": "You are not a member of this group."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-
-        # Broadcast deletion to all members before deleting
-        broadcast_conversation_deleted(group)
 
         group.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

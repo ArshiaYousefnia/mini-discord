@@ -1,7 +1,4 @@
 import mimetypes
-
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from django.http import FileResponse
 from django.db import transaction
 from rest_framework import status, viewsets, mixins
@@ -14,19 +11,9 @@ from chat.serializers import NotificationSerializer
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 
-from chat.views import (
-    broadcast_new_message,
-    broadcast_notification,
-    broadcast_conversation_update,
-)
-
-from chat.serializers import (
-    MessageSerializer,
-    ConversationSerializer,
-    ConversationMarkReadSerializer,
-    MinimalMessageSerializer
-)
-from chat.channels_serializers import ChannelMessageSerializer
+from chat.views import broadcast_new_message, broadcast_notification, broadcast_conversation_update
+from chat.serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
+    MinimalMessageSerializer, ChannelMessageSerializer
 
 from django.contrib.auth import get_user_model
 
@@ -38,8 +25,6 @@ from chat.models import Conversation, ConversationMember, Message, Role, Topic, 
     Notification
 
 from chat.serializers import ConversationListSerializer
-from chat.views.views_realtime_utils import broadcast_unread_update_for_conversation, convert_uuids_to_str, \
-    broadcast_user_conversation_removed
 
 User = get_user_model()
 
@@ -209,8 +194,6 @@ class ConversationViewSet(mixins.ListModelMixin,
 
         membership.delete()
 
-        broadcast_user_conversation_removed(target_user_id, conversation)
-
         # Broadcast member left
         broadcast_conversation_update(
             conversation,
@@ -252,57 +235,37 @@ class MessageViewSet(
         except Conversation.DoesNotExist:
             return Message.objects.none()
 
-        base_queryset = Message.objects.filter(
-            conversation_id=conversation_id,
-            conversation__members__user=self.request.user,
-            is_deleted=False
-        ).select_related('sender').order_by("created_at")
-
         if conv.type == Conversation.Type.CHANNEL:
             return ChannelMessage.objects.filter(
                 conversation_id=conversation_id,
                 conversation__members__user=self.request.user,
                 is_deleted=False
-            ).select_related('sender', 'topic').order_by("created_at")
-
-        return base_queryset
+            ).select_related('topic').order_by("created_at")
+        else:
+            return Message.objects.filter(
+                conversation_id=conversation_id,
+                conversation__members__user=self.request.user,
+                is_deleted=False
+            ).order_by("created_at")
 
     def perform_create(self, serializer):
         conversation_id = self.kwargs.get("conversation_pk")
         conversation = get_object_or_404(Conversation, id=conversation_id)
-
-        # Membership check
+        # Membership check (keep existing logic)
         if not ConversationMember.objects.filter(
                 conversation=conversation, user=self.request.user
         ).exists():
             raise PermissionDenied("You are not a member of this conversation.")
 
+        # Channel permission check (unchanged)
         topic = None
-        content = serializer.validated_data.get('content')
-        uploaded_files = serializer.validated_data.get('uploaded_files', [])
-
-        # Channel permission checks (separate for text vs media)
         if conversation.type == Conversation.Type.CHANNEL:
             member = ConversationMember.objects.get(
                 conversation=conversation,
                 user=self.request.user
             )
-
-            # Get permissions
-            can_send_messages = member.roles.filter(can_send_messages=True).exists()
-            can_send_media = member.roles.filter(can_send_media=True).exists()
-
-            # Text message permission
-            if content and content.strip():
-                if not can_send_messages:
-                    raise PermissionDenied("You do not have permission to send text messages.")
-
-            # Media permission
-            if uploaded_files:
-                if not can_send_media:
-                    raise PermissionDenied("You do not have permission to send media files.")
-
-            # Topic handling (unchanged)
+            if not member.roles.filter(can_send_messages=True).exists():
+                raise PermissionDenied("You do not have permission to send messages in this channel.")
             topic_id = self.request.data.get('topic_id')
             if topic_id:
                 topic = get_object_or_404(Topic, id=topic_id, conversation=conversation)
@@ -312,7 +275,7 @@ class MessageViewSet(
             message = ChannelMessage.objects.create(
                 conversation=conversation,
                 sender=self.request.user,
-                content=content,
+                content=serializer.validated_data.get('content'),
                 reply_to=serializer.validated_data.get('reply_to'),
                 topic=topic,
             )
@@ -322,6 +285,7 @@ class MessageViewSet(
             )
 
         # Handle uploaded files (create Attachments)
+        uploaded_files = serializer.validated_data.get('uploaded_files', [])
         for file in uploaded_files:
             Attachment.objects.create(
                 message=message,
@@ -375,25 +339,10 @@ class MessageViewSet(
             return Response({"detail": "You can only edit your own messages."}, status=status.HTTP_403_FORBIDDEN)
         serializer = self.get_serializer(message, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        updated_message = serializer.save(is_edited=True)
+        serializer.save(is_edited=True)
 
-        conversation = updated_message.conversation
-
-        channel_layer = get_channel_layer()
-        if conversation.type == Conversation.Type.CHANNEL:
-            data = ChannelMessageSerializer(updated_message).data
-        else:
-            data = MessageSerializer(updated_message).data
-        data = convert_uuids_to_str(data)
-        async_to_sync(channel_layer.group_send)(
-            f"conversation_{conversation.id}",
-            {
-                "type": "message_updated",
-                "data": data
-            }
-        )
-
-        # 2. Broadcast conversation_update to update sidebar preview
+        # Broadcast conversation update for sidebar preview
+        conversation = message.conversation
         last_msg = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
         last_message_data = MinimalMessageSerializer(last_msg).data if last_msg else None
         broadcast_conversation_update(
@@ -431,16 +380,8 @@ class MessageViewSet(
         message.content = ""
         message.save(update_fields=["is_deleted", "content", "updated_at"])
 
-        channel_layer = get_channel_layer()
-        data = {'id': str(message.id)}
-        async_to_sync(channel_layer.group_send)(
-            f"conversation_{conversation.id}",
-            {
-                "type": "message_deleted",
-                "data": data
-            }
-        )
-
+        # After marking message as deleted
+        # Find the new last message (if any)
         last_msg = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
         last_message_data = MinimalMessageSerializer(last_msg).data if last_msg else None
         broadcast_conversation_update(
@@ -448,8 +389,6 @@ class MessageViewSet(
             'message_deleted',
             {'last_message': last_message_data}
         )
-
-        broadcast_unread_update_for_conversation(conversation)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -486,20 +425,18 @@ class ConversationListView(ListAPIView):
             unread_count=Count(
                 'messages',
                 filter=Q(
-                    messages__created_at__gt=Coalesce(last_read_created, Value('1970-01-01')),
-                    messages__is_deleted=False
+                    messages__created_at__gt=Coalesce(last_read_created, Value('1970-01-01'))
                 )
             )
         ).distinct()
 
-        # Prefetch the latest message with attachments
+        # Prefetch the latest message
         queryset = queryset.prefetch_related(
             Prefetch(
                 'messages',
                 queryset=Message.objects
-                .filter(is_deleted=False)
-                .order_by('-created_at')[:1]
-                .prefetch_related('attachments'),  # <-- add this
+                    .filter(is_deleted=False)
+                    .order_by('-created_at')[:1],  # <--- correct place to slice
                 to_attr='_last_message_prefetched'
             )
         )
@@ -542,9 +479,6 @@ class ConversationMarkReadView(APIView):
 
         member.last_read_message = message
         member.save(update_fields=['last_read_message'])
-
-        broadcast_unread_update_for_conversation(conversation)
-
         return Response({"detail": "Read status updated."}, status=status.HTTP_200_OK)
 
 
