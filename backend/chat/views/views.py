@@ -11,9 +11,21 @@ from chat.serializers import NotificationSerializer
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 
-from chat.views import broadcast_new_message, broadcast_notification, broadcast_conversation_update
-from chat.serializers import MessageSerializer, ConversationSerializer, ConversationMarkReadSerializer, \
-    MinimalMessageSerializer, ChannelMessageSerializer
+from chat.views import (
+    broadcast_new_message,
+    broadcast_notification,
+    broadcast_conversation_update,
+    broadcast_message_deleted,
+    broadcast_message_updated
+)
+
+from chat.serializers import (
+    MessageSerializer,
+    ConversationSerializer,
+    ConversationMarkReadSerializer,
+    MinimalMessageSerializer,
+    ChannelMessageSerializer
+)
 
 from django.contrib.auth import get_user_model
 
@@ -341,7 +353,9 @@ class MessageViewSet(
         serializer.is_valid(raise_exception=True)
         serializer.save(is_edited=True)
 
-        # Broadcast conversation update for sidebar preview
+        # Broadcast conversation update for preview
+        broadcast_message_updated(message)
+
         conversation = message.conversation
         last_msg = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
         last_message_data = MinimalMessageSerializer(last_msg).data if last_msg else None
@@ -380,8 +394,8 @@ class MessageViewSet(
         message.content = ""
         message.save(update_fields=["is_deleted", "content", "updated_at"])
 
-        # After marking message as deleted
-        # Find the new last message (if any)
+        broadcast_message_deleted(message.id, conversation.id)
+
         last_msg = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
         last_message_data = MinimalMessageSerializer(last_msg).data if last_msg else None
         broadcast_conversation_update(
