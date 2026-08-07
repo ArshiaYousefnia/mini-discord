@@ -8,16 +8,15 @@ import HomePage from "./pages/HomePage";
 import CreateGroupPage from "./pages/CreateGroupPage";
 import CreateChannelPage from "./pages/CreateChannelPage";
 import ChannelInvitePage from "./pages/ChannelInvitePage";
+import { NotificationProvider } from "./context/NotificationContext";
 
-// Helper component to handle root routing logic
 function RootRedirect() {
-  // Check if user exists in localStorage.
-  // IMPORTANT: Change "username" to the exact key your LoginForm saves
-  // e.g. "token", "access_token", "userData", etc.
-  const isAuthenticated = !!localStorage.getItem("username");
+  const isAuthenticated = Boolean(
+    localStorage.getItem("accessToken")
+  );
 
   if (isAuthenticated) {
-    return <Navigate to="/HomePage/" replace />;
+    return <Navigate to="/HomePage" replace />;
   }
 
   return <Navigate to="/login" replace />;
@@ -25,70 +24,73 @@ function RootRedirect() {
 
 export default function App() {
   return (
-    <Routes>
-      {/* Root path redirects based on auth state */}
-      <Route path="/" element={<RootRedirect />} />
+    <NotificationProvider>
+      <Routes>
+        <Route path="/" element={<RootRedirect />} />
 
-      <Route path="/register" element={<Register />} />
-      <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
-      <Route
-        path="/users/:userId"
-        element={
-          <ProtectedRoute>
-            <UserProfilePage />
-          </ProtectedRoute>
-        }
-      />
+        <Route path="/login" element={<Login />} />
 
-      <Route
-        path="/profile/"
-        element={
-          <ProtectedRoute>
-            <EditProfilePage />
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/users/:userId"
+          element={
+            <ProtectedRoute>
+              <UserProfilePage />
+            </ProtectedRoute>
+          }
+        />
 
-      <Route
-        path="/HomePage/"
-        element={
-          <ProtectedRoute>
-            <HomePage />
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <EditProfilePage />
+            </ProtectedRoute>
+          }
+        />
 
-      <Route
-        path="/groups/create"
-        element={
-          <ProtectedRoute>
-            <CreateGroupPage />
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/HomePage"
+          element={
+            <ProtectedRoute>
+              <HomePage />
+            </ProtectedRoute>
+          }
+        />
 
-      <Route
-        path="/channels/create"
-        element={
-          <ProtectedRoute>
-            <CreateChannelPage />
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/groups/create"
+          element={
+            <ProtectedRoute>
+              <CreateGroupPage />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* Task #20 — invite-link preview screen */}
-      <Route
-        path="/channels/join/:inviteCode"
-        element={
-          <ProtectedRoute>
-            <ChannelInvitePage />
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/channels/create"
+          element={
+            <ProtectedRoute>
+              <CreateChannelPage />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* Fallback wildcard route */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route
+          path="/channels/join/:inviteCode"
+          element={
+            <ProtectedRoute>
+              <ChannelInvitePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="*"
+          element={<Navigate to="/" replace />}
+        />
+      </Routes>
+    </NotificationProvider>
   );
 }

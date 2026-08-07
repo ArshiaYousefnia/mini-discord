@@ -27,17 +27,43 @@ export interface NotificationPayload {
 
 type ConversationUpdateCallback = (data: ConversationUpdatePayload) => void;
 type NotificationCallback = (data: NotificationPayload) => void;
+type ConversationMessageCallback = (msg: any) => void;
+
+type SocketEnvelope =
+  | { type: "conversation_update"; data: ConversationUpdatePayload }
+  | { type: "notification"; data: NotificationPayload }
+  | { type: "new_message"; data: any }
+  | { type: string; data?: any };
 
 class RealtimeService {
   private userSocket: WebSocket | null = null;
   private conversationSocket: WebSocket | null = null;
-  private conversationCallbacks: Set<(msg: any) => void> = new Set();
+
   private updateCallbacks: Set<ConversationUpdateCallback> = new Set();
   private notificationCallbacks: Set<NotificationCallback> = new Set();
-  private reconnectInterval = 3000;
+  private conversationCallbacks: Set<ConversationMessageCallback> = new Set();
+
   private activeConversationId: string | null = null;
 
-  // Global socket listener registration
+  private reconnectInterval = 3000;
+
+  private userReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private conversationReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private userManuallyClosed = false;
+  private conversationManuallyClosed = false;
+
+  /**
+   * Incrementing ids prevent stale onclose handlers / delayed reconnect timers
+   * from resurrecting old sockets after a newer one has been created.
+   */
+  private userConnectionSeq = 0;
+  private conversationConnectionSeq = 0;
+
+  // =========================
+  // Subscription API
+  // =========================
+
   public subscribeToUpdates(callback: ConversationUpdateCallback) {
     this.updateCallbacks.add(callback);
     return () => this.updateCallbacks.delete(callback);
@@ -48,107 +74,312 @@ class RealtimeService {
     return () => this.notificationCallbacks.delete(callback);
   }
 
-  // Active chat listener registration
-  public subscribeToConversationMessages(callback: (msg: any) => void) {
+  public subscribeToConversationMessages(callback: ConversationMessageCallback) {
     this.conversationCallbacks.add(callback);
     return () => this.conversationCallbacks.delete(callback);
   }
 
+  // =========================
+  // Public connection helpers
+  // =========================
+
   /**
-   * Connects to the global user channel: ws/user/
+   * Ensure the global user socket exists.
+   * Safe to call multiple times.
    */
   public connectUserSocket() {
-    if (this.userSocket && (this.userSocket.readyState === WebSocket.OPEN || this.userSocket.readyState === WebSocket.CONNECTING)) {
+    if (this.isSocketAlive(this.userSocket)) {
       return;
     }
 
-    const token = localStorage.getItem("accessToken");
+    const token = this.getToken();
     if (!token) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host;
-    // Pass token as a query param for ASGI scope authentication middlewares
-    const wsUrl = `${protocol}//${host}/ws/user/?token=${encodeURIComponent(token)}`;
+    this.userManuallyClosed = false;
+    this.clearTimer("user");
 
-    this.userSocket = new WebSocket(wsUrl);
+    const connectionId = ++this.userConnectionSeq;
+    const wsUrl = this.buildWsUrl("/ws/user/", token);
 
-    this.userSocket.onmessage = (event) => {
-      try {
-        const envelope = JSON.parse(event.data);
-        if (envelope.type === "conversation_update") {
-          this.updateCallbacks.forEach((cb) => cb(envelope.data));
-        } else if (envelope.type === "notification") {
-          this.notificationCallbacks.forEach((cb) => cb(envelope.data));
-        }
-      } catch (err) {
-        console.error("Error processing user socket message:", err);
-      }
+    const socket = new WebSocket(wsUrl);
+    this.userSocket = socket;
+
+    socket.onmessage = (event) => {
+      this.handleUserSocketMessage(event);
     };
 
-    this.userSocket.onclose = () => {
-      setTimeout(() => this.connectUserSocket(), this.reconnectInterval);
+    socket.onerror = () => {
+      // Let onclose decide whether to reconnect
+    };
+
+    socket.onclose = (event) => {
+      if (this.userSocket === socket) {
+        this.userSocket = null;
+      }
+
+      // Ignore stale closes from an old socket instance
+      if (connectionId !== this.userConnectionSeq) return;
+
+      // Don't reconnect on intentional close
+      if (this.userManuallyClosed) return;
+
+      // Normal close code should not trigger reconnect
+      if (event.code === 1000) return;
+
+      this.scheduleUserReconnect(connectionId);
     };
   }
 
   /**
-   * Connects to a specific conversation channel: ws/chat/<conversation_id>/
+   * Ensure the conversation socket is connected to the given conversation.
+   * Safe to call repeatedly.
    */
   public connectConversationSocket(conversationId: string) {
-    // If already connected to this conversation, do nothing
-    if (this.activeConversationId === conversationId && this.conversationSocket) {
+    if (!conversationId) return;
+
+    if (
+      this.activeConversationId === conversationId &&
+      this.isSocketAlive(this.conversationSocket)
+    ) {
       return;
     }
 
-    this.disconnectConversationSocket();
-    this.activeConversationId = conversationId;
+    this.disconnectConversationSocket(false);
 
-    const token = localStorage.getItem("accessToken");
+    const token = this.getToken();
     if (!token) return;
+
+    this.activeConversationId = conversationId;
+    this.conversationManuallyClosed = false;
+    this.clearTimer("conversation");
+
+    const connectionId = ++this.conversationConnectionSeq;
+    const wsUrl = this.buildWsUrl(`/ws/chat/${conversationId}/`, token);
+
+    const socket = new WebSocket(wsUrl);
+    this.conversationSocket = socket;
+
+    socket.onmessage = (event) => {
+      this.handleConversationSocketMessage(event);
+    };
+
+    socket.onerror = () => {
+      // Let onclose decide whether to reconnect
+    };
+
+    socket.onclose = (event) => {
+      if (this.conversationSocket === socket) {
+        this.conversationSocket = null;
+      }
+
+      // Ignore stale closes from an old socket instance
+      if (connectionId !== this.conversationConnectionSeq) return;
+
+      // If we already switched to another conversation or intentionally closed, do nothing
+      if (this.conversationManuallyClosed) return;
+
+      // If the user changed the active conversation, don't reconnect this one
+      if (this.activeConversationId !== conversationId) return;
+
+      // Normal close code should not trigger reconnect
+      if (event.code === 1000) return;
+
+      this.scheduleConversationReconnect(conversationId, connectionId);
+    };
+  }
+
+  /**
+   * Close only the conversation socket.
+   * Does NOT clear callbacks.
+   */
+  public disconnectConversationSocket(manualClose = true) {
+    if (manualClose) {
+      this.conversationManuallyClosed = true;
+    }
+
+    this.clearTimer("conversation");
+
+    const socket = this.conversationSocket;
+    this.conversationSocket = null;
+    this.activeConversationId = null;
+
+    if (socket && socket.readyState !== WebSocket.CLOSED) {
+      try {
+        socket.close(1000, "Component unmounted / Chat changed");
+      } catch {
+        // ignore close errors
+      }
+    }
+  }
+
+  /**
+   * Close only the user socket.
+   */
+  public disconnectUserSocket() {
+    this.userManuallyClosed = true;
+    this.clearTimer("user");
+
+    const socket = this.userSocket;
+    this.userSocket = null;
+
+    if (socket && socket.readyState !== WebSocket.CLOSED) {
+      try {
+        socket.close(1000, "Application teardown");
+      } catch {
+        // ignore close errors
+      }
+    }
+  }
+
+  /**
+   * Close everything intentionally.
+   */
+  public disconnectAll() {
+    this.disconnectConversationSocket(true);
+    this.disconnectUserSocket();
+  }
+
+  /**
+   * Optional helper if you want to clear all subscribers too.
+   * Usually not needed in app runtime.
+   */
+  public clearAllSubscribers() {
+    this.updateCallbacks.clear();
+    this.notificationCallbacks.clear();
+    this.conversationCallbacks.clear();
+  }
+
+  /**
+   * Optional helper for logout:
+   * - closes sockets
+   * - clears timers
+   * - resets internal connection state
+   */
+  public reset() {
+    this.disconnectAll();
+    this.activeConversationId = null;
+    this.userSocket = null;
+    this.conversationSocket = null;
+    this.userConnectionSeq++;
+    this.conversationConnectionSeq++;
+    this.userManuallyClosed = true;
+    this.conversationManuallyClosed = true;
+  }
+
+  // =========================
+  // Internal message handling
+  // =========================
+
+  private handleUserSocketMessage(event: MessageEvent) {
+    try {
+      const envelope = JSON.parse(event.data) as SocketEnvelope;
+
+      if (envelope.type === "conversation_update") {
+        if (envelope.data) {
+          this.updateCallbacks.forEach((cb) => cb(envelope.data));
+        }
+        return;
+      }
+
+      if (envelope.type === "notification") {
+        if (envelope.data) {
+          this.notificationCallbacks.forEach((cb) => cb(envelope.data));
+        }
+        return;
+      }
+    } catch (err) {
+      console.error("Error processing user socket message:", err);
+    }
+  }
+
+  private handleConversationSocketMessage(event: MessageEvent) {
+    try {
+      const envelope = JSON.parse(event.data) as SocketEnvelope;
+
+      if (envelope.type === "new_message") {
+        this.conversationCallbacks.forEach((cb) => cb(envelope.data));
+      }
+    } catch (err) {
+      console.error("Error processing conversation socket message:", err);
+    }
+  }
+
+  // =========================
+  // Reconnect logic
+  // =========================
+
+  private scheduleUserReconnect(connectionId: number) {
+    this.clearTimer("user");
+
+    this.userReconnectTimer = setTimeout(() => {
+      // Don't reconnect if a newer socket was created in the meantime
+      if (connectionId !== this.userConnectionSeq) return;
+
+      // Don't reconnect after manual shutdown
+      if (this.userManuallyClosed) return;
+
+      this.connectUserSocket();
+    }, this.reconnectInterval);
+  }
+
+  private scheduleConversationReconnect(
+    conversationId: string,
+    connectionId: number
+  ) {
+    this.clearTimer("conversation");
+
+    this.conversationReconnectTimer = setTimeout(() => {
+      // Don't reconnect if a newer socket was created in the meantime
+      if (connectionId !== this.conversationConnectionSeq) return;
+
+      // Don't reconnect after manual shutdown
+      if (this.conversationManuallyClosed) return;
+
+      // Don't reconnect if user switched conversations
+      if (this.activeConversationId !== conversationId) return;
+
+      this.connectConversationSocket(conversationId);
+    }, this.reconnectInterval);
+  }
+
+  // =========================
+  // Utilities
+  // =========================
+
+  private clearTimer(kind: "user" | "conversation") {
+    if (kind === "user" && this.userReconnectTimer) {
+      clearTimeout(this.userReconnectTimer);
+      this.userReconnectTimer = null;
+    }
+
+    if (kind === "conversation" && this.conversationReconnectTimer) {
+      clearTimeout(this.conversationReconnectTimer);
+      this.conversationReconnectTimer = null;
+    }
+  }
+
+  private isSocketAlive(socket: WebSocket | null) {
+    return (
+      socket !== null &&
+      (socket.readyState === WebSocket.OPEN ||
+        socket.readyState === WebSocket.CONNECTING)
+    );
+  }
+
+  private getToken() {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("accessToken");
+  }
+
+  private buildWsUrl(path: string, token: string) {
+    if (typeof window === "undefined") {
+      throw new Error("WebSocket URL requested on the server");
+    }
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/chat/${conversationId}/?token=${encodeURIComponent(token)}`;
 
-    this.conversationSocket = new WebSocket(wsUrl);
-
-    this.conversationSocket.onmessage = (event) => {
-      try {
-        const envelope = JSON.parse(event.data);
-        if (envelope.type === "new_message") {
-          this.conversationCallbacks.forEach((cb) => cb(envelope.data));
-        }
-      } catch (err) {
-        console.error("Error processing conversation socket message:", err);
-      }
-    };
-
-    this.conversationSocket.onclose = (event) => {
-      // Reconnect only if the active chat target has not changed during disconnect
-      if (this.activeConversationId === conversationId && event.code !== 1000) {
-        setTimeout(() => {
-          if (this.activeConversationId === conversationId) {
-            this.connectConversationSocket(conversationId);
-          }
-        }, this.reconnectInterval);
-      }
-    };
-  }
-
-  public disconnectConversationSocket() {
-    this.conversationCallbacks.clear();
-    if (this.conversationSocket) {
-      this.conversationSocket.close(1000, "Component unmounted / Chat changed");
-      this.conversationSocket = null;
-    }
-    this.activeConversationId = null;
-  }
-
-  public disconnectAll() {
-    this.disconnectConversationSocket();
-    if (this.userSocket) {
-      this.userSocket.close(1000, "Log out / Application teardown");
-      this.userSocket = null;
-    }
+    return `${protocol}//${host}${path}?token=${encodeURIComponent(token)}`;
   }
 }
 
