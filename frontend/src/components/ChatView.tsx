@@ -52,6 +52,9 @@ import {
   deleteTopic,
 } from "../services/topicService";
 
+// Import the centralized realtime WebSocket service and its payloads
+import { realtimeService, type ConversationUpdatePayload } from "../services/realtimeService";
+
 interface Props {
   chat: ChatListItem | null;
   isMobile: boolean;
@@ -89,7 +92,6 @@ export default function ChatView({
   onStartDirectMessage,
   onDirectMessageCreated,
 }: Props) {
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -138,6 +140,12 @@ export default function ChatView({
   const shouldScrollToBottomRef = useRef(false);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
   const highlightTimeoutRef = useRef<number | null>(null);
+
+  // Ref to track active conversation ID to prevent stale closures in real-time callbacks
+  const currentChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    currentChatIdRef.current = chat?.id || null;
+  }, [chat]);
 
   const currentUserId = localStorage.getItem("Id");
   const currentUsername = (() => {
@@ -192,7 +200,6 @@ export default function ChatView({
 
   const headerChat = chat ?? pendingChat ?? profileOpeningChat;
 
-
   const isCurrentUserOwner =
     String(groupProfile?.owner_id) === String(currentUserId) ||
     (chatType === "CHANNEL" && channelPermissions?.is_owner === true);
@@ -243,6 +250,65 @@ export default function ChatView({
       setLocalChatInfo({ name: chat.name, avatar: chat.avatar });
     }
   }, [chat]);
+
+  // Real-time Event Subscription for Message updates, New messages, and Group changes.
+  // Replaces the continuous HTTP polling loops.
+  useEffect(() => {
+    if (!chat?.id) return;
+
+    // Connect / Join conversation group room
+    realtimeService.connectConversationSocket(chat.id);
+
+    // Listen to real-time messages
+    const unsubscribeNewMessage = realtimeService.subscribeToConversationMessages((data: Message) => {
+      // Security Check: confirm message belongs to our currently opened chat session
+      if (String(data.conversation) !== currentChatIdRef.current) return;
+
+      setMessages((prev) => {
+        // Deduplicate: avoid appending if the client sent it and received their own broadcast echo
+        if (prev.some((m) => m.id === data.id)) return prev;
+
+        const sorted = [...prev, data].sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime()
+        );
+
+        shouldScrollToBottomRef.current = true;
+        scrollBehaviorRef.current = "smooth";
+        return sorted;
+      });
+
+      // Mark newly-arrived message as read
+      void markConversationRead(chat.id, data.id);
+    });
+
+    // Listen to conversation/message edits or leaves
+    const unsubscribeUpdates = realtimeService.subscribeToUpdates((data: ConversationUpdatePayload) => {
+      if (String(data.conversation_id) !== currentChatIdRef.current) return;
+
+      if (data.event_type === "message_updated" && data.last_message) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === data.last_message!.id 
+              ? { ...msg, ...data.last_message } 
+              : msg
+          )
+        );
+      } else if (data.event_type === "member_left") {
+        // Automatically fetch fresh members if currently viewing the profile overlay
+        if (showProfile) {
+          void handleHeaderClick();
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeNewMessage();
+      unsubscribeUpdates();
+      realtimeService.disconnectConversationSocket();
+    };
+  }, [chat?.id, showProfile]);
 
   useEffect(() => {
     if (!chat) {
@@ -314,83 +380,56 @@ export default function ChatView({
     };
   }, [chat]);
 
-  useEffect(() => {
-    if (!chat || chatType !== "GROUP") return;
-
-    let isMounted = true;
-
-    const pollGroupInfo = async () => {
-      try {
-        const [profileData, membersData] = await Promise.all([
-          getGroupProfile(chat.id),
-          getGroupMembers(chat.id),
-        ]);
-
-        if (!isMounted) return;
-
-        setGroupProfile(profileData);
-        setGroupMembers(membersData);
-        setLocalChatInfo((prev) =>
-          prev?.name !== profileData.name ||
-          prev?.avatar !== (profileData.avatar_url || chat.avatar)
-            ? {
-                name: profileData.name,
-                avatar: profileData.avatar_url || chat.avatar,
-              }
-            : prev
-        );
-      } catch (error) {
-        console.error("Failed to background refresh group data:", error);
-      }
-    };
-
-    pollGroupInfo();
-    const intervalId = setInterval(pollGroupInfo, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [chat, chatType]);
-
+  // Load static configuration details on component mount/chat-change.
+  // Group and Channel info, permissions, and topics are fetched once instead of continuous HTTP polling.
   useEffect(() => {
     if (!chat) return;
 
     let isMounted = true;
 
-    const pollMessages = async () => {
+    const loadChatContext = async () => {
       try {
-        const data = await getConversationMessages(chat.id);
-        if (!isMounted) return;
+        if (chatType === "GROUP") {
+          const [profileData, membersData] = await Promise.all([
+            getGroupProfile(chat.id),
+            getGroupMembers(chat.id),
+          ]);
 
-        const sorted = [...data].sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() -
-            new Date(b.created_at).getTime()
-        );
+          if (!isMounted) return;
 
-        setMessages((prev) => {
-          if (JSON.stringify(prev) === JSON.stringify(sorted)) return prev;
+          setGroupProfile(profileData);
+          setGroupMembers(membersData);
+          setLocalChatInfo((prev) =>
+            prev?.name !== profileData.name ||
+            prev?.avatar !== (profileData.avatar_url || chat.avatar)
+              ? {
+                  name: profileData.name,
+                  avatar: profileData.avatar_url || chat.avatar,
+                }
+              : prev
+          );
+        } else if (chatType === "CHANNEL") {
+          const [permissionsData, topicsData] = await Promise.all([
+            getPermissions(chat.id),
+            getTopics(chat.id)
+          ]);
 
-          if (sorted.length > prev.length) {
-            shouldScrollToBottomRef.current = true;
-            scrollBehaviorRef.current = "smooth";
-          }
+          if (!isMounted) return;
 
-          return sorted;
-        });
-      } catch (err) {
-        console.error("Failed to poll messages:", err);
+          setChannelPermissions(permissionsData);
+          setTopics(topicsData);
+        }
+      } catch (error) {
+        console.error("Failed to load initial context info:", error);
       }
     };
 
-    const intervalId = setInterval(pollMessages, 4000);
+    loadChatContext();
 
     return () => {
       isMounted = false;
-      clearInterval(intervalId);
     };
-  }, [chat]);
+  }, [chat, chatType]);
 
   useEffect(() => {
     if (!loading && shouldScrollToBottomRef.current) {
@@ -402,100 +441,6 @@ export default function ChatView({
       });
     }
   }, [messages.length, loading, chat?.id]);
-
-  useEffect(() => {
-    if (!chat || chatType !== "CHANNEL") return;
-
-    let isMounted = true;
-
-    getPermissions(chat.id)
-      .then((permissions) => {
-        if (isMounted) setChannelPermissions(permissions);
-      })
-      .catch(console.error);
-
-    return () => {
-      isMounted = false;
-    };
-  }, [chat, chatType]);
-
-  // Task #24 / #56 — poll current user's channel permissions.
-  useEffect(() => {
-    if (!chat || chatType !== "CHANNEL") return;
-
-    let isMounted = true;
-
-    const intervalId = setInterval(() => {
-      getPermissions(chat.id)
-        .then((permissions) => {
-          if (isMounted) setChannelPermissions(permissions);
-        })
-        .catch(console.error);
-    }, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [chat, chatType]);
-
-  // Keep channel members fresh while the channel profile overlay is open.
-  useEffect(() => {
-    if (
-      !chat ||
-      chatType !== "CHANNEL" ||
-      !showProfile ||
-      profileViewType !== "channel"
-    ) {
-      return;
-    }
-
-    let isMounted = true;
-
-    const intervalId = setInterval(() => {
-      getChannelMembers(chat.id)
-        .then((membersData) => {
-          if (isMounted) setChannelMembers(membersData);
-        })
-        .catch((err) =>
-          console.error("Failed to refresh channel members:", err)
-        );
-    }, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [chat, chatType, showProfile, profileViewType]);
-
-  // Task #22 / #49 — load and poll a channel's topics.
-  useEffect(() => {
-    if (!chat || chatType !== "CHANNEL") {
-      setTopics([]);
-      setActiveTopicId(null);
-      return;
-    }
-
-    let isMounted = true;
-    setActiveTopicId(null);
-
-    const loadTopics = async () => {
-      try {
-        const data = await getTopics(chat.id);
-        if (isMounted) setTopics(data);
-      } catch (err) {
-        console.error("Failed to load topics:", err);
-      }
-    };
-
-    loadTopics();
-    const intervalId = setInterval(loadTopics, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [chat, chatType]);
 
   const handleSendMessage = async (text: string, files: File[] = []) => {
     if (!chat && !pendingDirectMessageUser) return;
@@ -535,9 +480,14 @@ export default function ChatView({
         topic_id: chatType === "CHANNEL" ? activeTopicId : undefined,
       });
 
+      // Optimistically append the message local state; duplicate message check inside the
+      // WebSocket receiver ensures it doesn't double-render when broadcasted.
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === newMessage.id)) return prev;
+        return [...prev, newMessage];
+      });
       shouldScrollToBottomRef.current = true;
       scrollBehaviorRef.current = "smooth";
-      setMessages((prev) => [...prev, newMessage]);
       setActiveReplyTo(null);
 
       await markConversationRead(chat.id, newMessage.id);
@@ -632,7 +582,6 @@ export default function ChatView({
     // during renders; this effect should run only for a newly supplied user.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileUserToOpen, onProfileUserOpened]);
-
 
   const handleHeaderClick = async () => {
     // Pending DMs do not have a real chat yet, but must open the same
@@ -972,7 +921,7 @@ export default function ChatView({
     );
   }, [messages, chatType, activeTopicId]);
 
-    if (
+  if (
     !chat &&
     !pendingDirectMessageUser &&
     !profileUserToOpen &&
@@ -1098,14 +1047,14 @@ export default function ChatView({
         isCurrentUserOwner={isCurrentUserOwner}
         currentUserId={currentUserId}
         onClose={() => {
-                          setShowProfile(false);
+          setShowProfile(false);
 
-                          // If this screen exists only because a global-search profile was opened,
-                          // return to the sidebar after closing the overlay.
-                          if (!chat && !pendingDirectMessageUser) {
-                            onBack();
-                          }
-                        }}
+          // If this screen exists only because a global-search profile was opened,
+          // return to the sidebar after closing the overlay.
+          if (!chat && !pendingDirectMessageUser) {
+            onBack();
+          }
+        }}
         onBackToGroup={() => setProfileViewType("group")}
         onSaveGroupEdit={handleSaveGroupEdit}
         onSaveChannelEdit={handleSaveChannelEdit}

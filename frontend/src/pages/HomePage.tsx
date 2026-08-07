@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+// src/pages/HomePage.tsx
+
+import { useEffect, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
@@ -11,6 +13,7 @@ import type { ChatListItem, Conversation } from "../types/chat";
 import type { BackendUserProfile, UserProfile } from "../types/user";
 import "../styles/home.css";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
+import { realtimeService, type ConversationUpdatePayload } from "../services/realtimeService";
 
 // Retrieve current logged in user config
 function getCurrentUsername(): string {
@@ -52,6 +55,12 @@ export default function HomePage() {
 
   const [profileUserToOpen, setProfileUserToOpen] =
     useState<BackendUserProfile | null>(null);
+
+  // Keep a reference to selectedChat to avoid stale closures in socket callbacks
+  const selectedChatRef = useRef<ChatListItem | null>(null);
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -142,26 +151,27 @@ export default function HomePage() {
         }
       }
 
-      if (selectedChat) {
+      if (selectedChatRef.current) {
+        const currentActiveChat = selectedChatRef.current;
         const updatedSelectedChat = sorted.find(
-          (c) => c.id === selectedChat.id
+          (c) => c.id === currentActiveChat.id
         );
 
         if (!updatedSelectedChat) {
           setSelectedChat(null);
 
-          if (searchParams.get("chat") === selectedChat.id) {
+          if (searchParams.get("chat") === currentActiveChat.id) {
             const nextParams = new URLSearchParams(searchParams);
             nextParams.delete("chat");
             setSearchParams(nextParams, { replace: true });
           }
         } else if (
-          updatedSelectedChat.name !== selectedChat.name ||
-          updatedSelectedChat.avatar !== selectedChat.avatar
+          updatedSelectedChat.name !== currentActiveChat.name ||
+          updatedSelectedChat.avatar !== currentActiveChat.avatar
         ) {
           setSelectedChat({
             ...updatedSelectedChat,
-            unreadCount: selectedChat.unreadCount,
+            unreadCount: currentActiveChat.unreadCount,
           });
         }
       }
@@ -195,6 +205,63 @@ export default function HomePage() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
+
+  // Connect user-level notifications and updates
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+
+    // Establish WebSocket Connection
+    realtimeService.connectUserSocket();
+
+    // Handle updates (new messages previewed in sidebar, user exits)
+    const unsubscribeUpdates = realtimeService.subscribeToUpdates((update: ConversationUpdatePayload) => {
+      const targetId = String(update.conversation_id);
+
+      if (update.event_type === "member_left") {
+        // If the current user is the one who was removed/left, exit the conversation
+        // (Assuming currentUsername can be compared or handled by calling exit logic)
+        handleGroupExit(targetId);
+        return;
+      }
+
+      setChatItems((prevChats) => {
+        const existingChatIndex = prevChats.findIndex((c) => String(c.id) === targetId);
+
+        if (existingChatIndex === -1) {
+          // New conversation created or not in sidebar list: pull dynamic refresh
+          void loadChats(true);
+          return prevChats;
+        }
+
+        const isCurrentlyOpen = selectedChatRef.current && String(selectedChatRef.current.id) === targetId;
+        const targetChat = prevChats[existingChatIndex];
+
+        const updatedChat: ChatListItem = {
+          ...targetChat,
+          unreadCount: isCurrentlyOpen ? 0 : (targetChat.unreadCount ?? 0) + 1,
+          lastMessage: update.last_message?.content || targetChat.lastMessage,
+          lastMessageAt: update.last_message?.created_at || targetChat.lastMessageAt,
+        };
+
+        const listWithoutTarget = prevChats.filter((_, idx) => idx !== existingChatIndex);
+        return sortChatsByRecent([updatedChat, ...listWithoutTarget]);
+      });
+    });
+
+    // Handle notifications (toast notifications or overall indicators)
+    const unsubscribeNotifications = realtimeService.subscribeToNotifications((notification) => {
+      // Logic for system-wide toast or DM indicator increments goes here
+      console.log("Real-time Notification received:", notification);
+    });
+
+    return () => {
+      unsubscribeUpdates();
+      unsubscribeNotifications();
+      realtimeService.disconnectAll();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
@@ -254,16 +321,11 @@ export default function HomePage() {
     setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
   };
 
-  // Task #55 — after joining a channel found via public-ID search, select
-  // it the same way we already do for group invite joins: set `?chat=` and
-  // reload the conversation list so the new channel appears in the sidebar.
   const handleChannelJoined = async (channelId: string) => {
     setSearchParams({ chat: channelId });
     await loadChats(false, channelId);
   };
 
-  // Determine if the currently selected chat's other user is online.
-  // We use String() representation here to match our normalized websocket state.
   const isOtherUserOnline =
     selectedChat?.other_user_id
       ? !!onlineUsers[String(selectedChat.other_user_id)]

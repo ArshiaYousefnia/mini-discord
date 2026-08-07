@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect } from "react";
 import ChatItem from "./ChatItem";
 import type { ChatListItem } from "../types/chat";
 import type { BackendUserProfile } from "../types/user";
@@ -12,12 +12,15 @@ type Props = {
   onSelectChat: (chat: ChatListItem) => void;
   currentUsername: string;
   onStartDirectMessage: (user: BackendUserProfile) => Promise<void>;
-  onRefresh?: () => void;
+  onRefresh?: () => void; // Kept for manual triggers, but polling removed
   onlineUsers?: Record<string, boolean>;
   onChannelJoined?: (channelId: string) => void;
   onOpenUserProfile: (user: BackendUserProfile) => void;
 };
 
+/**
+ * Normalizes the logged-in username for comparison logic.
+ */
 function getLoggedInUsername(): string {
   try {
     const raw = localStorage.getItem("username");
@@ -51,40 +54,24 @@ export default function Sidebar({
   onlineUsers = {},
   onChannelJoined,
 }: Props) {
-
   const navigate = useNavigate();
 
+  // Profile State
   const [displayName, setDisplayName] = useState<string>("My Profile");
-  const [avatarUrl, setAvatarUrl] = useState<string>(
-    "https://i.pravatar.cc/150?img=12"
-  );
+  const [avatarUrl, setAvatarUrl] = useState<string>("https://i.pravatar.cc/150?img=12");
+  const [loggedInUsername, setLoggedInUsername] = useState("");
 
+  // Search State
   const [search, setSearch] = useState("");
   const [searchingGlobal, setSearchingGlobal] = useState(false);
   const [globalResults, setGlobalResults] = useState<GlobalSearchResult[]>([]);
   const [searchError, setSearchError] = useState("");
+  
+  // Action State
   const [joiningChannelId, setJoiningChannelId] = useState<string | null>(null);
-  // Track which channels we know the user is already a member of
   const [membershipStatus, setMembershipStatus] = useState<Record<string, 'member'>>({});
 
-  const [loggedInUsername, setLoggedInUsername] = useState("");
-
-  // --- Polling logic (unchanged) ---
-  const onRefreshRef = useRef(onRefresh);
-  useEffect(() => {
-    onRefreshRef.current = onRefresh;
-  }, [onRefresh]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (onRefreshRef.current) {
-        onRefreshRef.current();
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-  // ---------------------------------
-
+  // Sync profile data and username from local storage/props
   useEffect(() => {
     const savedName = localStorage.getItem("display_name");
     const savedAvatar = localStorage.getItem("avatar_url");
@@ -100,14 +87,22 @@ export default function Sidebar({
   const goToCreateGroup = () => navigate("/groups/create");
   const goToCreateChannel = () => navigate("/channels/create");
 
+  // Determine if search should trigger a global API call (prefixed with @)
   const isGlobalSearchQuery = search.trim().startsWith("@");
 
+  // Filter existing conversations based on search text
   const filteredChats = useMemo(() => {
     if (isGlobalSearchQuery) return chats;
-    return chats.filter((chat) =>
-      chat.name.toLowerCase().includes(search.toLowerCase())
-    );
+    const query = search.toLowerCase();
+    return chats.filter((chat) => chat.name.toLowerCase().includes(query));
   }, [chats, search, isGlobalSearchQuery]);
+
+  const clearSearch = () => {
+    setSearch("");
+    setGlobalResults([]);
+    setSearchError("");
+    setMembershipStatus({});
+  };
 
   const handleGlobalSearch = async () => {
     const queryVal = search.trim().replace(/^@/, "");
@@ -117,7 +112,6 @@ export default function Sidebar({
       setSearchingGlobal(true);
       setSearchError("");
       setGlobalResults([]);
-      // Clear any stale membership status when a new search is performed
       setMembershipStatus({});
 
       const results = await searchGlobal(queryVal);
@@ -135,9 +129,7 @@ export default function Sidebar({
 
   const handleStartChat = async (user: BackendUserProfile | null) => {
     if (!user) return;
-    setSearch("");
-    setGlobalResults([]);
-    setMembershipStatus({});
+    clearSearch();
     await onStartDirectMessage(user);
   };
 
@@ -145,17 +137,15 @@ export default function Sidebar({
     try {
       setJoiningChannelId(channel.id);
       await joinChannelByPublicId(channel.public_id);
-      // Successfully joined – navigate and clear everything
-      setSearch("");
-      setGlobalResults([]);
-      setMembershipStatus({});
+      
+      // Successfully joined
+      clearSearch();
       onChannelJoined?.(channel.id);
       onRefresh?.();
     } catch (err: any) {
       if (err?.response?.status === 400) {
-        // Already a member – store this fact and show a warning
+        // User is already a member
         setMembershipStatus((prev) => ({ ...prev, [channel.id]: 'member' }));
-        // Do NOT navigate automatically; let the user click "Open"
       } else {
         alert("Failed to join channel.");
       }
@@ -164,15 +154,10 @@ export default function Sidebar({
     }
   };
 
-  // Handler for the "Open" button when already a member
   const handleOpenChannel = (channel: ChannelSearchResult) => {
-    // Navigate to the channel
     onChannelJoined?.(channel.id);
     onRefresh?.();
-    // Clear the overlay and status
-    setSearch("");
-    setGlobalResults([]);
-    setMembershipStatus({});
+    clearSearch();
   };
 
   return (
@@ -183,11 +168,7 @@ export default function Sidebar({
           onClick={goToEditProfile}
           style={{ cursor: "pointer" }}
         >
-          <img
-            src={avatarUrl}
-            className="profile-avatar"
-            alt="My Profile"
-          />
+          <img src={avatarUrl} className="profile-avatar" alt="My Profile" />
           <span className="profile-name">{displayName}</span>
         </div>
 
@@ -200,7 +181,6 @@ export default function Sidebar({
               setSearch(e.target.value);
               if (searchError) setSearchError("");
               if (globalResults.length) setGlobalResults([]);
-              // Clear membership status when the user types something new
               setMembershipStatus({});
             }}
             onKeyDown={(e) => {
@@ -227,16 +207,7 @@ export default function Sidebar({
           <div className="global-search-overlay">
             <div className="overlay-header">
               <span>Global Search Result</span>
-              <button
-                type="button"
-                className="close-overlay-btn"
-                onClick={() => {
-                  setGlobalResults([]);
-                  setSearchError("");
-                  setSearch("");
-                  setMembershipStatus({});
-                }}
-              >
+              <button type="button" className="close-overlay-btn" onClick={clearSearch}>
                 ✕
               </button>
             </div>
@@ -249,10 +220,7 @@ export default function Sidebar({
               if (result.kind === "user") {
                 const user = result.data;
                 const searchedUsername = (user.username || "").trim().toLowerCase();
-                const isSelf =
-                  searchedUsername !== "" &&
-                  loggedInUsername !== "" &&
-                  searchedUsername === loggedInUsername;
+                const isSelf = searchedUsername !== "" && loggedInUsername !== "" && searchedUsername === loggedInUsername;
                 const isUserOnline = onlineUsers[String(user.id)] ?? user.is_online;
 
                 return (
@@ -262,20 +230,13 @@ export default function Sidebar({
                     role="button"
                     tabIndex={0}
                     onClick={() => {
-                      setSearch("");
-                      setGlobalResults([]);
-                      setSearchError("");
-                      setMembershipStatus({});
+                      clearSearch();
                       onOpenUserProfile(user);
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-
-                        setSearch("");
-                        setGlobalResults([]);
-                        setSearchError("");
-                        setMembershipStatus({});
+                        clearSearch();
                         onOpenUserProfile(user);
                       }
                     }}
@@ -289,7 +250,6 @@ export default function Sidebar({
 
                     <div className="search-profile-details">
                       <div className="search-profile-name">{user.display_name}</div>
-
                       <div className="search-profile-username">
                         @{user.username}
                         <span
