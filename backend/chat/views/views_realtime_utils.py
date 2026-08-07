@@ -2,6 +2,7 @@ import uuid
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.db.models import Q
 
 from chat.models import Conversation, ConversationMember, Message
 from chat.serializers import ChannelMessageSerializer, MessageSerializer
@@ -106,20 +107,15 @@ def broadcast_message_deleted(message_id, conversation_id):
 
 
 def broadcast_unread_update_for_conversation(conversation):
-    """
-    Send the updated unread count for each member of a conversation.
-    """
     channel_layer = get_channel_layer()
     members = ConversationMember.objects.filter(conversation=conversation).select_related('user')
-
     for member in members:
         last_read_created = member.last_read_message.created_at if member.last_read_message else None
-        unread_count = Message.objects.filter(
-            conversation=conversation,
-            created_at__gt=last_read_created,
-            is_deleted=False
-        ).count()
+        q_filter = Q(conversation=conversation, is_deleted=False)
+        if last_read_created is not None:
+            q_filter &= Q(created_at__gt=last_read_created)
 
+        unread_count = Message.objects.filter(q_filter).count()
         async_to_sync(channel_layer.group_send)(
             f"user_{member.user.id}",
             {
