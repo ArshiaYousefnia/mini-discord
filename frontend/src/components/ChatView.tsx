@@ -408,7 +408,8 @@ export default function ChatView({
 
     const unsubscribeNewMessage =
       realtimeService.subscribeToConversationMessages(
-        (incomingMessage: Message) => {
+        (type: string, incomingMessage: Message) => {
+          console.log("WS Conversation Event:", type, incomingMessage);
           if (cancelled || !mountedRef.current) return;
 
           if (
@@ -420,32 +421,49 @@ export default function ChatView({
             return;
           }
 
-          setMessages((previousMessages) => {
-            const alreadyExists = previousMessages.some((message) =>
-              isSameId(message.id, incomingMessage.id)
-            );
-
-            if (alreadyExists) return previousMessages;
-
-            shouldScrollToBottomRef.current = true;
-            scrollBehaviorRef.current = "smooth";
-
-            return sortMessagesByDate([
-              ...previousMessages,
-              incomingMessage,
-            ]);
-          });
-
-          void markConversationRead(conversationId, incomingMessage.id).catch(
-            (readError) => {
-              console.warn(
-                "Could not mark realtime message as read:",
-                readError
+          if (type === "new_message") {
+            setMessages((previousMessages) => {
+              const alreadyExists = previousMessages.some((message) =>
+                isSameId(message.id, incomingMessage.id)
               );
-            }
-          );
+
+              if (alreadyExists) return previousMessages;
+
+              shouldScrollToBottomRef.current = true;
+              scrollBehaviorRef.current = "smooth";
+
+              return sortMessagesByDate([
+                ...previousMessages,
+                incomingMessage,
+              ]);
+            });
+
+            void markConversationRead(conversationId, incomingMessage.id).catch(
+              (readError) => {
+                console.warn(
+                  "Could not mark realtime message as read:",
+                  readError
+                );
+              }
+            );
+          } else if (type === "message_updated") {
+            setMessages((previousMessages) =>
+              previousMessages.map((message) =>
+                isSameId(message.id, incomingMessage.id)
+                  ? { ...message, ...incomingMessage }
+                  : message
+              )
+            );
+          } else if (type === "message_deleted") {
+            setMessages((previousMessages) =>
+              previousMessages.filter(
+                (message) => !isSameId(message.id, incomingMessage.id)
+              )
+            );
+          }
         }
       );
+
 
     const unsubscribeUpdates = realtimeService.subscribeToUpdates(
       (update: ConversationUpdatePayload) => {
@@ -473,15 +491,8 @@ export default function ChatView({
 
         if (update.event_type === "message_deleted" && update.last_message) {
           setMessages((previousMessages) =>
-            previousMessages.map((message) =>
-              isSameId(message.id, update.last_message?.id)
-                ? {
-                    ...message,
-                    content: null,
-                    is_deleted: true,
-                    updated_at: new Date().toISOString(),
-                  }
-                : message
+            previousMessages.filter(
+              (message) => !isSameId(message.id, update.last_message?.id)
             )
           );
           return;
@@ -815,17 +826,8 @@ export default function ChatView({
     try {
       await deleteMessage(chat.id, messageId);
 
-      setMessages((previousMessages) =>
-        previousMessages.map((message) =>
-          isSameId(message.id, messageId)
-            ? {
-                ...message,
-                content: null,
-                is_deleted: true,
-                updated_at: new Date().toISOString(),
-              }
-            : message
-        )
+    setMessages((previousMessages) =>
+      previousMessages.filter((message) => !isSameId(message.id, messageId))
       );
     } catch (deleteError) {
       console.error("Failed to delete message:", deleteError);

@@ -10,7 +10,7 @@ export interface MinimalMessage {
 
 export interface ConversationUpdatePayload {
   conversation_id: string;
-  event_type: "new_message" | "member_left" | string;
+  event_type: "new_message" | "member_left" | "message_deleted" | "message_updated";
   last_message?: MinimalMessage;
   user_id?: string; // present on member_left
 }
@@ -27,7 +27,11 @@ export interface NotificationPayload {
 
 type ConversationUpdateCallback = (data: ConversationUpdatePayload) => void;
 type NotificationCallback = (data: NotificationPayload) => void;
-type ConversationMessageCallback = (msg: any) => void;
+export type ConversationMessageCallback = (
+  type: "new_message" | "message_updated" | "message_deleted", 
+  data: any
+) => void;
+
 
 type SocketEnvelope =
   | { type: "conversation_update"; data: ConversationUpdatePayload }
@@ -291,18 +295,24 @@ class RealtimeService {
       console.error("Error processing user socket message:", err);
     }
   }
-
+  
   private handleConversationSocketMessage(event: MessageEvent) {
     try {
       const envelope = JSON.parse(event.data) as SocketEnvelope;
 
-      if (envelope.type === "new_message") {
-        this.conversationCallbacks.forEach((cb) => cb(envelope.data));
+      // Check if the type is one of the allowed message events
+      if (["new_message", "message_updated", "message_deleted"].includes(envelope.type)) {
+        this.conversationCallbacks.forEach((cb) => 
+          // Cast the type to satisfy TypeScript
+          cb(envelope.type as "new_message" | "message_updated" | "message_deleted", envelope.data)
+        );
       }
     } catch (err) {
       console.error("Error processing conversation socket message:", err);
     }
   }
+
+
 
   // =========================
   // Reconnect logic
