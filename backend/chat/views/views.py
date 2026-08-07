@@ -1,8 +1,6 @@
 import mimetypes
 from django.http import FileResponse
 from django.db import transaction
-from chat.views.views_realtime_utils import broadcast_message_deleted, broadcast_message_updated
-
 from rest_framework import status, viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.views import APIView
@@ -369,7 +367,6 @@ class MessageViewSet(
 
         return Response(serializer.data)
 
-
     def destroy(self, request, *args, **kwargs):
         message = self.get_object()
         conversation = message.conversation
@@ -408,7 +405,6 @@ class MessageViewSet(
         )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
-
 
     def search(self, request, conversation_pk=None):
         query = request.query_params.get('q', '').strip()

@@ -85,13 +85,9 @@ else:
             'BACKEND': 'channels_redis.pubsub.RedisPubSubChannelLayer',
             'CONFIG': {
                 "hosts": [os.environ.get('REDIS_URL', 'redis://redis:6379/0')],
-                # You can remove capacity, expiry, and health_check_interval 
-                # as the PubSub layer manages connections much more cleanly
             },
         },
     }
-
-
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
