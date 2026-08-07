@@ -68,3 +68,38 @@ def broadcast_conversation_update(conversation, event_type, data):
                 }
             }
         )
+
+
+def broadcast_message_updated(message):
+    """Send the full updated message to the active chat window."""
+    channel_layer = get_channel_layer()
+
+    # Serialize the message exactly like we do for new messages
+    if message.conversation.type == Conversation.Type.CHANNEL:
+        data = ChannelMessageSerializer(message).data
+    else:
+        data = MessageSerializer(message).data
+
+    # Ensure all UUIDs are strings
+    data = convert_uuids_to_str(data)
+
+    async_to_sync(channel_layer.group_send)(
+        f"conversation_{message.conversation_id}",
+        {
+            "type": "message_updated",  # Ensure your Consumer has a method named `message_updated`
+            "data": data
+        }
+    )
+
+
+def broadcast_message_deleted(message_id, conversation_id):
+    """Send the ID of the deleted message to the active chat window."""
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+        f"conversation_{conversation_id}",
+        {
+            "type": "message_deleted",  # Ensure your Consumer has a method named `message_deleted`
+            "data": {"id": str(message_id)}
+        }
+    )

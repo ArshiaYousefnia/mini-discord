@@ -82,7 +82,7 @@ else:
     # Use Redis for development/production
     CHANNEL_LAYERS = {
         'default': {
-            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'BACKEND': 'channels_redis.pubsub.RedisPubSubChannelLayer',
             'CONFIG': {
                 "hosts": [os.environ.get('REDIS_URL', 'redis://redis:6379/0')],
             },
