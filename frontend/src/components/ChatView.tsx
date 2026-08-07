@@ -413,10 +413,8 @@ export default function ChatView({
           if (cancelled || !mountedRef.current) return;
 
           if (
-            !isSameId(
-              incomingMessage.conversation,
-              currentChatIdRef.current
-            )
+            incomingMessage.conversation !== undefined &&
+            !isSameId(incomingMessage.conversation, currentChatIdRef.current)
           ) {
             return;
           }
@@ -455,9 +453,10 @@ export default function ChatView({
               )
             );
           } else if (type === "message_deleted") {
+            
             setMessages((previousMessages) =>
               previousMessages.filter(
-                (message) => !isSameId(message.id, incomingMessage.id)
+                (message) => !isSameId(message.id, incomingMessage.id) 
               )
             );
           }
@@ -475,6 +474,7 @@ export default function ChatView({
           return;
         }
 
+        // You can keep message_updated if it helps fallback sync, though it's also redundant.
         if (update.event_type === "message_updated" && update.last_message) {
           setMessages((previousMessages) =>
             previousMessages.map((message) =>
@@ -489,14 +489,7 @@ export default function ChatView({
           return;
         }
 
-        if (update.event_type === "message_deleted" && update.last_message) {
-          setMessages((previousMessages) =>
-            previousMessages.filter(
-              (message) => !isSameId(message.id, update.last_message?.id)
-            )
-          );
-          return;
-        }
+        // REMOVED the "message_deleted" block that was deleting the last message
 
         if (update.event_type === "member_left") {
           if (showProfileRef.current) {
@@ -505,6 +498,7 @@ export default function ChatView({
         }
       }
     );
+
 
     /**
      * Register listeners first, then connect.
