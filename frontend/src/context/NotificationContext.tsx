@@ -57,10 +57,14 @@ export function NotificationProvider({
       (payload: any) => {
         const item: AppNotification = {
           id: payload.id ?? crypto.randomUUID(),
-          type: payload.type ?? "dm",
+          type: (payload.notification_type ??
+            payload.type ??
+            "dm") as NotificationType,
           senderName:
             payload.sender_display_name ??
             payload.senderDisplayName ??
+            payload.sender_name ??
+            payload.senderName ??
             "Someone",
           preview:
             payload.message_preview ??
@@ -69,6 +73,7 @@ export function NotificationProvider({
           unread: true,
           createdAt:
             payload.created_at ??
+            payload.createdAt ??
             new Date().toISOString(),
           conversationId:
             payload.conversation_id ??
@@ -77,6 +82,7 @@ export function NotificationProvider({
             payload.group_id ??
             payload.groupId,
         };
+
 
 
         setNotifications((previous) => {
@@ -158,10 +164,11 @@ async function showBrowserNotification(item: AppNotification) {
   }
 
   new Notification(item.senderName, {
-    body: item.preview,
+    body: item.preview || "New message",
     tag: item.id,
   });
 }
+
 
 export function useNotifications() {
   const context = useContext(NotificationContext);
