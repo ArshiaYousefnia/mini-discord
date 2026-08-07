@@ -84,6 +84,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
             user=self.user
         ).exists()
 
+    async def user_updated(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user_updated',
+            'data': event['data']
+        }))
+
+    async def conversation_metadata_updated(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'conversation_metadata_updated',
+            'data': event['data']
+        }))
+
 class UserConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope.get('user')
@@ -112,5 +124,11 @@ class UserConsumer(AsyncWebsocketConsumer):
         # For sidebar updates (last message preview, unread count)
         await self.send(text_data=json.dumps({
             'type': 'conversation_update',
+            'data': event['data']
+        }))
+
+    async def user_updated(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user_updated',
             'data': event['data']
         }))

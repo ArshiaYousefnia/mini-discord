@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from chat.models import Conversation, ConversationMember, Channel, Role, Message
 from chat.serializers import ChannelCreateSerializer, ChannelDetailSerializer, ChannelUpdateSerializer, \
     ChannelMemberSerializer, ChannelMemberRoleUpdateSerializer, MessageSerializer
-from chat.views.views_realtime_utils import broadcast_conversation_update
+from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update
 
 
 class ChannelCreateView(APIView):
@@ -249,6 +249,8 @@ class ChannelUpdateView(APIView):
 
         serializer.is_valid(raise_exception=True)
         serializer.save()
+
+        broadcast_conversation_metadata_update(conversation)
 
         # Broadcast channel info update to all members
         broadcast_conversation_update(

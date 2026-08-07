@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from chat.models import Conversation, ConversationMember, Role
 from chat.serializers import GroupCreateSerializer, GroupDetailSerializer, GroupMemberSerializer, GroupUpdateSerializer
-from chat.views.views_realtime_utils import broadcast_conversation_update
+from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update
 
 
 class GroupCreateView(APIView):
@@ -164,6 +164,8 @@ class GroupUpdateView(APIView):
 
         serializer.is_valid(raise_exception=True)
         serializer.save()
+
+        broadcast_conversation_metadata_update(conversation)
 
         return Response(
             GroupDetailSerializer(conversation).data

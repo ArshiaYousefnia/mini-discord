@@ -3,7 +3,7 @@ import uuid
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from chat.models import Conversation, ConversationMember
+from chat.models import Conversation, ConversationMember, Message
 from chat.serializers import ChannelMessageSerializer, MessageSerializer
 
 
@@ -101,5 +101,84 @@ def broadcast_message_deleted(message_id, conversation_id):
         {
             "type": "message_deleted",  # Ensure your Consumer has a method named `message_deleted`
             "data": {"id": str(message_id)}
+        }
+    )
+
+
+def broadcast_unread_update_for_conversation(conversation):
+    """
+    Send the updated unread count for each member of a conversation.
+    """
+    channel_layer = get_channel_layer()
+    members = ConversationMember.objects.filter(conversation=conversation).select_related('user')
+
+    for member in members:
+        last_read_created = member.last_read_message.created_at if member.last_read_message else None
+        unread_count = Message.objects.filter(
+            conversation=conversation,
+            created_at__gt=last_read_created,
+            is_deleted=False
+        ).count()
+
+        async_to_sync(channel_layer.group_send)(
+            f"user_{member.user.id}",
+            {
+                "type": "conversation_update",
+                "data": {
+                    "conversation_id": str(conversation.id),
+                    "event_type": "unread_updated",
+                    "unread_count": unread_count
+                }
+            }
+        )
+
+def broadcast_user_profile_update(user):
+    """
+    Send user profile update to all conversation groups the user is in.
+    Also send to the user's personal group for their own UI.
+    """
+    channel_layer = get_channel_layer()
+    data = {
+        'user_id': str(user.id),
+        'display_name': user.display_name,
+        'avatar_url': user.avatar_url,
+    }
+
+    # Send to user's personal group (for their own UI)
+    async_to_sync(channel_layer.group_send)(
+        f"user_{user.id}",
+        {
+            "type": "user_updated",
+            "data": data
+        }
+    )
+
+    # Send to all conversation groups the user is a member of
+    member_conversations = ConversationMember.objects.filter(user=user).values_list('conversation_id', flat=True)
+    for conv_id in member_conversations:
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{conv_id}",
+            {
+                "type": "user_updated",
+                "data": data
+            }
+        )
+
+def broadcast_conversation_metadata_update(conversation):
+    """
+    Send conversation metadata update to the conversation group.
+    """
+    channel_layer = get_channel_layer()
+    data = {
+        'conversation_id': str(conversation.id),
+        'name': conversation.name,
+        'description': conversation.description,
+        'avatar_url': conversation.avatar_url,
+    }
+    async_to_sync(channel_layer.group_send)(
+        f"conversation_{conversation.id}",
+        {
+            "type": "conversation_metadata_updated",
+            "data": data
         }
     )

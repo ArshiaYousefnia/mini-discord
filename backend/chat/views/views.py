@@ -1,4 +1,7 @@
 import mimetypes
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.http import FileResponse
 from django.db import transaction
 from rest_framework import status, viewsets, mixins
@@ -37,6 +40,7 @@ from chat.models import Conversation, ConversationMember, Message, Role, Topic, 
     Notification
 
 from chat.serializers import ConversationListSerializer
+from chat.views.views_realtime_utils import broadcast_unread_update_for_conversation, convert_uuids_to_str
 
 User = get_user_model()
 
@@ -351,12 +355,25 @@ class MessageViewSet(
             return Response({"detail": "You can only edit your own messages."}, status=status.HTTP_403_FORBIDDEN)
         serializer = self.get_serializer(message, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save(is_edited=True)
+        updated_message = serializer.save(is_edited=True)
 
-        # Broadcast conversation update for preview
-        broadcast_message_updated(message)
+        conversation = updated_message.conversation
 
-        conversation = message.conversation
+        channel_layer = get_channel_layer()
+        if conversation.type == Conversation.Type.CHANNEL:
+            data = ChannelMessageSerializer(updated_message).data
+        else:
+            data = MessageSerializer(updated_message).data
+        data = convert_uuids_to_str(data)
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{conversation.id}",
+            {
+                "type": "message_updated",
+                "data": data
+            }
+        )
+
+        # 2. Broadcast conversation_update to update sidebar preview
         last_msg = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
         last_message_data = MinimalMessageSerializer(last_msg).data if last_msg else None
         broadcast_conversation_update(
@@ -394,7 +411,15 @@ class MessageViewSet(
         message.content = ""
         message.save(update_fields=["is_deleted", "content", "updated_at"])
 
-        broadcast_message_deleted(message.id, conversation.id)
+        channel_layer = get_channel_layer()
+        data = {'id': str(message.id)}
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{conversation.id}",
+            {
+                "type": "message_deleted",
+                "data": data
+            }
+        )
 
         last_msg = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
         last_message_data = MinimalMessageSerializer(last_msg).data if last_msg else None
@@ -403,6 +428,8 @@ class MessageViewSet(
             'message_deleted',
             {'last_message': last_message_data}
         )
+
+        broadcast_unread_update_for_conversation(conversation)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -439,7 +466,8 @@ class ConversationListView(ListAPIView):
             unread_count=Count(
                 'messages',
                 filter=Q(
-                    messages__created_at__gt=Coalesce(last_read_created, Value('1970-01-01'))
+                    messages__created_at__gt=Coalesce(last_read_created, Value('1970-01-01')),
+                    messages__is_deleted=False
                 )
             )
         ).distinct()
@@ -493,6 +521,9 @@ class ConversationMarkReadView(APIView):
 
         member.last_read_message = message
         member.save(update_fields=['last_read_message'])
+
+        broadcast_unread_update_for_conversation(conversation)
+
         return Response({"detail": "Read status updated."}, status=status.HTTP_200_OK)
 
 
