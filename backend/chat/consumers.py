@@ -53,6 +53,30 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'data': event['data']
         }))
 
+    async def conversation_update(self, event):
+        # Handle the event so ChatConsumer doesn't crash
+        await self.send(text_data=json.dumps({
+            'type': 'conversation_update',
+            'data': event['data']
+        }))
+
+    async def message_updated(self, event):
+        # Fallback to event.get("data") if "message" isn't present
+        payload = event.get("message") or event.get("data")
+
+        await self.send(text_data=json.dumps({
+            "type": "message_updated",
+            "data": payload
+        }))
+
+    async def message_deleted(self, event):
+        payload = event.get("message") or event.get("data")
+
+        await self.send(text_data=json.dumps({
+            "type": "message_deleted",
+            "data": payload
+        }))
+
     @database_sync_to_async
     def is_member(self):
         return ConversationMember.objects.filter(
