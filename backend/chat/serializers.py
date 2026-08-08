@@ -24,13 +24,12 @@ def validate_avatar_file(value):
     if value:
         if value.size > MAX_AVATAR_SIZE:
             raise serializers.ValidationError("Avatar must be smaller than 2MB.")
+        
         ext = os.path.splitext(value.name)[1].lower().lstrip('.')
+        
         if ext not in ALLOWED_AVATAR_EXTENSIONS:
             raise serializers.ValidationError("Only valid image formats (JPG, PNG, GIF, WEBP) are allowed.")
-        content_type = getattr(value, 'content_type', None)
-        if content_type and content_type not in ALLOWED_AVATAR_CONTENT_TYPES:
-            if content_type not in ('application/octet-stream', 'application/unknown', 'binary/octet-stream'):
-                raise serializers.ValidationError("Only valid image formats (JPG, PNG, GIF, WEBP) are allowed.")
+            
     return value
 
 
