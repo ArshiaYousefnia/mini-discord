@@ -10,11 +10,11 @@ export interface MinimalMessage {
 
 export interface ConversationUpdatePayload {
   conversation_id: string;
-  event_type: 
-    | "new_message" 
-    | "member_left" 
+  event_type:
+    | "new_message"
+    | "member_left"
     | "member_joined"
-    | "message_deleted" 
+    | "message_deleted"
     | "message_updated"
     | "channel_updated"
     | "role_updated"
@@ -60,11 +60,13 @@ export interface ConversationMetadataPayload {
 type ConversationUpdateCallback = (data: ConversationUpdatePayload) => void;
 type NotificationCallback = (data: NotificationPayload) => void;
 export type ConversationMessageCallback = (
-  type: "new_message" | "message_updated" | "message_deleted", 
+  type: "new_message" | "message_updated" | "message_deleted",
   data: any
 ) => void;
 type UserUpdateCallback = (data: UserUpdatePayload) => void;
-type ConversationMetadataCallback = (data: ConversationMetadataPayload) => void;
+type ConversationMetadataCallback = (
+  data: ConversationMetadataPayload
+) => void;
 
 type SocketEnvelope =
   | { type: "conversation_update"; data: ConversationUpdatePayload }
@@ -84,14 +86,16 @@ class RealtimeService {
   private notificationCallbacks: Set<NotificationCallback> = new Set();
   private conversationCallbacks: Set<ConversationMessageCallback> = new Set();
   private userUpdateCallbacks: Set<UserUpdateCallback> = new Set();
-  private conversationMetadataCallbacks: Set<ConversationMetadataCallback> = new Set();
+  private conversationMetadataCallbacks: Set<ConversationMetadataCallback> =
+    new Set();
 
   private activeConversationId: string | null = null;
 
   private reconnectInterval = 3000;
 
   private userReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private conversationReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private conversationReconnectTimer: ReturnType<typeof setTimeout> | null =
+    null;
 
   private userManuallyClosed = false;
   private conversationManuallyClosed = false;
@@ -105,28 +109,39 @@ class RealtimeService {
 
   public subscribeToUpdates(callback: ConversationUpdateCallback) {
     this.updateCallbacks.add(callback);
-    return () => this.updateCallbacks.delete(callback);
+    return () => {
+      this.updateCallbacks.delete(callback);
+    };
   }
 
   public subscribeToNotifications(callback: NotificationCallback) {
     this.notificationCallbacks.add(callback);
-    return () => this.notificationCallbacks.delete(callback);
+    return () => {
+      this.notificationCallbacks.delete(callback);
+    };
   }
 
-  public subscribeToConversationMessages(callback: ConversationMessageCallback) {
+  public subscribeToConversationMessages(
+    callback: ConversationMessageCallback
+  ) {
     this.conversationCallbacks.add(callback);
-    return () => this.conversationCallbacks.delete(callback);
+    return () => {
+      this.conversationCallbacks.delete(callback);
+    };
   }
 
   public subscribeToUserUpdates(callback: UserUpdateCallback) {
     this.userUpdateCallbacks.add(callback);
-    return () => this.userUpdateCallbacks.delete(callback);
+    return () => {
+      this.userUpdateCallbacks.delete(callback);
+    };
   }
-
 
   public subscribeToConversationMetadata(callback: ConversationMetadataCallback) {
     this.conversationMetadataCallbacks.add(callback);
-    return () => this.conversationMetadataCallbacks.delete(callback);
+    return () => {
+      this.conversationMetadataCallbacks.delete(callback);
+    };
   }
 
   // =========================
@@ -283,7 +298,8 @@ class RealtimeService {
   // =========================
 
   private handleUserSocketMessage(event: MessageEvent) {
-    console.log('🔵 RAW user socket message:', event);
+    console.log("🔵 RAW user socket message:", event);
+
     try {
       const envelope = JSON.parse(event.data) as SocketEnvelope;
 
@@ -302,8 +318,17 @@ class RealtimeService {
       }
 
       if (envelope.type === "user_updated") {
+        console.log("🟢 user_updated received on user socket:", envelope.data);
+
         if (envelope.data) {
           this.userUpdateCallbacks.forEach((cb) => cb(envelope.data));
+        }
+        return;
+      }
+
+      if (envelope.type === "conversation_metadata_updated") {
+        if (envelope.data) {
+          this.conversationMetadataCallbacks.forEach((cb) => cb(envelope.data));
         }
         return;
       }
@@ -311,19 +336,31 @@ class RealtimeService {
       console.error("Error processing user socket message:", err);
     }
   }
-  
+
   private handleConversationSocketMessage(event: MessageEvent) {
     try {
       const envelope = JSON.parse(event.data) as SocketEnvelope;
 
-      if (["new_message", "message_updated", "message_deleted"].includes(envelope.type)) {
-        this.conversationCallbacks.forEach((cb) => 
-          cb(envelope.type as "new_message" | "message_updated" | "message_deleted", envelope.data)
+      if (
+        ["new_message", "message_updated", "message_deleted"].includes(
+          envelope.type
+        )
+      ) {
+        this.conversationCallbacks.forEach((cb) =>
+          cb(
+            envelope.type as "new_message" | "message_updated" | "message_deleted",
+            envelope.data
+          )
         );
         return;
       }
 
       if (envelope.type === "user_updated") {
+        console.log(
+          "🟣 user_updated received on conversation socket:",
+          envelope.data
+        );
+
         if (envelope.data) {
           this.userUpdateCallbacks.forEach((cb) => cb(envelope.data));
         }
