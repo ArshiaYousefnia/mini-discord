@@ -124,6 +124,9 @@ export default function ProfileOverlay({
   const [editChannelAvatar, setEditChannelAvatar] = useState<File | null>(null);
   const [editChannelLoading, setEditChannelLoading] = useState(false);
 
+  // Shared avatar-upload validation error (group + channel edit forms)
+  const [avatarError, setAvatarError] = useState("");
+
   // Role Management State
   const [activeTab, setActiveTab] = useState<"info" | "roles">("info");
   const [newRoleName, setNewRoleName] = useState("");
@@ -155,6 +158,7 @@ export default function ProfileOverlay({
     setEditGroupName(groupProfile.name);
     setEditGroupDescription(groupProfile.description || "");
     setEditGroupAvatar(null);
+    setAvatarError("");
     setIsEditingGroup(true);
   };
 
@@ -177,6 +181,7 @@ export default function ProfileOverlay({
     setEditChannelName(channelProfile.name);
     setEditChannelDescription(channelProfile.description || "");
     setEditChannelAvatar(null);
+    setAvatarError("");
     setIsEditingChannel(true);
   };
 
@@ -195,16 +200,65 @@ export default function ProfileOverlay({
     }
   };
 
+  // --- Avatar Validation Handlers ---
+  const handleGroupAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please select a valid image file (JPG, PNG, GIF).");
+      e.target.value = "";
+      return;
+    }
+
+    setAvatarError("");
+    setEditGroupAvatar(file);
+  };
+
+  const handleChannelAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please select a valid image file (JPG, PNG, GIF).");
+      e.target.value = "";
+      return;
+    }
+
+    setAvatarError("");
+    setEditChannelAvatar(file);
+  };
+
   // --- Role Management Handlers ---
   const handleCreateRole = async () => {
-    if (!newRoleName.trim() || !onCreateRole) return;
+    const trimmedName = newRoleName.trim();
+    if (!trimmedName || !onCreateRole) return;
+
+    const nameExists = (channelRoles || []).some(
+      (role: any) =>
+        (role?.name || "").trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (nameExists) {
+      alert(`A role with the name "${trimmedName}" already exists.`);
+      return;
+    }
+
     setIsCreatingRole(true);
     try {
-      await onCreateRole(newRoleName);
+      await onCreateRole(trimmedName);
       setNewRoleName(""); // Clear input on success
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create role:", error);
-      alert("Failed to create role.");
+      const backendMessage =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.response?.data?.name?.[0] ||
+        error?.response?.data?.error;
+      alert(
+        backendMessage ||
+          "Failed to create role. Role name must be 50 characters or fewer."
+      );
     } finally {
       setIsCreatingRole(false);
     }
@@ -255,9 +309,9 @@ export default function ProfileOverlay({
   return (
     <div className="group-profile-overlay slideInRight">
       <div className="group-profile-header">
-        {profileViewType === "user" && profileSource === "GROUP_PROFILE" && groupProfile ? (
+        {profileViewType === "user" && profileSource === "GROUP_PROFILE" && (groupProfile || channelProfile) ? (
           <button className="back-to-group-btn back-button" onClick={onBackToGroup} type="button">
-            ← Back to Group
+            ← Back to {groupProfile ? "Group" : "Members"}
           </button>
         ) : (
           <button className="back-button" onClick={onClose} type="button">← Close</button>
@@ -314,9 +368,12 @@ export default function ProfileOverlay({
                     />
                     <input
                       type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }}
-                      onChange={(e) => { if (e.target.files?.[0]) setEditChannelAvatar(e.target.files[0]); }}
+                      onChange={handleChannelAvatarChange}
                     />
                     <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>Change Avatar</button>
+                    {avatarError && (
+                      <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{avatarError}</div>
+                    )}
                   </div>
                   <div className="edit-field">
                     <label>Channel Name <span style={{ color: "red" }}>*</span></label>
@@ -324,7 +381,7 @@ export default function ProfileOverlay({
                   </div>
                   <div className="edit-field">
                     <label>Description</label>
-                    <textarea value={editChannelDescription} onChange={(e) => setEditChannelDescription(e.target.value)} className="edit-textarea" />
+                    <textarea value={editChannelDescription} onChange={(e) => setEditChannelDescription(e.target.value)} className="edit-textarea" maxLength={300} />
                   </div>
                   <div className="edit-actions">
                     <button className="cancel-edit-btn" onClick={() => setIsEditingChannel(false)} disabled={editChannelLoading}>Cancel</button>
@@ -358,7 +415,14 @@ export default function ProfileOverlay({
                     )}
                   </div>
 
-                  {channelProfile.description && <div className="group-profile-description">{channelProfile.description}</div>}
+                  {channelProfile.description && (
+                    <div
+                      className="group-profile-description"
+                      style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                    >
+                      {channelProfile.description}
+                    </div>
+                  )}
 
                   <div className="group-profile-meta">
                     <p>Created by: {channelProfile.owner_display_name}</p>
@@ -452,6 +516,7 @@ export default function ProfileOverlay({
                     placeholder="New Role Name"
                     className="edit-input"
                     disabled={isCreatingRole}
+                    maxLength={50}
                   />
                   <button 
                     onClick={handleCreateRole} 
@@ -482,9 +547,12 @@ export default function ProfileOverlay({
                   />
                   <input
                     type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }}
-                    onChange={(e) => { if (e.target.files?.[0]) setEditGroupAvatar(e.target.files[0]); }}
+                    onChange={handleGroupAvatarChange}
                   />
                   <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>Change Avatar</button>
+                  {avatarError && (
+                    <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{avatarError}</div>
+                  )}
                 </div>
                 <div className="edit-field">
                   <label>Group Name <span style={{ color: "red" }}>*</span></label>
@@ -492,7 +560,7 @@ export default function ProfileOverlay({
                 </div>
                 <div className="edit-field">
                   <label>Description</label>
-                  <textarea value={editGroupDescription} onChange={(e) => setEditGroupDescription(e.target.value)} className="edit-textarea" />
+                  <textarea value={editGroupDescription} onChange={(e) => setEditGroupDescription(e.target.value)} className="edit-textarea" maxLength={300} />
                 </div>
                 <div className="edit-actions">
                   <button className="cancel-edit-btn" onClick={() => setIsEditingGroup(false)} disabled={editGroupLoading}>Cancel</button>
@@ -506,7 +574,14 @@ export default function ProfileOverlay({
                 <img src={groupProfile.avatar_url || chatAvatar} alt={groupProfile.name} className="group-profile-avatar-large" />
                 <h2 className="group-profile-name">{groupProfile.name}</h2>
                 <div className="group-profile-member-count">{Number(groupProfile.member_count)} Members</div>
-                {groupProfile.description && <div className="group-profile-description">{groupProfile.description}</div>}
+                {groupProfile.description && (
+                  <div
+                    className="group-profile-description"
+                    style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                  >
+                    {groupProfile.description}
+                  </div>
+                )}
 
                 <div className="group-profile-meta">
                   <p>Created by: {groupProfile.owner_display_name}</p>
@@ -556,9 +631,7 @@ export default function ProfileOverlay({
                   {!isCurrentUserOwner && (
                     <button type="button" onClick={onLeaveGroupRequest} className="leave-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Leave Group</button>
                   )}
-                  {isCurrentUserOwner && (
-                    <button type="button" onClick={onDeleteGroupRequest} className="delete-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontWeight: 600 }}>Delete Group</button>
-                  )}
+                  <button type="button" onClick={onDeleteGroupRequest} className="delete-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontWeight: 600 }}>Delete Group</button>
                 </div>
               </>
             )}

@@ -521,6 +521,26 @@ export default function ChatView({
         }
 
         if (update.event_type === "member_left") {
+          const activeChat = currentChatRef.current;
+
+          if (activeChat && activeChat.type.toUpperCase() === "GROUP") {
+            void getGroupMembers(activeChat.id)
+              .then((membersData) => {
+                if (
+                  mountedRef.current &&
+                  isSameId(currentChatIdRef.current, activeChat.id)
+                ) {
+                  setGroupMembers(membersData);
+                }
+              })
+              .catch((membersRefreshError) => {
+                console.error(
+                  "Failed to refresh group members after member_left event:",
+                  membersRefreshError
+                );
+              });
+          }
+
           if (showProfileRef.current) {
             void refreshProfileRef.current?.();
           }
@@ -1451,7 +1471,9 @@ export default function ChatView({
             onBack();
           }
         }}
-        onBackToGroup={() => setProfileViewType("group")}
+        onBackToGroup={() =>
+          setProfileViewType(chatType === "CHANNEL" ? "channel" : "group")
+        }
         onSaveGroupEdit={handleSaveGroupEdit}
         onSaveChannelEdit={handleSaveChannelEdit}
         onUserClick={handleUserClick}
