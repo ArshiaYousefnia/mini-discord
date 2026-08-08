@@ -30,6 +30,14 @@ export default function CreateChannelPage() {
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
+
+    if (file && !file.type.startsWith("image/")) {
+      setError("Please select a valid image file (JPG, PNG, GIF).");
+      e.target.value = "";
+      return;
+    }
+
+    if (error) setError("");
     setAvatar(file);
   };
 
@@ -154,6 +162,7 @@ export default function CreateChannelPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={5}
+              maxLength={300}
             />
           </div>
 
