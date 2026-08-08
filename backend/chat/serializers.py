@@ -227,7 +227,7 @@ class ConversationMarkReadSerializer(serializers.Serializer):
 
 
 class GroupCreateSerializer(serializers.ModelSerializer):
-    avatar = serializers.ImageField(required=False, allow_null=True)
+    avatar = serializers.FileField(required=False, allow_null=True)
     class Meta:
         model = Conversation
         fields = ['id', 'name', 'description', 'avatar']
@@ -296,7 +296,7 @@ class GroupMemberSerializer(serializers.ModelSerializer):
 
 
 class GroupUpdateSerializer(serializers.ModelSerializer):
-    avatar = serializers.ImageField(required=False, allow_null=True)
+    avatar = serializers.FileField(required=False, allow_null=True)
     class Meta:
         model = Conversation
         fields = (
@@ -319,7 +319,7 @@ class GroupUpdateSerializer(serializers.ModelSerializer):
 class ChannelCreateSerializer(serializers.ModelSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     description = serializers.CharField(required=False, allow_blank=True, max_length=500)
-    avatar = serializers.ImageField(required=False)
+    avatar = serializers.FileField(required=False)
     is_private = serializers.BooleanField(default=True)
     public_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
@@ -461,7 +461,7 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
 
 
 class ChannelUpdateSerializer(serializers.ModelSerializer):
-    avatar = serializers.ImageField(required=False, allow_null=True)
+    avatar = serializers.FileField(required=False, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, max_length=500)
     class Meta:
         model = Conversation
