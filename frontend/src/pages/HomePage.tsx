@@ -99,20 +99,13 @@ export default function HomePage() {
   );
 
   const selectedChatRef = useRef<ChatListItem | null>(null);
-
-  /*
-   * This ref is important because profile updates must not modify
-   * online/offline state. The online socket owns that state.
-   */
-  const onlineUsersRef = useRef<Record<string, boolean>>({});
+  
+  // Track whether we have seeded the initial status map from REST.
+  const hasSeededOnlineStatus = useRef(false);
 
   useEffect(() => {
     selectedChatRef.current = selectedChat;
   }, [selectedChat]);
-
-  useEffect(() => {
-    onlineUsersRef.current = onlineUsers ?? {};
-  }, [onlineUsers]);
 
 
   /*
@@ -165,40 +158,31 @@ export default function HomePage() {
           await getConversations();
 
         /*
-         * Seed online state from the API only when we do not already
-         * have a value from the online-status WebSocket.
-
-         * This prevents a stale API value of false from replacing
-         * a current WebSocket value of true.
+         * Seed online state from the API ONLY during the very first load.
+         * This prevents background REST refreshes or updates from overwriting
+         * the live WebSocket status dictionary.
          */
-        const initialStatuses: Record<string, boolean> = {};
+        if (!hasSeededOnlineStatus.current) {
+          const initialStatuses: Record<string, boolean> = {};
 
-        for (const conversation of conversations) {
-          if (
-            conversation.type === "DM" &&
-            conversation.other_user_id &&
-            typeof conversation.other_user_is_online === "boolean"
-          ) {
-            const userId = String(conversation.other_user_id);
-
-            initialStatuses[userId] =
-              conversation.other_user_is_online;
-          }
-        }
-
-        setOnlineUsers((previous) => {
-          const next = { ...previous };
-
-          for (const [userId, isOnline] of Object.entries(
-            initialStatuses
-          )) {
-            if (!(userId in next)) {
-              next[userId] = isOnline;
+          for (const conversation of conversations) {
+            if (
+              conversation.type === "DM" &&
+              conversation.other_user_id &&
+              typeof conversation.other_user_is_online === "boolean"
+            ) {
+              const userId = String(conversation.other_user_id);
+              initialStatuses[userId] = conversation.other_user_is_online;
             }
           }
 
-          return next;
-        });
+          setOnlineUsers((prev) => ({
+            ...prev,
+            ...initialStatuses,
+          }));
+          
+          hasSeededOnlineStatus.current = true;
+        }
 
         const mappedChats = await Promise.all(
           conversations.map((conversation) =>
@@ -353,13 +337,7 @@ export default function HomePage() {
 
   /*
    * Handle profile updates.
-
-   * This updates only profile fields:
-   * - name
-   * - avatar
-
-   * It deliberately does not call setOnlineUsers.
-   * Online/offline state belongs exclusively to useOnlineStatus.
+   * Updates display values without altering status variables.
    */
   const handleUserProfileUpdate = useCallback(
     (payload: UserUpdatePayload) => {
@@ -553,6 +531,9 @@ export default function HomePage() {
   );
 
 
+  /*
+   * Subscribe to conversation updates.
+   */
   useEffect(() => {
     const unsubscribe =
       realtimeService.subscribeToUpdates(handleConversationUpdate);
@@ -562,6 +543,9 @@ export default function HomePage() {
     };
   }, [handleConversationUpdate]);
 
+  /*
+   * Subscribe to top-level user profile updates.
+   */
   useEffect(() => {
     const unsubscribe =
       realtimeService.subscribeToUserUpdates(handleUserProfileUpdate);
@@ -570,7 +554,6 @@ export default function HomePage() {
       unsubscribe();
     };
   }, [handleUserProfileUpdate]);
-
 
 
   const handleSelectChat = useCallback(
