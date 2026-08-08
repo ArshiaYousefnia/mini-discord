@@ -98,6 +98,17 @@ export default function HomePage() {
     window.innerWidth <= 768
   );
 
+  const [userProfileUpdates, setUserProfileUpdates] = useState<
+    Record<
+      string,
+      {
+        display_name?: string;
+        avatar_url?: string;
+      }
+    >
+  >({});
+
+
   const selectedChatRef = useRef<ChatListItem | null>(null);
   
   // Track whether we have seeded the initial status map from REST.
@@ -348,6 +359,14 @@ export default function HomePage() {
 
       const updatedUserId = String(payload.user_id);
 
+      setUserProfileUpdates((previous) => ({
+        ...previous,
+        [updatedUserId]: {
+          display_name: payload.display_name,
+          avatar_url: payload.avatar_url,
+        },
+      }));
+
       setChatItems((previousChats) =>
         previousChats.map((chat) => {
           const isMatchingDM =
@@ -383,10 +402,8 @@ export default function HomePage() {
 
         return {
           ...previousChat,
-          name:
-            payload.display_name ?? previousChat.name,
-          avatar:
-            payload.avatar_url ?? previousChat.avatar,
+          name: payload.display_name ?? previousChat.name,
+          avatar: payload.avatar_url ?? previousChat.avatar,
         };
       });
 
@@ -430,7 +447,6 @@ export default function HomePage() {
     },
     []
   );
-
 
   /*
    * Handle conversation-level updates.
@@ -685,31 +701,24 @@ export default function HomePage() {
               {pageError}
             </div>
           ) : (
-            <ChatView
-              chat={selectedChat}
-              pendingDirectMessageUser={
-                pendingDirectMessageUser
-              }
-              profileUserToOpen={profileUserToOpen}
-              onProfileUserOpened={() =>
-                setProfileUserToOpen(null)
-              }
-              onStartDirectMessage={
-                handleStartDirectMessage
-              }
-              onDirectMessageCreated={
-                handleDirectMessageCreated
-              }
-              isMobile={isMobile}
-              onBack={handleBack}
-              onGroupExit={handleGroupExit}
-              onGroupJoined={async (groupId) => {
-                setSearchParams({ chat: groupId });
-                await loadChats(false, groupId);
-              }}
-              isOtherUserOnline={isOtherUserOnline}
-              onlineUsers={onlineUsers}
-            />
+          <ChatView
+            chat={selectedChat}
+            pendingDirectMessageUser={pendingDirectMessageUser}
+            profileUserToOpen={profileUserToOpen}
+            onProfileUserOpened={() => setProfileUserToOpen(null)}
+            onStartDirectMessage={handleStartDirectMessage}
+            onDirectMessageCreated={handleDirectMessageCreated}
+            isMobile={isMobile}
+            onBack={handleBack}
+            onGroupExit={handleGroupExit}
+            onGroupJoined={async (groupId) => {
+              setSearchParams({ chat: groupId });
+              await loadChats(false, groupId);
+            }}
+            isOtherUserOnline={isOtherUserOnline}
+            onlineUsers={onlineUsers}
+            userProfileUpdates={userProfileUpdates}
+          />
           )}
         </div>
       )}

@@ -81,6 +81,15 @@ interface Props {
   ) => Promise<void> | void;
 
   onDirectMessageCreated?: (conversationId: string) => Promise<void>;
+  
+  // Prop added for handling realtime user profile updates
+  userProfileUpdates?: Record<
+    string,
+    {
+      display_name?: string;
+      avatar_url?: string;
+    }
+  >;
 }
 
 type ProfileViewType = "group" | "user" | "channel" | null;
@@ -108,6 +117,7 @@ export default function ChatView({
   onProfileUserOpened,
   onStartDirectMessage,
   onDirectMessageCreated,
+  userProfileUpdates = {},
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -271,11 +281,13 @@ export default function ChatView({
     const avatarMap: Record<string, string> = {};
 
     groupMembers?.forEach((member) => {
-      avatarMap[String(member.user_id)] = member.avatar_url || "";
+      const memberId = String(member.user_id);
+      const update = userProfileUpdates[memberId];
+      avatarMap[memberId] = update?.avatar_url || member.avatar_url || "";
     });
 
     return avatarMap;
-  }, [groupMembers]);
+  }, [groupMembers, userProfileUpdates]);
 
   const displayedMessages = useMemo(() => {
     if (chatType !== "CHANNEL") return messages;
@@ -320,6 +332,32 @@ export default function ChatView({
       avatar: chat.avatar,
     });
   }, [chat?.avatar, chat?.id, chat?.name]);
+
+  /**
+   * Dynamic local messages sync on user profile update.
+   * Modifies messages sender info inline without REST request.
+   */
+    useEffect(() => {
+      if (Object.keys(userProfileUpdates).length === 0) return;
+
+      setMessages((prevMessages) =>
+        prevMessages.map((message) => {
+          const senderId = String(message.sender);
+          const update = userProfileUpdates[senderId];
+
+          if (!update) return message;
+
+          return {
+            ...message,
+            sender_display_name:
+              update.display_name ?? message.sender_display_name,
+              sender_username:  message.sender_username,
+          };
+        })
+      );
+    }, [userProfileUpdates]);
+
+
 
   const refreshCurrentProfile = useCallback(async () => {
     const activeChat = currentChatRef.current;
@@ -394,10 +432,6 @@ export default function ChatView({
 
   /**
    * Conversation WebSocket lifecycle.
-   *
-   * Critical rule:
-   * This must depend only on `chat?.id`, not `showProfile`, `messages`,
-   * permissions, topics, or other UI state.
    */
   useEffect(() => {
     const conversationId = chat?.id ?? null;
@@ -453,7 +487,6 @@ export default function ChatView({
               )
             );
           } else if (type === "message_deleted") {
-            
             setMessages((previousMessages) =>
               previousMessages.filter(
                 (message) => !isSameId(message.id, incomingMessage.id) 
@@ -462,7 +495,6 @@ export default function ChatView({
           }
         }
       );
-
 
     const unsubscribeUpdates = realtimeService.subscribeToUpdates(
       (update: ConversationUpdatePayload) => {
@@ -474,7 +506,6 @@ export default function ChatView({
           return;
         }
 
-        // You can keep message_updated if it helps fallback sync, though it's also redundant.
         if (update.event_type === "message_updated" && update.last_message) {
           setMessages((previousMessages) =>
             previousMessages.map((message) =>
@@ -489,8 +520,6 @@ export default function ChatView({
           return;
         }
 
-        // REMOVED the "message_deleted" block that was deleting the last message
-
         if (update.event_type === "member_left") {
           if (showProfileRef.current) {
             void refreshProfileRef.current?.();
@@ -499,11 +528,6 @@ export default function ChatView({
       }
     );
 
-
-    /**
-     * Register listeners first, then connect.
-     * This avoids losing a very early message after socket establishment.
-     */
     realtimeService.connectConversationSocket(conversationId);
 
     return () => {
@@ -512,19 +536,12 @@ export default function ChatView({
       unsubscribeNewMessage();
       unsubscribeUpdates();
 
-      /**
-       * The rewritten realtimeService does not clear callback sets here.
-       * It only closes this active conversation socket intentionally.
-       */
       realtimeService.disconnectConversationSocket();
     };
   }, [chat?.id]);
 
   /**
    * Reset UI and load message history only when conversation identity changes.
-   *
-   * Incoming WebSocket messages are merged with HTTP data rather than being
-   * blindly overwritten if they arrive while the request is still pending.
    */
   useEffect(() => {
     const conversationId = chat?.id ?? null;
@@ -585,9 +602,6 @@ export default function ChatView({
         const sortedFetchedMessages = sortMessagesByDate(fetchedMessages);
 
         setMessages((currentMessages) => {
-          /**
-           * Keep any new WebSocket messages that arrived during the HTTP call.
-           */
           const byId = new Map<string, Message>();
 
           sortedFetchedMessages.forEach((message) => {
@@ -641,7 +655,6 @@ export default function ChatView({
 
   /**
    * Load initial group/channel context once per conversation.
-   * No polling is used.
    */
   useEffect(() => {
     const conversationId = chat?.id ?? null;
@@ -750,10 +763,6 @@ export default function ChatView({
         topic_id: chatType === "CHANNEL" ? activeTopicId : undefined,
       });
 
-      /**
-       * Optimistic rendering.
-       * The WebSocket echo is safely deduplicated in the realtime listener.
-       */
       setMessages((previousMessages) => {
         if (
           previousMessages.some((message) =>
@@ -820,8 +829,8 @@ export default function ChatView({
     try {
       await deleteMessage(chat.id, messageId);
 
-    setMessages((previousMessages) =>
-      previousMessages.filter((message) => !isSameId(message.id, messageId))
+      setMessages((previousMessages) =>
+        previousMessages.filter((message) => !isSameId(message.id, messageId))
       );
     } catch (deleteError) {
       console.error("Failed to delete message:", deleteError);
@@ -911,7 +920,6 @@ export default function ChatView({
     void handleUserClick(String(profileUserToOpen.id), "GROUP_PROFILE");
     onProfileUserOpened?.();
 
-    // This should run when Sidebar supplies a newly selected profile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileUserToOpen]);
 
@@ -1169,14 +1177,6 @@ export default function ChatView({
 
     try {
       setLeaveLoading(true);
-
-      /**
-       * Keep this as leaveGroup only if your backend intentionally uses
-       * the same endpoint/service for groups and channels.
-       *
-       * If you have `leaveChannel` in channelService, replace this call:
-       * await leaveChannel(chat.id);
-       */
       await leaveGroup(chat.id);
 
       setShowLeaveChannelConfirm(false);
@@ -1472,6 +1472,8 @@ export default function ChatView({
           setShowProfile(false);
           await onStartDirectMessage?.(user);
         }}
+        // Pass updates map to child
+        userProfileUpdates={userProfileUpdates}
       />
 
       <div className="chat-view-body">
@@ -1536,6 +1538,8 @@ export default function ChatView({
                   void handleUserClick(userId, "CHAT")
                 }
                 onGroupJoined={onGroupJoined}
+                // Pass updates map to child
+                userProfileUpdates={userProfileUpdates}
               />
             ))}
 
