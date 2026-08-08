@@ -32,8 +32,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
-        await self.channel_layer.group_discard(self.user_group, self.channel_name)
+        # Check if the room/chat group was initialized
+        if hasattr(self, "group_name"):
+            await self.channel_layer.group_discard(
+                self.group_name, 
+                self.channel_name
+            )
+
+        # Check if the individual user group was initialized
+        if hasattr(self, "user_group"):
+            await self.channel_layer.group_discard(
+                self.user_group, 
+                self.channel_name
+            )
+
 
     async def receive(self, text_data):
         # Optional: handle typing indicators or other client events
@@ -84,6 +96,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
             user=self.user
         ).exists()
 
+    async def user_updated(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user_updated',
+            'data': event['data']
+        }))
+
+    async def conversation_metadata_updated(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'conversation_metadata_updated',
+            'data': event['data']
+        }))
+
 class UserConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope.get('user')
@@ -96,7 +120,12 @@ class UserConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.user_group, self.channel_name)
+    
+        if hasattr(self, "user_group"):
+            await self.channel_layer.group_discard(
+                self.user_group,
+                self.channel_name
+            )
 
     async def receive(self, text_data):
         # Could handle ping or other client messages
@@ -114,3 +143,10 @@ class UserConsumer(AsyncWebsocketConsumer):
             'type': 'conversation_update',
             'data': event['data']
         }))
+
+    async def user_updated(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user_updated',
+            'data': event['data']
+        }))
+
