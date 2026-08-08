@@ -16,6 +16,17 @@ ALLOWED_FILE_EXTENSIONS = {
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
+ALLOWED_AVATAR_CONTENT_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+MAX_AVATAR_SIZE = 2 * 1024 * 1024  # 2MB
+
+def validate_avatar_file(value):
+    if value:
+        if value.size > MAX_AVATAR_SIZE:
+            raise serializers.ValidationError("Avatar must be smaller than 2MB.")
+        if value.content_type not in ALLOWED_AVATAR_CONTENT_TYPES:
+            raise serializers.ValidationError("Only valid image formats (JPG, PNG, GIF, WEBP) are allowed.")
+    return value
+
 
 class GroupDetailSerializer(serializers.ModelSerializer):
     owner_id = serializers.UUIDField(source='owner.id', read_only=True)
@@ -70,6 +81,7 @@ class AttachmentSerializer(serializers.ModelSerializer):
 class MessageSerializer(serializers.ModelSerializer):
     sender_username = serializers.CharField(source='sender.username', read_only=True)
     sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
+    sender_avatar = serializers.SerializerMethodField()
     attachments = AttachmentSerializer(many=True, read_only=True)
     uploaded_files = serializers.ListField(
         child=serializers.FileField(max_length=None, allow_empty_file=False, use_url=False),
@@ -80,7 +92,7 @@ class MessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = [
-            'id', 'conversation', 'sender', 'sender_username', 'sender_display_name',
+            'id', 'conversation', 'sender', 'sender_username', 'sender_display_name','sender_avatar',
             'content', 'attachments', 'uploaded_files',
             'reply_to', 'is_edited', 'is_deleted', 'created_at', 'updated_at',
         ]
@@ -88,6 +100,10 @@ class MessageSerializer(serializers.ModelSerializer):
             'id', 'conversation', 'sender',
             'is_edited', 'is_deleted', 'created_at', 'updated_at',
         ]
+    def get_sender_avatar(self, obj):
+        if obj.sender and hasattr(obj.sender, 'avatar_url'):
+            return obj.sender.avatar_url
+        return None
 
     def create(self, validated_data):
         # Remove the write-only field before passing to model
@@ -204,7 +220,9 @@ class ConversationMarkReadSerializer(serializers.Serializer):
     last_read_message_id = serializers.UUIDField(required=True)
 
 
+
 class GroupCreateSerializer(serializers.ModelSerializer):
+    avatar = serializers.ImageField(required=False, allow_null=True)
     class Meta:
         model = Conversation
         fields = ['id', 'name', 'description', 'avatar']
@@ -213,6 +231,9 @@ class GroupCreateSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Group name is required.")
         return value.strip()
+
+    def validate_avatar(self, value):
+        return validate_avatar_file(value)
 
     def create(self, validated_data):
         user = self.context['request'].user
@@ -270,6 +291,7 @@ class GroupMemberSerializer(serializers.ModelSerializer):
 
 
 class GroupUpdateSerializer(serializers.ModelSerializer):
+    avatar = serializers.ImageField(required=False, allow_null=True)
     class Meta:
         model = Conversation
         fields = (
@@ -284,6 +306,9 @@ class GroupUpdateSerializer(serializers.ModelSerializer):
                 "Group name is required."
             )
         return value
+
+    def validate_avatar(self, value):
+        return validate_avatar_file(value)
 
 
 class ChannelCreateSerializer(serializers.ModelSerializer):
@@ -301,6 +326,9 @@ class ChannelCreateSerializer(serializers.ModelSerializer):
         if not value.strip():
             raise serializers.ValidationError("Channel name cannot be empty.")
         return value.strip()
+
+    def validate_avatar(self, value):
+        return validate_avatar_file(value)
 
     def validate(self, data):
         is_private = data.get('is_private', True)
@@ -428,6 +456,7 @@ class ChannelDetailSerializer(serializers.ModelSerializer):
 
 
 class ChannelUpdateSerializer(serializers.ModelSerializer):
+    avatar = serializers.ImageField(required=False, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, max_length=500)
     class Meta:
         model = Conversation
@@ -439,14 +468,7 @@ class ChannelUpdateSerializer(serializers.ModelSerializer):
         return value.strip()
 
     def validate_avatar(self, value):
-        if value:
-            if value.size > 2 * 1024 * 1024:
-                raise serializers.ValidationError("Avatar must be smaller than 2MB.")
-
-            if not value.content_type in ["image/jpeg", "image/png", "image/gif"]:
-                raise serializers.ValidationError("Only valid image formats (JPG, PNG, GIF) are allowed.")
-
-        return value
+        return validate_avatar_file(value)
 
 
 class ChannelMemberSerializer(serializers.ModelSerializer):

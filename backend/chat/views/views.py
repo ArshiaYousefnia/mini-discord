@@ -247,18 +247,20 @@ class MessageViewSet(
         except Conversation.DoesNotExist:
             return Message.objects.none()
 
+        base_queryset = Message.objects.filter(
+            conversation_id=conversation_id,
+            conversation__members__user=self.request.user,
+            is_deleted=False
+        ).select_related('sender').order_by("created_at")
+
         if conv.type == Conversation.Type.CHANNEL:
             return ChannelMessage.objects.filter(
                 conversation_id=conversation_id,
                 conversation__members__user=self.request.user,
                 is_deleted=False
-            ).select_related('topic').order_by("created_at")
-        else:
-            return Message.objects.filter(
-                conversation_id=conversation_id,
-                conversation__members__user=self.request.user,
-                is_deleted=False
-            ).order_by("created_at")
+            ).select_related('sender', 'topic').order_by("created_at")
+
+        return base_queryset
 
     def perform_create(self, serializer):
         conversation_id = self.kwargs.get("conversation_pk")
