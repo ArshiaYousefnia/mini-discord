@@ -1,56 +1,67 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   createDirectMessage,
+  deleteMessage,
+  editMessage,
   getConversationMessages,
   markConversationRead,
   sendConversationMessage,
-  editMessage,
-  deleteMessage,
 } from "../services/chatService";
 import {
-  getGroupProfile,
+  deleteGroup,
   getGroupMembers,
+  getGroupProfile,
+  leaveGroup,
   removeGroupMember,
   updateGroupProfile,
-  leaveGroup,
-  deleteGroup,
 } from "../services/groupService";
 import { getUserProfile } from "../services/users";
+import {
+  createChannelRole,
+  deleteChannel,
+  getChannelMembers,
+  getChannelProfile,
+  getChannelRoles,
+  getPermissions,
+  removeChannelMember,
+  updateChannel,
+} from "../services/channelService";
+import {
+  createTopic,
+  deleteTopic,
+  getTopics,
+  renameTopic,
+} from "../services/topicService";
+import {
+  realtimeService,
+  type ConversationUpdatePayload,
+} from "../services/realtimeService";
+
 import type {
-  ChatListItem,
-  Message,
-  GroupProfile,
-  GroupMembers,
-  ChannelProfile,
-  ChannelPermissions,
   ChannelMembers,
+  ChannelPermissions,
+  ChannelProfile,
+  ChatListItem,
+  GroupMembers,
+  GroupProfile,
+  Message,
   Topic,
 } from "../types/chat";
 import type { BackendUserProfile, UserProfile } from "../types/user";
 
+import ChatHeader from "./ChatHeader";
+import ConfirmModal from "./ConfirmModal";
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
 import MessageSearchPanel from "./MessageSearchPanel";
-import ConfirmModal from "./ConfirmModal";
-import ChatHeader from "./ChatHeader";
 import ProfileOverlay from "./ProfileOverlay";
 import TopicsPanel from "./TopicsPanel";
-import {
-  getChannelProfile,
-  getPermissions,
-  updateChannel,
-  deleteChannel,
-  getChannelMembers,
-  removeChannelMember,
-  getChannelRoles,
-  createChannelRole,
-} from "../services/channelService";
-import {
-  getTopics,
-  createTopic,
-  renameTopic,
-  deleteTopic,
-} from "../services/topicService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -62,18 +73,36 @@ interface Props {
   onlineUsers: Record<string, boolean>;
   pendingDirectMessageUser?: BackendUserProfile | null;
 
-  // User selected from Sidebar global search to open in ProfileOverlay.
   profileUserToOpen?: BackendUserProfile | null;
   onProfileUserOpened?: () => void;
 
-  // Lets ProfileOverlay's Message button use HomePage's existing-DM /
-  // pending-DM logic.
   onStartDirectMessage?: (
     user: BackendUserProfile | UserProfile
   ) => Promise<void> | void;
 
   onDirectMessageCreated?: (conversationId: string) => Promise<void>;
+  
+  // Prop added for handling realtime user profile updates
+  userProfileUpdates?: Record<
+    string,
+    {
+      display_name?: string;
+      avatar_url?: string;
+    }
+  >;
 }
+
+type ProfileViewType = "group" | "user" | "channel" | null;
+type ProfileSource = "CHAT" | "GROUP_PROFILE";
+
+const sortMessagesByDate = (messages: Message[]): Message[] =>
+  [...messages].sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+const isSameId = (left: unknown, right: unknown) =>
+  String(left) === String(right);
 
 export default function ChatView({
   chat,
@@ -88,11 +117,13 @@ export default function ChatView({
   onProfileUserOpened,
   onStartDirectMessage,
   onDirectMessageCreated,
+  userProfileUpdates = {},
 }: Props) {
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+
   const [activeReplyTo, setActiveReplyTo] = useState<Message | null>(null);
   const [localChatInfo, setLocalChatInfo] = useState<{
     name: string;
@@ -100,27 +131,15 @@ export default function ChatView({
   } | null>(null);
 
   const [showProfile, setShowProfile] = useState(false);
-  const [profileViewType, setProfileViewType] = useState<
-    "group" | "user" | "channel" | null
-  >(null);
+  const [profileViewType, setProfileViewType] =
+    useState<ProfileViewType>(null);
+  const [profileSource, setProfileSource] =
+    useState<ProfileSource>("GROUP_PROFILE");
+  const [profileLoading, setProfileLoading] = useState(false);
+
   const [groupProfile, setGroupProfile] = useState<GroupProfile | null>(null);
   const [groupMembers, setGroupMembers] = useState<GroupMembers | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [profileSource, setProfileSource] = useState<
-    "CHAT" | "GROUP_PROFILE"
-  >("GROUP_PROFILE");
-
-  const [memberToRemove, setMemberToRemove] = useState<any>(null);
-  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [showLeaveChannelConfirm, setShowLeaveChannelConfirm] = useState(false);
-  const [leaveLoading, setLeaveLoading] = useState(false);
-  const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState(false);
-  const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
-  const [showDeleteChannelConfirm, setShowDeleteChannelConfirm] =
-    useState(false);
-  const [deleteChannelLoading, setDeleteChannelLoading] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
 
   const [channelProfile, setChannelProfile] =
     useState<ChannelProfile | null>(null);
@@ -130,17 +149,46 @@ export default function ChatView({
     useState<ChannelMembers | null>(null);
   const [channelRoles, setChannelRoles] = useState<any[] | null>(null);
 
-  // Task #22 / #49 — topics inside a channel.
   const [topics, setTopics] = useState<Topic[]>([]);
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
+
+  const [memberToRemove, setMemberToRemove] = useState<any>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showLeaveChannelConfirm, setShowLeaveChannelConfirm] =
+    useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+
+  const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState(false);
+  const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
+
+  const [showDeleteChannelConfirm, setShowDeleteChannelConfirm] =
+    useState(false);
+  const [deleteChannelLoading, setDeleteChannelLoading] = useState(false);
+
+  const [showSearch, setShowSearch] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
   const highlightTimeoutRef = useRef<number | null>(null);
 
-  const currentUserId = localStorage.getItem("Id");
-  const currentUsername = (() => {
+  /**
+   * Refs are deliberately used in WebSocket callbacks so those callbacks
+   * always know the current conversation/profile state without making
+   * the socket effect re-run for unrelated UI changes.
+   */
+  const mountedRef = useRef(true);
+  const currentChatIdRef = useRef<string | null>(null);
+  const currentChatRef = useRef<ChatListItem | null>(null);
+  const showProfileRef = useRef(false);
+  const refreshProfileRef = useRef<(() => Promise<void>) | null>(null);
+
+  const currentUserId =
+    typeof window !== "undefined" ? localStorage.getItem("Id") : null;
+
+  const currentUsername = useMemo(() => {
+    if (typeof window === "undefined") return null;
+
     const raw = localStorage.getItem("username");
     if (!raw) return null;
 
@@ -153,11 +201,10 @@ export default function ChatView({
     } catch {
       return raw;
     }
-  })();
+  }, []);
 
   const chatType = chat?.type?.toUpperCase() ?? "";
 
-  // UI-only temporary DM used before the first message creates a real conversation.
   const pendingChat = useMemo<ChatListItem | null>(() => {
     if (!pendingDirectMessageUser) return null;
 
@@ -173,8 +220,6 @@ export default function ChatView({
     } as ChatListItem;
   }, [pendingDirectMessageUser]);
 
-  // Used only while a profile has been opened from global search.
-  // There is no real chat yet, but ChatHeader requires a ChatListItem.
   const profileOpeningChat = useMemo<ChatListItem | null>(() => {
     if (!profileUserToOpen) return null;
 
@@ -192,10 +237,19 @@ export default function ChatView({
 
   const headerChat = chat ?? pendingChat ?? profileOpeningChat;
 
-
   const isCurrentUserOwner =
     String(groupProfile?.owner_id) === String(currentUserId) ||
     (chatType === "CHANNEL" && channelPermissions?.is_owner === true);
+
+  const canDeleteOthersMessages =
+    chatType === "GROUP"
+      ? isCurrentUserOwner
+      : chatType === "CHANNEL"
+        ? !!(
+            channelPermissions?.is_owner ||
+            channelPermissions?.can_delete_messages
+          )
+        : false;
 
   const activeOtherUserOnline = useMemo(() => {
     if (pendingDirectMessageUser) {
@@ -210,60 +264,342 @@ export default function ChatView({
       return !!isOtherUserOnline;
     }
 
-    const userId = String(chat.other_user_id);
+    const otherUserId = String(chat.other_user_id);
 
-    return userId in onlineUsers
-      ? onlineUsers[userId]
+    return otherUserId in onlineUsers
+      ? onlineUsers[otherUserId]
       : !!isOtherUserOnline;
   }, [
-    pendingDirectMessageUser,
+    chat?.other_user_id,
     chatType,
-    chat,
-    onlineUsers,
     isOtherUserOnline,
+    onlineUsers,
+    pendingDirectMessageUser,
   ]);
 
-  // Task #29 — who can delete OTHER members' messages in this chat.
-  // Groups: the group owner. Channels: the owner, or anyone with the
-  // "Delete others messages" permission.
-  const canDeleteOthersMessages =
-    chatType === "GROUP"
-      ? isCurrentUserOwner
-      : chatType === "CHANNEL"
-        ? !!(
-            channelPermissions?.is_owner ||
-            channelPermissions?.can_delete_messages
-          )
-        : false;
+  const senderAvatarById = useMemo(() => {
+    const avatarMap: Record<string, string> = {};
 
-  const [sendingMessage, setSendingMessage] = useState(false);
+    groupMembers?.forEach((member) => {
+      const memberId = String(member.user_id);
+      const update = userProfileUpdates[memberId];
+      avatarMap[memberId] = update?.avatar_url || member.avatar_url || "";
+    });
+
+    return avatarMap;
+  }, [groupMembers, userProfileUpdates]);
+
+  const displayedMessages = useMemo(() => {
+    if (chatType !== "CHANNEL") return messages;
+
+    return messages.filter(
+      (message) => (message.topic_id ?? null) === activeTopicId
+    );
+  }, [activeTopicId, chatType, messages]);
+
+  /**
+   * Keep refs synchronized with current React state/props.
+   */
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
-    if (chat) {
-      setLocalChatInfo({ name: chat.name, avatar: chat.avatar });
-    }
+    currentChatIdRef.current = chat?.id ?? null;
+    currentChatRef.current = chat;
   }, [chat]);
 
   useEffect(() => {
+    showProfileRef.current = showProfile;
+  }, [showProfile]);
+
+  useEffect(() => {
     if (!chat) {
+      setLocalChatInfo(null);
+      return;
+    }
+
+    setLocalChatInfo({
+      name: chat.name,
+      avatar: chat.avatar,
+    });
+  }, [chat?.avatar, chat?.id, chat?.name]);
+
+  /**
+   * Dynamic local messages sync on user profile update.
+   * Modifies messages sender info inline without REST request.
+   */
+    useEffect(() => {
+      if (Object.keys(userProfileUpdates).length === 0) return;
+
+      setMessages((prevMessages) =>
+        prevMessages.map((message) => {
+          const senderId = String(message.sender);
+          const update = userProfileUpdates[senderId];
+
+          if (!update) return message;
+
+          return {
+            ...message,
+            sender_display_name:
+              update.display_name ?? message.sender_display_name,
+              sender_username:  message.sender_username,
+          };
+        })
+      );
+    }, [userProfileUpdates]);
+
+
+
+  const refreshCurrentProfile = useCallback(async () => {
+    const activeChat = currentChatRef.current;
+
+    if (!activeChat || !showProfileRef.current) return;
+
+    const activeChatType = activeChat.type.toUpperCase();
+
+    try {
+      if (activeChatType === "GROUP") {
+        const [profileData, membersData] = await Promise.all([
+          getGroupProfile(activeChat.id),
+          getGroupMembers(activeChat.id),
+        ]);
+
+        if (!mountedRef.current) return;
+        if (!isSameId(currentChatIdRef.current, activeChat.id)) return;
+
+        setGroupProfile(profileData);
+        setGroupMembers(membersData);
+        return;
+      }
+
+      if (activeChatType === "CHANNEL") {
+        const [profileData, permissionsData] = await Promise.all([
+          getChannelProfile(activeChat.id),
+          getPermissions(activeChat.id),
+        ]);
+
+        if (!mountedRef.current) return;
+        if (!isSameId(currentChatIdRef.current, activeChat.id)) return;
+
+        setChannelProfile(profileData);
+        setChannelPermissions(permissionsData);
+
+        if (
+          permissionsData.is_owner ||
+          permissionsData.can_manage_members
+        ) {
+          const membersData = await getChannelMembers(activeChat.id);
+
+          if (
+            mountedRef.current &&
+            isSameId(currentChatIdRef.current, activeChat.id)
+          ) {
+            setChannelMembers(membersData);
+          }
+        }
+
+        if (permissionsData.is_owner) {
+          const rolesData = await getChannelRoles(activeChat.id);
+
+          if (
+            mountedRef.current &&
+            isSameId(currentChatIdRef.current, activeChat.id)
+          ) {
+            setChannelRoles(rolesData);
+          }
+        }
+      }
+    } catch (refreshError) {
+      console.error(
+        "Failed to refresh currently opened profile after realtime update:",
+        refreshError
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshProfileRef.current = refreshCurrentProfile;
+  }, [refreshCurrentProfile]);
+
+  /**
+   * Conversation WebSocket lifecycle.
+   */
+  useEffect(() => {
+    const conversationId = chat?.id ?? null;
+
+    if (!conversationId) return;
+
+    let cancelled = false;
+
+    const unsubscribeNewMessage =
+      realtimeService.subscribeToConversationMessages(
+        (type: string, incomingMessage: Message) => {
+          console.log("WS Conversation Event:", type, incomingMessage);
+          if (cancelled || !mountedRef.current) return;
+
+          if (
+            incomingMessage.conversation !== undefined &&
+            !isSameId(incomingMessage.conversation, currentChatIdRef.current)
+          ) {
+            return;
+          }
+
+          if (type === "new_message") {
+            setMessages((previousMessages) => {
+              const alreadyExists = previousMessages.some((message) =>
+                isSameId(message.id, incomingMessage.id)
+              );
+
+              if (alreadyExists) return previousMessages;
+
+              shouldScrollToBottomRef.current = true;
+              scrollBehaviorRef.current = "smooth";
+
+              return sortMessagesByDate([
+                ...previousMessages,
+                incomingMessage,
+              ]);
+            });
+
+            void markConversationRead(conversationId, incomingMessage.id).catch(
+              (readError) => {
+                console.warn(
+                  "Could not mark realtime message as read:",
+                  readError
+                );
+              }
+            );
+          } else if (type === "message_updated") {
+            setMessages((previousMessages) =>
+              previousMessages.map((message) =>
+                isSameId(message.id, incomingMessage.id)
+                  ? { ...message, ...incomingMessage }
+                  : message
+              )
+            );
+          } else if (type === "message_deleted") {
+            setMessages((previousMessages) =>
+              previousMessages.filter(
+                (message) => !isSameId(message.id, incomingMessage.id) 
+              )
+            );
+          }
+        }
+      );
+
+    const unsubscribeUpdates = realtimeService.subscribeToUpdates(
+      (update: ConversationUpdatePayload) => {
+        if (cancelled || !mountedRef.current) return;
+
+        if (
+          !isSameId(update.conversation_id, currentChatIdRef.current)
+        ) {
+          return;
+        }
+
+        if (update.event_type === "message_updated" && update.last_message) {
+          setMessages((previousMessages) =>
+            previousMessages.map((message) =>
+              isSameId(message.id, update.last_message?.id)
+                ? {
+                    ...message,
+                    ...update.last_message,
+                  }
+                : message
+            )
+          );
+          return;
+        }
+
+        if (update.event_type === "member_left") {
+          const activeChat = currentChatRef.current;
+
+          if (activeChat && activeChat.type.toUpperCase() === "GROUP") {
+            void getGroupMembers(activeChat.id)
+              .then((membersData) => {
+                if (
+                  mountedRef.current &&
+                  isSameId(currentChatIdRef.current, activeChat.id)
+                ) {
+                  setGroupMembers(membersData);
+                }
+              })
+              .catch((membersRefreshError) => {
+                console.error(
+                  "Failed to refresh group members after member_left event:",
+                  membersRefreshError
+                );
+              });
+          }
+
+          if (showProfileRef.current) {
+            void refreshProfileRef.current?.();
+          }
+        }
+      }
+    );
+
+    realtimeService.connectConversationSocket(conversationId);
+
+    return () => {
+      cancelled = true;
+
+      unsubscribeNewMessage();
+      unsubscribeUpdates();
+
+      realtimeService.disconnectConversationSocket();
+    };
+  }, [chat?.id]);
+
+  /**
+   * Reset UI and load message history only when conversation identity changes.
+   */
+  useEffect(() => {
+    const conversationId = chat?.id ?? null;
+
+    if (!conversationId) {
       setMessages([]);
+      setLoading(false);
+      setError("");
+      setActiveReplyTo(null);
+
+      setGroupProfile(null);
+      setGroupMembers(null);
       setChannelProfile(null);
       setChannelPermissions(null);
+      setChannelMembers(null);
       setChannelRoles(null);
+
       setTopics([]);
       setActiveTopicId(null);
       return;
     }
 
-    let isMounted = true;
+    let cancelled = false;
 
     setShowProfile(false);
     setProfileViewType(null);
+    setProfileLoading(false);
+    setProfileSource("GROUP_PROFILE");
+
+    setMemberToRemove(null);
     setShowLeaveConfirm(false);
-    setShowDeleteGroupConfirm(false);
     setShowLeaveChannelConfirm(false);
+    setShowDeleteGroupConfirm(false);
     setShowDeleteChannelConfirm(false);
     setShowSearch(false);
+
+    setGroupProfile(null);
+    setGroupMembers(null);
     setChannelProfile(null);
     setChannelPermissions(null);
     setChannelMembers(null);
@@ -271,231 +607,143 @@ export default function ChatView({
     setTopics([]);
     setActiveTopicId(null);
 
+    setMessages([]);
+    setActiveReplyTo(null);
+    setError("");
+    setLoading(true);
+
     const loadMessages = async () => {
       try {
-        setLoading(true);
-        setError("");
+        const fetchedMessages = await getConversationMessages(conversationId);
 
-        const data = await getConversationMessages(chat.id);
-        if (!isMounted) return;
+        if (cancelled || !mountedRef.current) return;
+        if (!isSameId(currentChatIdRef.current, conversationId)) return;
 
-        const sortedMessages = [...data].sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() -
-            new Date(b.created_at).getTime()
-        );
+        const sortedFetchedMessages = sortMessagesByDate(fetchedMessages);
+
+        setMessages((currentMessages) => {
+          const byId = new Map<string, Message>();
+
+          sortedFetchedMessages.forEach((message) => {
+            byId.set(String(message.id), message);
+          });
+
+          currentMessages.forEach((message) => {
+            byId.set(String(message.id), message);
+          });
+
+          return sortMessagesByDate([...byId.values()]);
+        });
 
         shouldScrollToBottomRef.current = true;
         scrollBehaviorRef.current = "auto";
-        setMessages(sortedMessages);
 
-        if (sortedMessages.length) {
-          await markConversationRead(
-            chat.id,
-            sortedMessages[sortedMessages.length - 1].id
+        if (sortedFetchedMessages.length > 0) {
+          const lastMessage =
+            sortedFetchedMessages[sortedFetchedMessages.length - 1];
+
+          void markConversationRead(conversationId, lastMessage.id).catch(
+            (readError) => {
+              console.warn(
+                "Could not mark loaded messages as read:",
+                readError
+              );
+            }
           );
         }
-      } catch (err) {
-        if (isMounted) {
+      } catch (loadError) {
+        if (!cancelled && mountedRef.current) {
           setError(
-            err instanceof Error ? err.message : "Failed to load messages"
+            loadError instanceof Error
+              ? loadError.message
+              : "Failed to load messages"
           );
         }
       } finally {
-        if (isMounted) setLoading(false);
+        if (!cancelled && mountedRef.current) {
+          setLoading(false);
+        }
       }
     };
 
-    loadMessages();
-    setActiveReplyTo(null);
+    void loadMessages();
 
     return () => {
-      isMounted = false;
+      cancelled = true;
     };
-  }, [chat]);
+  }, [chat?.id]);
 
+  /**
+   * Load initial group/channel context once per conversation.
+   */
   useEffect(() => {
-    if (!chat || chatType !== "GROUP") return;
+    const conversationId = chat?.id ?? null;
+    const currentChatType = chat?.type?.toUpperCase() ?? "";
 
-    let isMounted = true;
+    if (!conversationId) return;
 
-    const pollGroupInfo = async () => {
+    let cancelled = false;
+
+    const loadChatContext = async () => {
       try {
-        const [profileData, membersData] = await Promise.all([
-          getGroupProfile(chat.id),
-          getGroupMembers(chat.id),
-        ]);
+        if (currentChatType === "GROUP") {
+          const [profileData, membersData] = await Promise.all([
+            getGroupProfile(conversationId),
+            getGroupMembers(conversationId),
+          ]);
 
-        if (!isMounted) return;
+          if (cancelled || !mountedRef.current) return;
+          if (!isSameId(currentChatIdRef.current, conversationId)) return;
 
-        setGroupProfile(profileData);
-        setGroupMembers(membersData);
-        setLocalChatInfo((prev) =>
-          prev?.name !== profileData.name ||
-          prev?.avatar !== (profileData.avatar_url || chat.avatar)
-            ? {
-                name: profileData.name,
-                avatar: profileData.avatar_url || chat.avatar,
-              }
-            : prev
+          setGroupProfile(profileData);
+          setGroupMembers(membersData);
+
+          setLocalChatInfo({
+            name: profileData.name,
+            avatar: profileData.avatar_url || chat?.avatar || "",
+          });
+
+          return;
+        }
+
+        if (currentChatType === "CHANNEL") {
+          const [permissionsData, topicsData] = await Promise.all([
+            getPermissions(conversationId),
+            getTopics(conversationId),
+          ]);
+
+          if (cancelled || !mountedRef.current) return;
+          if (!isSameId(currentChatIdRef.current, conversationId)) return;
+
+          setChannelPermissions(permissionsData);
+          setTopics(topicsData);
+        }
+      } catch (contextError) {
+        console.error(
+          "Failed to load initial conversation context:",
+          contextError
         );
-      } catch (error) {
-        console.error("Failed to background refresh group data:", error);
       }
     };
 
-    pollGroupInfo();
-    const intervalId = setInterval(pollGroupInfo, 5000);
+    void loadChatContext();
 
     return () => {
-      isMounted = false;
-      clearInterval(intervalId);
+      cancelled = true;
     };
-  }, [chat, chatType]);
+  }, [chat?.avatar, chat?.id, chat?.type]);
 
   useEffect(() => {
-    if (!chat) return;
+    if (loading || !shouldScrollToBottomRef.current) return;
 
-    let isMounted = true;
-
-    const pollMessages = async () => {
-      try {
-        const data = await getConversationMessages(chat.id);
-        if (!isMounted) return;
-
-        const sorted = [...data].sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() -
-            new Date(b.created_at).getTime()
-        );
-
-        setMessages((prev) => {
-          if (JSON.stringify(prev) === JSON.stringify(sorted)) return prev;
-
-          if (sorted.length > prev.length) {
-            shouldScrollToBottomRef.current = true;
-            scrollBehaviorRef.current = "smooth";
-          }
-
-          return sorted;
-        });
-      } catch (err) {
-        console.error("Failed to poll messages:", err);
-      }
-    };
-
-    const intervalId = setInterval(pollMessages, 4000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [chat]);
-
-  useEffect(() => {
-    if (!loading && shouldScrollToBottomRef.current) {
-      requestAnimationFrame(() => {
-        messagesEndRef.current?.scrollIntoView({
-          behavior: scrollBehaviorRef.current,
-        });
-        shouldScrollToBottomRef.current = false;
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: scrollBehaviorRef.current,
       });
-    }
-  }, [messages.length, loading, chat?.id]);
 
-  useEffect(() => {
-    if (!chat || chatType !== "CHANNEL") return;
-
-    let isMounted = true;
-
-    getPermissions(chat.id)
-      .then((permissions) => {
-        if (isMounted) setChannelPermissions(permissions);
-      })
-      .catch(console.error);
-
-    return () => {
-      isMounted = false;
-    };
-  }, [chat, chatType]);
-
-  // Task #24 / #56 — poll current user's channel permissions.
-  useEffect(() => {
-    if (!chat || chatType !== "CHANNEL") return;
-
-    let isMounted = true;
-
-    const intervalId = setInterval(() => {
-      getPermissions(chat.id)
-        .then((permissions) => {
-          if (isMounted) setChannelPermissions(permissions);
-        })
-        .catch(console.error);
-    }, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [chat, chatType]);
-
-  // Keep channel members fresh while the channel profile overlay is open.
-  useEffect(() => {
-    if (
-      !chat ||
-      chatType !== "CHANNEL" ||
-      !showProfile ||
-      profileViewType !== "channel"
-    ) {
-      return;
-    }
-
-    let isMounted = true;
-
-    const intervalId = setInterval(() => {
-      getChannelMembers(chat.id)
-        .then((membersData) => {
-          if (isMounted) setChannelMembers(membersData);
-        })
-        .catch((err) =>
-          console.error("Failed to refresh channel members:", err)
-        );
-    }, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [chat, chatType, showProfile, profileViewType]);
-
-  // Task #22 / #49 — load and poll a channel's topics.
-  useEffect(() => {
-    if (!chat || chatType !== "CHANNEL") {
-      setTopics([]);
-      setActiveTopicId(null);
-      return;
-    }
-
-    let isMounted = true;
-    setActiveTopicId(null);
-
-    const loadTopics = async () => {
-      try {
-        const data = await getTopics(chat.id);
-        if (isMounted) setTopics(data);
-      } catch (err) {
-        console.error("Failed to load topics:", err);
-      }
-    };
-
-    loadTopics();
-    const intervalId = setInterval(loadTopics, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [chat, chatType]);
+      shouldScrollToBottomRef.current = false;
+    });
+  }, [chat?.id, loading, messages.length]);
 
   const handleSendMessage = async (text: string, files: File[] = []) => {
     if (!chat && !pendingDirectMessageUser) return;
@@ -503,7 +751,6 @@ export default function ChatView({
     try {
       setSendingMessage(true);
 
-      // The first actual submitted message creates the DM conversation.
       if (pendingDirectMessageUser) {
         if (!text.trim() && files.length === 0) return;
 
@@ -515,6 +762,7 @@ export default function ChatView({
         );
 
         setActiveReplyTo(null);
+
         await onDirectMessageCreated?.(String(firstMessage.conversation));
         return;
       }
@@ -535,77 +783,136 @@ export default function ChatView({
         topic_id: chatType === "CHANNEL" ? activeTopicId : undefined,
       });
 
-      shouldScrollToBottomRef.current = true;
-      scrollBehaviorRef.current = "smooth";
-      setMessages((prev) => [...prev, newMessage]);
+      setMessages((previousMessages) => {
+        if (
+          previousMessages.some((message) =>
+            isSameId(message.id, newMessage.id)
+          )
+        ) {
+          return previousMessages;
+        }
+
+        shouldScrollToBottomRef.current = true;
+        scrollBehaviorRef.current = "smooth";
+
+        return sortMessagesByDate([...previousMessages, newMessage]);
+      });
+
       setActiveReplyTo(null);
 
-      await markConversationRead(chat.id, newMessage.id);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to send message");
+      void markConversationRead(chat.id, newMessage.id).catch((readError) => {
+        console.warn(
+          "Could not mark sent message as read:",
+          readError
+        );
+      });
+    } catch (sendError) {
+      alert(
+        sendError instanceof Error
+          ? sendError.message
+          : "Failed to send message"
+      );
     } finally {
-      setSendingMessage(false);
+      if (mountedRef.current) {
+        setSendingMessage(false);
+      }
     }
   };
 
-  const handleEditMessage = async (messageId: string, newText: string) => {
+  const handleEditMessage = async (
+    messageId: string,
+    newText: string
+  ) => {
     if (!chat) return;
 
-    const updatedMessage = await editMessage(chat.id, messageId, newText);
+    try {
+      const updatedMessage = await editMessage(chat.id, messageId, newText);
 
-    setMessages((prev) =>
-      prev.map((msg) => (msg.id === messageId ? updatedMessage : msg))
-    );
+      setMessages((previousMessages) =>
+        previousMessages.map((message) =>
+          isSameId(message.id, messageId) ? updatedMessage : message
+        )
+      );
+    } catch (editError) {
+      console.error("Failed to edit message:", editError);
+      alert(
+        editError instanceof Error
+          ? editError.message
+          : "Failed to edit message"
+      );
+    }
   };
 
   const handleDeleteMessage = async (messageId: string) => {
     if (!chat) return;
 
-    await deleteMessage(chat.id, messageId);
+    try {
+      await deleteMessage(chat.id, messageId);
 
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === messageId
-          ? {
-              ...msg,
-              content: null,
-              is_deleted: true,
-              updated_at: new Date().toISOString(),
-            }
-          : msg
-      )
-    );
+      setMessages((previousMessages) =>
+        previousMessages.filter((message) => !isSameId(message.id, messageId))
+      );
+    } catch (deleteError) {
+      console.error("Failed to delete message:", deleteError);
+      alert(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Failed to delete message"
+      );
+    }
   };
 
-  // --- Topic Handlers (Task #22 / #49) ---
   const handleCreateTopic = async (name: string) => {
     if (!chat) return;
 
-    const topic = await createTopic(chat.id, name);
-    setTopics((prev) => [...prev, topic]);
+    try {
+      const topic = await createTopic(chat.id, name);
+      setTopics((previousTopics) => [...previousTopics, topic]);
+    } catch (topicError) {
+      console.error("Failed to create topic:", topicError);
+      alert("Failed to create topic.");
+    }
   };
 
   const handleRenameTopic = async (topicId: string, name: string) => {
     if (!chat) return;
 
-    const updated = await renameTopic(chat.id, topicId, name);
-    setTopics((prev) => prev.map((t) => (t.id === topicId ? updated : t)));
+    try {
+      const updatedTopic = await renameTopic(chat.id, topicId, name);
+
+      setTopics((previousTopics) =>
+        previousTopics.map((topic) =>
+          isSameId(topic.id, topicId) ? updatedTopic : topic
+        )
+      );
+    } catch (topicError) {
+      console.error("Failed to rename topic:", topicError);
+      alert("Failed to rename topic.");
+    }
   };
 
   const handleDeleteTopic = async (topicId: string) => {
     if (!chat) return;
 
-    await deleteTopic(chat.id, topicId);
-    setTopics((prev) => prev.filter((t) => t.id !== topicId));
+    try {
+      await deleteTopic(chat.id, topicId);
 
-    if (activeTopicId === topicId) {
-      setActiveTopicId(null);
+      setTopics((previousTopics) =>
+        previousTopics.filter((topic) => !isSameId(topic.id, topicId))
+      );
+
+      if (isSameId(activeTopicId, topicId)) {
+        setActiveTopicId(null);
+      }
+    } catch (topicError) {
+      console.error("Failed to delete topic:", topicError);
+      alert("Failed to delete topic.");
     }
   };
 
   const handleUserClick = async (
     userId: string,
-    source: "CHAT" | "GROUP_PROFILE" = "GROUP_PROFILE"
+    source: ProfileSource = "GROUP_PROFILE"
   ) => {
     setProfileSource(source);
     setShowProfile(true);
@@ -613,30 +920,30 @@ export default function ChatView({
     setProfileLoading(true);
 
     try {
-      setUserProfile(await getUserProfile(userId));
-    } catch (err) {
-      console.error("Failed to load user profile", err);
+      const profile = await getUserProfile(userId);
+
+      if (mountedRef.current) {
+        setUserProfile(profile);
+      }
+    } catch (profileError) {
+      console.error("Failed to load user profile:", profileError);
     } finally {
-      setProfileLoading(false);
+      if (mountedRef.current) {
+        setProfileLoading(false);
+      }
     }
   };
 
-  // A global-search user result was clicked in Sidebar.
-  // Fetch the full profile and open the same ProfileOverlay used elsewhere.
   useEffect(() => {
     if (!profileUserToOpen) return;
 
-    void handleUserClick(String(profileUserToOpen.id));
+    void handleUserClick(String(profileUserToOpen.id), "GROUP_PROFILE");
     onProfileUserOpened?.();
-    // handleUserClick is intentionally not included because it is recreated
-    // during renders; this effect should run only for a newly supplied user.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileUserToOpen, onProfileUserOpened]);
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileUserToOpen]);
 
   const handleHeaderClick = async () => {
-    // Pending DMs do not have a real chat yet, but must open the same
-    // user ProfileOverlay flow as established DM conversations.
     if (!chat && pendingDirectMessageUser) {
       await handleUserClick(
         String(pendingDirectMessageUser.id),
@@ -647,11 +954,23 @@ export default function ChatView({
 
     if (!chat) return;
 
+    if (chatType === "DM") {
+      const otherUserId = chat.other_user_id
+        ? String(chat.other_user_id)
+        : null;
+
+      if (otherUserId) {
+        await handleUserClick(otherUserId, "CHAT");
+      }
+
+      return;
+    }
+
     if (chatType === "GROUP") {
       setShowProfile(true);
       setProfileViewType("group");
 
-      if (!groupProfile || groupProfile.id !== chat.id) {
+      if (!groupProfile || !isSameId(groupProfile.id, chat.id)) {
         setProfileLoading(true);
 
         try {
@@ -660,29 +979,29 @@ export default function ChatView({
             getGroupMembers(chat.id),
           ]);
 
+          if (!mountedRef.current) return;
+
           setGroupProfile(profileData);
           setGroupMembers(membersData);
-        } catch (err) {
-          console.error("Failed to load group details", err);
+        } catch (groupError) {
+          console.error("Failed to load group details:", groupError);
         } finally {
-          setProfileLoading(false);
+          if (mountedRef.current) {
+            setProfileLoading(false);
+          }
         }
       }
-    } else if (chatType === "DM") {
-      const otherUserId = chat.other_user_id
-        ? String(chat.other_user_id)
-        : null;
 
-      if (otherUserId) {
-        handleUserClick(otherUserId);
-      }
-    } else if (chatType === "CHANNEL") {
+      return;
+    }
+
+    if (chatType === "CHANNEL") {
       setShowProfile(true);
       setProfileViewType("channel");
 
       if (
         !channelProfile ||
-        channelProfile.id !== chat.id ||
+        !isSameId(channelProfile.id, chat.id) ||
         !channelPermissions
       ) {
         setProfileLoading(true);
@@ -693,6 +1012,8 @@ export default function ChatView({
             getPermissions(chat.id),
           ]);
 
+          if (!mountedRef.current) return;
+
           setChannelProfile(profileData);
           setChannelPermissions(permissionsData);
 
@@ -701,17 +1022,25 @@ export default function ChatView({
             permissionsData.can_manage_members
           ) {
             const membersData = await getChannelMembers(chat.id);
-            setChannelMembers(membersData);
+
+            if (mountedRef.current) {
+              setChannelMembers(membersData);
+            }
           }
 
           if (permissionsData.is_owner) {
             const rolesData = await getChannelRoles(chat.id);
-            setChannelRoles(rolesData);
+
+            if (mountedRef.current) {
+              setChannelRoles(rolesData);
+            }
           }
-        } catch (err) {
-          console.error("Failed to load channel details", err);
+        } catch (channelError) {
+          console.error("Failed to load channel details:", channelError);
         } finally {
-          setProfileLoading(false);
+          if (mountedRef.current) {
+            setProfileLoading(false);
+          }
         }
       }
     }
@@ -719,7 +1048,7 @@ export default function ChatView({
 
   const handleSaveGroupEdit = async (
     name: string,
-    desc: string,
+    description: string,
     avatar: File | null
   ) => {
     if (!chat) return;
@@ -727,7 +1056,7 @@ export default function ChatView({
     try {
       const updatedProfile = await updateGroupProfile(chat.id, {
         name,
-        description: desc,
+        description,
         avatar,
       });
 
@@ -736,15 +1065,15 @@ export default function ChatView({
         name: updatedProfile.name,
         avatar: updatedProfile.avatar_url || chat.avatar,
       });
-    } catch (error) {
-      console.error("Failed to update group:", error);
+    } catch (saveError) {
+      console.error("Failed to update group:", saveError);
       alert("Failed to update group details.");
     }
   };
 
   const handleSaveChannelEdit = async (
     name: string,
-    desc: string,
+    description: string,
     avatar: File | null
   ) => {
     if (!chat) return;
@@ -752,7 +1081,7 @@ export default function ChatView({
     try {
       const updatedProfile = await updateChannel(chat.id, {
         name,
-        description: desc,
+        description,
         avatar,
       });
 
@@ -761,9 +1090,9 @@ export default function ChatView({
         name: updatedProfile.name,
         avatar: updatedProfile.avatar_url || chat.avatar,
       });
-    } catch (error) {
-      console.error("Failed to update channel:", error);
-      throw error;
+    } catch (saveError) {
+      console.error("Failed to update channel:", saveError);
+      throw saveError;
     }
   };
 
@@ -773,19 +1102,30 @@ export default function ChatView({
     try {
       await removeGroupMember(chat.id, memberToRemove.user_id);
 
-      setGroupMembers((prev) =>
-        prev
-          ? prev.filter((m) => m.user_id !== memberToRemove.user_id)
+      setGroupMembers((previousMembers) =>
+        previousMembers
+          ? previousMembers.filter(
+              (member) =>
+                !isSameId(member.user_id, memberToRemove.user_id)
+            )
           : null
       );
 
-      setGroupProfile((prev) =>
-        prev ? { ...prev, member_count: Number(prev.member_count) - 1 } : null
+      setGroupProfile((previousProfile) =>
+        previousProfile
+          ? {
+              ...previousProfile,
+              member_count: Math.max(
+                0,
+                Number(previousProfile.member_count) - 1
+              ),
+            }
+          : null
       );
 
       setMemberToRemove(null);
-    } catch (error) {
-      console.error("Failed to remove member:", error);
+    } catch (removeError) {
+      console.error("Failed to remove group member:", removeError);
       alert("Failed to remove group member.");
     }
   };
@@ -793,23 +1133,26 @@ export default function ChatView({
   const handleRemoveChannelMember = async (member: any) => {
     if (!chat) return;
 
-    const isConfirmed = window.confirm(
+    const confirmed = window.confirm(
       `Are you sure you want to remove ${member.display_name} from the channel?`
     );
 
-    if (!isConfirmed) return;
+    if (!confirmed) return;
 
     try {
       await removeChannelMember(chat.id, member.user_id);
 
-      if (channelMembers) {
-        setChannelMembers(
-          channelMembers.filter((m) => m.user_id !== member.user_id)
-        );
-      }
-    } catch (error) {
-      console.error("Failed to remove channel member:", error);
-      alert("Failed to remove member. You might not have the correct permissions.");
+      setChannelMembers((previousMembers) =>
+        previousMembers
+          ? previousMembers.filter(
+              (channelMember) =>
+                !isSameId(channelMember.user_id, member.user_id)
+            )
+          : null
+      );
+    } catch (removeError) {
+      console.error("Failed to remove channel member:", removeError);
+      alert("Failed to remove member. You might not have permission.");
     }
   };
 
@@ -818,10 +1161,13 @@ export default function ChatView({
 
     try {
       const newRole = await createChannelRole(chat.id, name);
-      setChannelRoles((prev) => (prev ? [...prev, newRole] : [newRole]));
-    } catch (error) {
-      console.error("Failed to create role:", error);
-      throw error;
+
+      setChannelRoles((previousRoles) =>
+        previousRoles ? [...previousRoles, newRole] : [newRole]
+      );
+    } catch (roleError) {
+      console.error("Failed to create role:", roleError);
+      throw roleError;
     }
   };
 
@@ -831,14 +1177,18 @@ export default function ChatView({
     try {
       setLeaveLoading(true);
       await leaveGroup(chat.id);
+
       setShowLeaveConfirm(false);
       setShowProfile(false);
+
       onGroupExit?.(chat.id);
-    } catch (error) {
-      console.error("Failed to leave group:", error);
+    } catch (leaveError) {
+      console.error("Failed to leave group:", leaveError);
       alert("Failed to leave the group.");
     } finally {
-      setLeaveLoading(false);
+      if (mountedRef.current) {
+        setLeaveLoading(false);
+      }
     }
   };
 
@@ -848,14 +1198,18 @@ export default function ChatView({
     try {
       setLeaveLoading(true);
       await leaveGroup(chat.id);
+
       setShowLeaveChannelConfirm(false);
       setShowProfile(false);
+
       onGroupExit?.(chat.id);
-    } catch (error) {
-      console.error("Failed to leave channel:", error);
+    } catch (leaveError) {
+      console.error("Failed to leave channel:", leaveError);
       alert("Failed to leave the channel.");
     } finally {
-      setLeaveLoading(false);
+      if (mountedRef.current) {
+        setLeaveLoading(false);
+      }
     }
   };
 
@@ -865,14 +1219,18 @@ export default function ChatView({
     try {
       setDeleteGroupLoading(true);
       await deleteGroup(chat.id);
+
       setShowDeleteGroupConfirm(false);
       setShowProfile(false);
+
       onGroupExit?.(chat.id);
-    } catch (error) {
-      console.error("Failed to delete group:", error);
+    } catch (deleteError) {
+      console.error("Failed to delete group:", deleteError);
       alert("Failed to delete the group.");
     } finally {
-      setDeleteGroupLoading(false);
+      if (mountedRef.current) {
+        setDeleteGroupLoading(false);
+      }
     }
   };
 
@@ -882,33 +1240,46 @@ export default function ChatView({
     try {
       setDeleteChannelLoading(true);
       await deleteChannel(chat.id);
+
       setShowDeleteChannelConfirm(false);
       setShowProfile(false);
+
       onGroupExit?.(chat.id);
-    } catch (error) {
-      console.error("Failed to delete channel:", error);
+    } catch (deleteError) {
+      console.error("Failed to delete channel:", deleteError);
       alert("Failed to delete the channel.");
     } finally {
-      setDeleteChannelLoading(false);
+      if (mountedRef.current) {
+        setDeleteChannelLoading(false);
+      }
     }
   };
 
   const scrollToMessage = async (targetMessage: Message) => {
     if (!chat) return;
 
-    const scrollAndHighlight = (): boolean => {
-      const el = document.getElementById(`msg-${targetMessage.id}`);
-      if (!el) return false;
+    const conversationId = chat.id;
 
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("message-highlight-flash");
+    const scrollAndHighlight = (): boolean => {
+      const messageElement = document.getElementById(
+        `msg-${targetMessage.id}`
+      );
+
+      if (!messageElement) return false;
+
+      messageElement.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      messageElement.classList.add("message-highlight-flash");
 
       if (highlightTimeoutRef.current) {
         window.clearTimeout(highlightTimeoutRef.current);
       }
 
       highlightTimeoutRef.current = window.setTimeout(() => {
-        el.classList.remove("message-highlight-flash");
+        messageElement.classList.remove("message-highlight-flash");
       }, 1600);
 
       return true;
@@ -916,11 +1287,10 @@ export default function ChatView({
 
     setShowSearch(false);
 
-    // If a result belongs to another channel topic, switch topics first.
     if (chatType === "CHANNEL") {
       const targetTopicId = targetMessage.topic_id ?? null;
 
-      if (targetTopicId !== activeTopicId) {
+      if (!isSameId(targetTopicId, activeTopicId)) {
         setActiveTopicId(targetTopicId);
       }
     }
@@ -928,51 +1298,43 @@ export default function ChatView({
     requestAnimationFrame(() => {
       if (scrollAndHighlight()) return;
 
-      (async () => {
+      void (async () => {
         try {
-          const data = await getConversationMessages(chat.id);
+          const fetchedMessages = await getConversationMessages(conversationId);
 
-          const sorted = [...data].sort(
-            (a, b) =>
-              new Date(a.created_at).getTime() -
-              new Date(b.created_at).getTime()
-          );
+          if (!mountedRef.current) return;
+          if (!isSameId(currentChatIdRef.current, conversationId)) return;
 
-          setMessages(sorted);
-          requestAnimationFrame(() =>
-            requestAnimationFrame(scrollAndHighlight)
-          );
-        } catch (err) {
+          setMessages((currentMessages) => {
+            const byId = new Map<string, Message>();
+
+            fetchedMessages.forEach((message) => {
+              byId.set(String(message.id), message);
+            });
+
+            currentMessages.forEach((message) => {
+              byId.set(String(message.id), message);
+            });
+
+            return sortMessagesByDate([...byId.values()]);
+          });
+
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              scrollAndHighlight();
+            });
+          });
+        } catch (searchError) {
           console.error(
             "Failed to load message history for search result:",
-            err
+            searchError
           );
         }
       })();
     });
   };
 
-  const senderAvatarById = useMemo(() => {
-    const map: Record<string, string> = {};
-
-    groupMembers?.forEach((m) => {
-      map[String(m.user_id)] = m.avatar_url || "";
-    });
-
-    return map;
-  }, [groupMembers]);
-
-  // Task #22/#49 — channel messages are separated by topic.
-  // `null` represents the default General topic.
-  const displayedMessages = useMemo(() => {
-    if (chatType !== "CHANNEL") return messages;
-
-    return messages.filter(
-      (message) => (message.topic_id ?? null) === activeTopicId
-    );
-  }, [messages, chatType, activeTopicId]);
-
-    if (
+  if (
     !chat &&
     !pendingDirectMessageUser &&
     !profileUserToOpen &&
@@ -981,7 +1343,11 @@ export default function ChatView({
     return (
       <div
         className="chat-placeholder"
-        style={{ display: "flex", flexDirection: "column", gap: "2rem" }}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "2rem",
+        }}
       >
         <div>Select a chat to start messaging</div>
       </div>
@@ -1021,9 +1387,11 @@ export default function ChatView({
         isOpen={showDeleteGroupConfirm}
         title="Delete Group"
         message="This will permanently delete this group and all its messages and media for every member. This action cannot be undone."
-        confirmText={deleteGroupLoading ? "Deleting..." : "Delete for everyone"}
+        confirmText={
+          deleteGroupLoading ? "Deleting..." : "Delete for everyone"
+        }
         isLoading={deleteGroupLoading}
-        isDanger={true}
+        isDanger
         onConfirm={handleDeleteGroup}
         onCancel={() => setShowDeleteGroupConfirm(false)}
       />
@@ -1046,7 +1414,7 @@ export default function ChatView({
           deleteChannelLoading ? "Deleting..." : "Delete Channel"
         }
         isLoading={deleteChannelLoading}
-        isDanger={true}
+        isDanger
         onConfirm={handleDeleteChannel}
         onCancel={() => setShowDeleteChannelConfirm(false)}
       />
@@ -1065,11 +1433,10 @@ export default function ChatView({
         onBack={onBack}
         onHeaderClick={handleHeaderClick}
         onToggleSearch={() => {
-          // A pending DM has no actual conversation ID to search.
           if (!chat) return;
 
           setShowProfile(false);
-          setShowSearch((prev) => !prev);
+          setShowSearch((previousValue) => !previousValue);
         }}
         isOtherUserOnline={activeOtherUserOnline}
       />
@@ -1098,15 +1465,15 @@ export default function ChatView({
         isCurrentUserOwner={isCurrentUserOwner}
         currentUserId={currentUserId}
         onClose={() => {
-                          setShowProfile(false);
+          setShowProfile(false);
 
-                          // If this screen exists only because a global-search profile was opened,
-                          // return to the sidebar after closing the overlay.
-                          if (!chat && !pendingDirectMessageUser) {
-                            onBack();
-                          }
-                        }}
-        onBackToGroup={() => setProfileViewType("group")}
+          if (!chat && !pendingDirectMessageUser) {
+            onBack();
+          }
+        }}
+        onBackToGroup={() =>
+          setProfileViewType(chatType === "CHANNEL" ? "channel" : "group")
+        }
         onSaveGroupEdit={handleSaveGroupEdit}
         onSaveChannelEdit={handleSaveChannelEdit}
         onUserClick={handleUserClick}
@@ -1118,13 +1485,17 @@ export default function ChatView({
         onLeaveChannelRequest={() => setShowLeaveChannelConfirm(true)}
         onDeleteChannelRequest={() => setShowDeleteChannelConfirm(true)}
         onlineUsers={onlineUsers}
-        onRefreshProfile={() =>
-          userProfile?.id && handleUserClick(userProfile.id)
-        }
+        onRefreshProfile={() => {
+          if (userProfile?.id) {
+            void handleUserClick(String(userProfile.id), profileSource);
+          }
+        }}
         onStartDirectMessage={async (user) => {
           setShowProfile(false);
           await onStartDirectMessage?.(user);
         }}
+        // Pass updates map to child
+        userProfileUpdates={userProfileUpdates}
       />
 
       <div className="chat-view-body">
@@ -1161,21 +1532,22 @@ export default function ChatView({
 
         {!loading && !error && displayedMessages.length > 0 && (
           <div className="message-history">
-            {displayedMessages.map((msg) => (
+            {displayedMessages.map((message) => (
               <MessageBubble
-                key={msg.id}
-                message={msg}
+                key={message.id}
+                message={message}
                 currentUserId={currentUserId}
                 currentUsername={currentUsername}
                 replyMessage={
-                  msg.reply_to
-                    ? messages.find((message) => message.id === msg.reply_to) ||
-                      null
+                  message.reply_to
+                    ? messages.find((candidate) =>
+                        isSameId(candidate.id, message.reply_to)
+                      ) || null
                     : null
                 }
                 canDeleteOthers={canDeleteOthersMessages}
                 isGroupChat={chatType === "GROUP"}
-                senderAvatarUrl={senderAvatarById[String(msg.sender)]}
+                senderAvatarUrl={senderAvatarById[String(message.sender)]}
                 canReply={
                   chatType === "CHANNEL"
                     ? (channelPermissions?.can_send_messages ?? false)
@@ -1184,8 +1556,12 @@ export default function ChatView({
                 onReply={setActiveReplyTo}
                 onEdit={handleEditMessage}
                 onDelete={handleDeleteMessage}
-                onAvatarClick={(userId) => handleUserClick(userId, "CHAT")}
+                onAvatarClick={(userId) =>
+                  void handleUserClick(userId, "CHAT")
+                }
                 onGroupJoined={onGroupJoined}
+                // Pass updates map to child
+                userProfileUpdates={userProfileUpdates}
               />
             ))}
 
@@ -1194,7 +1570,7 @@ export default function ChatView({
         )}
 
         {sendingMessage && (
-          <div className="sticky bottom-0 left-0 right-0 bg-[#1db954]/20 text-[#1db954] px-4 py-1.5 text-xs text-center font-medium backdrop-blur-sm border-t border-[#1db954]/30 animate-pulse">
+          <div className="sticky bottom-0 left-0 right-0 animate-pulse border-t border-[#1db954]/30 bg-[#1db954]/20 px-4 py-1.5 text-center text-xs font-medium text-[#1db954] backdrop-blur-sm">
             ⏳ Sending attachment(s)... Please wait.
           </div>
         )}

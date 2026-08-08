@@ -1,8 +1,45 @@
-import { useRef, useState, useEffect } from "react"; // Added useEffect
+import { useRef, useState, useEffect } from "react";
 import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
 import type { BackendUserProfile, UserProfile } from "../types/user";
 import { formatJoinLink } from "../utils/linkFormat";
 import RoleManagement from "./RoleManagement";
+
+// --- Profile Update Types ---
+export type UserProfileUpdate = {
+  username?: string | null;
+  display_name?: string | null;
+  displayName?: string | null;
+  avatar_url?: string | null;
+  avatarUrl?: string | null;
+  avatar?: string | null;
+  bio?: string | null;
+};
+
+export type UserProfileUpdates =
+  | ReadonlyMap<string, UserProfileUpdate>
+  | Readonly<Record<string, UserProfileUpdate | undefined>>;
+
+function getProfileUpdate(
+  updates: UserProfileUpdates | undefined,
+  userId: string,
+): UserProfileUpdate | undefined {
+  if (!updates) return undefined;
+
+  if (updates instanceof Map) {
+    return updates.get(userId);
+  }
+
+  return (
+    updates as Readonly<Record<string, UserProfileUpdate | undefined>>
+  )[userId];
+}
+
+function hasOwnProperty(
+  value: object,
+  property: PropertyKey,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(value, property);
+}
 
 interface ProfileOverlayProps {
   show: boolean;
@@ -34,8 +71,11 @@ interface ProfileOverlayProps {
   onlineUsers?: Record<string, boolean>; // ADDED: real-time online mapping
   onRefreshProfile?: () => void; // ADDED: optional callback to refetch user data
   onStartDirectMessage?: (
-  user: BackendUserProfile | UserProfile
-) => Promise<void> | void;
+    user: BackendUserProfile | UserProfile
+  ) => Promise<void> | void;
+  
+  // Real-time profile state map passed down from parent view
+  userProfileUpdates?: UserProfileUpdates;
 }
 
 export default function ProfileOverlay({
@@ -68,6 +108,7 @@ export default function ProfileOverlay({
   onlineUsers = {}, // DEFAULT: empty map
   onRefreshProfile,
   onStartDirectMessage,
+  userProfileUpdates,
 }: ProfileOverlayProps) {
   // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -82,6 +123,9 @@ export default function ProfileOverlay({
   const [editChannelDescription, setEditChannelDescription] = useState("");
   const [editChannelAvatar, setEditChannelAvatar] = useState<File | null>(null);
   const [editChannelLoading, setEditChannelLoading] = useState(false);
+
+  // Shared avatar-upload validation error (group + channel edit forms)
+  const [avatarError, setAvatarError] = useState("");
 
   // Role Management State
   const [activeTab, setActiveTab] = useState<"info" | "roles">("info");
@@ -114,6 +158,7 @@ export default function ProfileOverlay({
     setEditGroupName(groupProfile.name);
     setEditGroupDescription(groupProfile.description || "");
     setEditGroupAvatar(null);
+    setAvatarError("");
     setIsEditingGroup(true);
   };
 
@@ -136,6 +181,7 @@ export default function ProfileOverlay({
     setEditChannelName(channelProfile.name);
     setEditChannelDescription(channelProfile.description || "");
     setEditChannelAvatar(null);
+    setAvatarError("");
     setIsEditingChannel(true);
   };
 
@@ -154,16 +200,65 @@ export default function ProfileOverlay({
     }
   };
 
+  // --- Avatar Validation Handlers ---
+  const handleGroupAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please select a valid image file (JPG, PNG, GIF).");
+      e.target.value = "";
+      return;
+    }
+
+    setAvatarError("");
+    setEditGroupAvatar(file);
+  };
+
+  const handleChannelAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please select a valid image file (JPG, PNG, GIF).");
+      e.target.value = "";
+      return;
+    }
+
+    setAvatarError("");
+    setEditChannelAvatar(file);
+  };
+
   // --- Role Management Handlers ---
   const handleCreateRole = async () => {
-    if (!newRoleName.trim() || !onCreateRole) return;
+    const trimmedName = newRoleName.trim();
+    if (!trimmedName || !onCreateRole) return;
+
+    const nameExists = (channelRoles || []).some(
+      (role: any) =>
+        (role?.name || "").trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (nameExists) {
+      alert(`A role with the name "${trimmedName}" already exists.`);
+      return;
+    }
+
     setIsCreatingRole(true);
     try {
-      await onCreateRole(newRoleName);
+      await onCreateRole(trimmedName);
       setNewRoleName(""); // Clear input on success
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create role:", error);
-      alert("Failed to create role.");
+      const backendMessage =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.response?.data?.name?.[0] ||
+        error?.response?.data?.error;
+      alert(
+        backendMessage ||
+          "Failed to create role. Role name must be 50 characters or fewer."
+      );
     } finally {
       setIsCreatingRole(false);
     }
@@ -185,12 +280,38 @@ export default function ProfileOverlay({
     }
   };
 
+  // --- Real-time User Profile Derivation ---
+  let resolvedUserProfile = userProfile;
+  if (profileViewType === "user" && userProfile) {
+    const update = getProfileUpdate(userProfileUpdates, String(userProfile.id));
+    if (update) {
+      const updateContainsAvatar =
+        hasOwnProperty(update, "avatar_url") ||
+        hasOwnProperty(update, "avatarUrl") ||
+        hasOwnProperty(update, "avatar");
+
+      const updatedAvatar =
+        update.avatar_url ?? update.avatarUrl ?? update.avatar ?? null;
+
+      resolvedUserProfile = {
+        ...userProfile,
+        display_name:
+          update.display_name || update.displayName || userProfile.display_name,
+        username: update.username || userProfile.username,
+        bio: update.bio !== undefined ? update.bio : userProfile.bio,
+        avatar_url: updateContainsAvatar
+          ? (updatedAvatar ?? "")
+          : userProfile.avatar_url,
+      };
+    }
+  }
+
   return (
     <div className="group-profile-overlay slideInRight">
       <div className="group-profile-header">
-        {profileViewType === "user" && profileSource === "GROUP_PROFILE" && groupProfile ? (
+        {profileViewType === "user" && profileSource === "GROUP_PROFILE" && (groupProfile || channelProfile) ? (
           <button className="back-to-group-btn back-button" onClick={onBackToGroup} type="button">
-            ← Back to Group
+            ← Back to {groupProfile ? "Group" : "Members"}
           </button>
         ) : (
           <button className="back-button" onClick={onClose} type="button">← Close</button>
@@ -247,9 +368,12 @@ export default function ProfileOverlay({
                     />
                     <input
                       type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }}
-                      onChange={(e) => { if (e.target.files?.[0]) setEditChannelAvatar(e.target.files[0]); }}
+                      onChange={handleChannelAvatarChange}
                     />
                     <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>Change Avatar</button>
+                    {avatarError && (
+                      <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{avatarError}</div>
+                    )}
                   </div>
                   <div className="edit-field">
                     <label>Channel Name <span style={{ color: "red" }}>*</span></label>
@@ -257,7 +381,7 @@ export default function ProfileOverlay({
                   </div>
                   <div className="edit-field">
                     <label>Description</label>
-                    <textarea value={editChannelDescription} onChange={(e) => setEditChannelDescription(e.target.value)} className="edit-textarea" />
+                    <textarea value={editChannelDescription} onChange={(e) => setEditChannelDescription(e.target.value)} className="edit-textarea" maxLength={300} />
                   </div>
                   <div className="edit-actions">
                     <button className="cancel-edit-btn" onClick={() => setIsEditingChannel(false)} disabled={editChannelLoading}>Cancel</button>
@@ -291,7 +415,14 @@ export default function ProfileOverlay({
                     )}
                   </div>
 
-                  {channelProfile.description && <div className="group-profile-description">{channelProfile.description}</div>}
+                  {channelProfile.description && (
+                    <div
+                      className="group-profile-description"
+                      style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                    >
+                      {channelProfile.description}
+                    </div>
+                  )}
 
                   <div className="group-profile-meta">
                     <p>Created by: {channelProfile.owner_display_name}</p>
@@ -312,52 +443,56 @@ export default function ProfileOverlay({
                     <div className="group-members-section">
                       <h4>Members</h4>
                       <div className="members-list">
-                        {channelMembers.map((member) => (
-                          <div 
-                            key={member.user_id} 
-                            className="member-row group" 
-                            onClick={() => onUserClick && onUserClick(member.user_id)}
-                          >
-                            <div className="member-avatar-wrapper">
-                              <img src={member.avatar_url || "/default-avatar.svg"} alt={member.display_name} />
-                              {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
-                            </div>
-                            <span className="member-name flex-1">{member.display_name}</span>
-                            {/* Task #24 — a member can have multiple roles, so this
-                                renders every assigned role as its own badge
-                                (the backend's `roles` field for channel members is
-                                an array of names, not a single `role_name`). */}
-                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginRight: 8 }}>
-                              {(member.roles && member.roles.length > 0 ? member.roles : ["Member"]).map((roleName) => (
-                                <span
-                                  key={roleName}
-                                  className="badge"
-                                  style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}
+                        {channelMembers.map((member) => {
+                          const mUpdate = getProfileUpdate(userProfileUpdates, String(member.user_id));
+                          const displayName = mUpdate?.display_name || mUpdate?.displayName || member.display_name;
+                          const mUpdateContainsAvatar = mUpdate && (hasOwnProperty(mUpdate, "avatar_url") || hasOwnProperty(mUpdate, "avatarUrl") || hasOwnProperty(mUpdate, "avatar"));
+                          const updatedAvatar = mUpdate?.avatar_url ?? mUpdate?.avatarUrl ?? mUpdate?.avatar ?? null;
+                          const avatarUrl = mUpdateContainsAvatar ? (updatedAvatar || "/default-avatar.svg") : (member.avatar_url || "/default-avatar.svg");
+
+                          return (
+                            <div 
+                              key={member.user_id} 
+                              className="member-row group" 
+                              onClick={() => onUserClick && onUserClick(member.user_id)}
+                            >
+                              <div className="member-avatar-wrapper">
+                                <img src={avatarUrl} alt={displayName} />
+                                {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
+                              </div>
+                              <span className="member-name flex-1">{displayName}</span>
+                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginRight: 8 }}>
+                                {(member.roles && member.roles.length > 0 ? member.roles : ["Member"]).map((roleName) => (
+                                  <span
+                                    key={roleName}
+                                    className="badge"
+                                    style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}
+                                  >
+                                    {roleName}
+                                  </span>
+                                ))}
+                              </div>
+                              
+                              {/* Channel Remove Member Button */}
+                              {channelPermissions?.can_manage_members && String(member.user_id) !== String(currentUserId) && onRemoveChannelMember && (
+                                <button 
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    onRemoveChannelMember(member); 
+                                  }} 
+                                  className="remove-member-btn"
                                 >
-                                  {roleName}
-                                </span>
-                              ))}
+                                  Remove
+                                </button>
+                              )}
                             </div>
-                            
-                            {/* Channel Remove Member Button */}
-                            {channelPermissions?.can_manage_members && String(member.user_id) !== String(currentUserId) && onRemoveChannelMember && (
-                              <button 
-                                onClick={(e) => { 
-                                  e.stopPropagation(); 
-                                  onRemoveChannelMember(member); 
-                                }} 
-                                className="remove-member-btn"
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
 
-                  {/* Updated Danger Zone for Channel */}
+                  {/* Danger Zone for Channel */}
                   <div className="group-danger-zone" style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
                     {!isCurrentUserOwner && onLeaveChannelRequest && (
                       <button type="button" onClick={onLeaveChannelRequest} className="leave-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Leave Channel</button>
@@ -381,6 +516,7 @@ export default function ProfileOverlay({
                     placeholder="New Role Name"
                     className="edit-input"
                     disabled={isCreatingRole}
+                    maxLength={50}
                   />
                   <button 
                     onClick={handleCreateRole} 
@@ -391,8 +527,6 @@ export default function ProfileOverlay({
                   </button>
                 </div>
 
-                {/* Task #24 / #56 — role permission editing plus per-member
-                    role assignment/removal now lives in RoleManagement. */}
                 <RoleManagement 
                   channelId={channelProfile.id} 
                   roles={channelRoles || []} 
@@ -413,9 +547,12 @@ export default function ProfileOverlay({
                   />
                   <input
                     type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }}
-                    onChange={(e) => { if (e.target.files?.[0]) setEditGroupAvatar(e.target.files[0]); }}
+                    onChange={handleGroupAvatarChange}
                   />
                   <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>Change Avatar</button>
+                  {avatarError && (
+                    <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{avatarError}</div>
+                  )}
                 </div>
                 <div className="edit-field">
                   <label>Group Name <span style={{ color: "red" }}>*</span></label>
@@ -423,7 +560,7 @@ export default function ProfileOverlay({
                 </div>
                 <div className="edit-field">
                   <label>Description</label>
-                  <textarea value={editGroupDescription} onChange={(e) => setEditGroupDescription(e.target.value)} className="edit-textarea" />
+                  <textarea value={editGroupDescription} onChange={(e) => setEditGroupDescription(e.target.value)} className="edit-textarea" maxLength={300} />
                 </div>
                 <div className="edit-actions">
                   <button className="cancel-edit-btn" onClick={() => setIsEditingGroup(false)} disabled={editGroupLoading}>Cancel</button>
@@ -437,7 +574,14 @@ export default function ProfileOverlay({
                 <img src={groupProfile.avatar_url || chatAvatar} alt={groupProfile.name} className="group-profile-avatar-large" />
                 <h2 className="group-profile-name">{groupProfile.name}</h2>
                 <div className="group-profile-member-count">{Number(groupProfile.member_count)} Members</div>
-                {groupProfile.description && <div className="group-profile-description">{groupProfile.description}</div>}
+                {groupProfile.description && (
+                  <div
+                    className="group-profile-description"
+                    style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                  >
+                    {groupProfile.description}
+                  </div>
+                )}
 
                 <div className="group-profile-meta">
                   <p>Created by: {groupProfile.owner_display_name}</p>
@@ -458,19 +602,27 @@ export default function ProfileOverlay({
                   <div className="group-members-section">
                     <h4>Members</h4>
                     <div className="members-list">
-                      {groupMembers.map((member) => (
-                        <div key={member.user_id} className="member-row group" onClick={() => onUserClick(member.user_id)}>
-                          <div className="member-avatar-wrapper">
-                            <img src={member.avatar_url || "/default-avatar.svg"} alt={member.display_name} />
-                            {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
+                      {groupMembers.map((member) => {
+                        const mUpdate = getProfileUpdate(userProfileUpdates, String(member.user_id));
+                        const displayName = mUpdate?.display_name || mUpdate?.displayName || member.display_name;
+                        const mUpdateContainsAvatar = mUpdate && (hasOwnProperty(mUpdate, "avatar_url") || hasOwnProperty(mUpdate, "avatarUrl") || hasOwnProperty(mUpdate, "avatar"));
+                        const updatedAvatar = mUpdate?.avatar_url ?? mUpdate?.avatarUrl ?? mUpdate?.avatar ?? null;
+                        const avatarUrl = mUpdateContainsAvatar ? (updatedAvatar || "/default-avatar.svg") : (member.avatar_url || "/default-avatar.svg");
+
+                        return (
+                          <div key={member.user_id} className="member-row group" onClick={() => onUserClick(member.user_id)}>
+                            <div className="member-avatar-wrapper">
+                              <img src={avatarUrl} alt={displayName} />
+                              {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
+                            </div>
+                            <span className="member-name flex-1">{displayName}</span>
+                            {String(member.user_id) === String(groupProfile.owner_id) && <span className="badge owner-badge mr-2">Owner</span>}
+                            {isCurrentUserOwner && String(member.user_id) !== String(currentUserId) && (
+                              <button onClick={(e) => { e.stopPropagation(); onRemoveMember(member); }} className="remove-member-btn">Remove</button>
+                            )}
                           </div>
-                          <span className="member-name flex-1">{member.display_name}</span>
-                          {String(member.user_id) === String(groupProfile.owner_id) && <span className="badge owner-badge mr-2">Owner</span>}
-                          {isCurrentUserOwner && String(member.user_id) !== String(currentUserId) && (
-                            <button onClick={(e) => { e.stopPropagation(); onRemoveMember(member); }} className="remove-member-btn">Remove</button>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -479,48 +631,46 @@ export default function ProfileOverlay({
                   {!isCurrentUserOwner && (
                     <button type="button" onClick={onLeaveGroupRequest} className="leave-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Leave Group</button>
                   )}
-                  {isCurrentUserOwner && (
-                    <button type="button" onClick={onDeleteGroupRequest} className="delete-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontWeight: 600 }}>Delete Group</button>
-                  )}
+                  <button type="button" onClick={onDeleteGroupRequest} className="delete-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontWeight: 600 }}>Delete Group</button>
                 </div>
               </>
             )}
           </div>
-        ) : profileViewType === "user" && userProfile ? (
+        ) : profileViewType === "user" && resolvedUserProfile ? (
           <div className="group-profile-card">
             <img
-              src={userProfile.avatar_url || "/default-avatar.svg"}
-              alt={userProfile.display_name}
+              src={resolvedUserProfile.avatar_url || "/default-avatar.svg"}
+              alt={resolvedUserProfile.display_name}
               className="group-profile-avatar-large"
             />
 
-            <h2 className="group-profile-name">{userProfile.display_name}</h2>
+            <h2 className="group-profile-name">{resolvedUserProfile.display_name}</h2>
 
-            <p className="group-profile-meta">@{userProfile.username}</p>
+            <p className="group-profile-meta">@{resolvedUserProfile.username}</p>
 
-            {userProfile.bio && (
+            {resolvedUserProfile.bio && (
               <div className="group-profile-description">
-                {userProfile.bio}
+                {resolvedUserProfile.bio}
               </div>
             )}
 
             <div
               className="group-profile-meta"
               style={{
-                color: isUserOnline(userProfile.id) ? "#4ade80" : "#9ca3af",
+                color: isUserOnline(resolvedUserProfile.id) ? "#4ade80" : "#9ca3af",
                 marginTop: "8px",
               }}
             >
-              {isUserOnline(userProfile.id) ? "Online" : "Offline"}
+              {isUserOnline(resolvedUserProfile.id) ? "Online" : "Offline"}
             </div>
 
             {/* Do not show a DM button on the current user's own profile. */}
-            {String(userProfile.id) !== String(currentUserId) &&
+            {String(resolvedUserProfile.id) !== String(currentUserId) &&
               onStartDirectMessage && (
                 <button
                   type="button"
                   className="start-direct-message-btn"
-                  onClick={() => void onStartDirectMessage(userProfile)}
+                  onClick={() => void onStartDirectMessage(resolvedUserProfile!)}
                 >
                   Message
                 </button>

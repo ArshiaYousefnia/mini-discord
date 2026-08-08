@@ -12,6 +12,8 @@ type Props = {
   onSendMessage: (text: string, files?: File[]) => Promise<void>; 
 };
 
+const MAX_MESSAGE_LENGTH = 2000;
+
 export default function MessageInput({
   activeReplyTo,
   disabled = false,
@@ -68,8 +70,9 @@ export default function MessageInput({
 
     const trimmedText = text.trim();
     const hasContent = trimmedText.length > 0 || selectedFiles.length > 0;
+    const isOverLimit = text.length > MAX_MESSAGE_LENGTH;
 
-    if (!hasContent || isInputDisabled) {
+    if (!hasContent || isInputDisabled || isOverLimit) {
       return;
     }
 
@@ -105,6 +108,7 @@ export default function MessageInput({
   };
 
   const hasContent = text.trim().length > 0 || selectedFiles.length > 0;
+  const isOverLimit = text.length > MAX_MESSAGE_LENGTH;
 
   return (
     <div className="chat-input-area" style={{ display: "flex", flexDirection: "column" }}>
@@ -188,6 +192,22 @@ export default function MessageInput({
         </div>
       )}
 
+      {isOverLimit && (
+        <div
+          className="message-length-warning"
+          style={{
+            padding: "6px 12px",
+            fontSize: "12px",
+            fontWeight: 600,
+            color: "#ef4444",
+            backgroundColor: "rgba(239, 68, 68, 0.08)",
+            borderBottom: "1px solid rgba(239, 68, 68, 0.2)",
+          }}
+        >
+          🚫 Message exceeds {MAX_MESSAGE_LENGTH} character limit ({text.length}/{MAX_MESSAGE_LENGTH})
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="chat-input-form" style={{ display: "flex", alignItems: "center" }}>
         
         {/* Attachment Button */}
@@ -229,7 +249,6 @@ export default function MessageInput({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleKeyDown}
-          maxLength={2000}
           disabled={isInputDisabled}
           rows={1}
           style={{ flexGrow: 1 }}
@@ -238,10 +257,10 @@ export default function MessageInput({
         <button
           type="submit"
           className="chat-send-btn"
-          disabled={!hasContent || isInputDisabled}
+          disabled={!hasContent || isInputDisabled || isOverLimit}
           aria-label="Send message"
         >
-          {loading ? "..." : "➤"}
+          {loading ? "..." : isOverLimit ? "🚫" : "➤"}
         </button>
       </form>
     </div>
