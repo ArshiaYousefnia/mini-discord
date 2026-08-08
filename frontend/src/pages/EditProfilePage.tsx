@@ -4,6 +4,7 @@ import type { UserEditProfile } from "../types/user";
 import { getUserEditProfile, updateUserProfile} from "../services/users";
 import "../styles/editProfile.css";
 import { logoutUser } from "../services/authService";
+import { clear } from 'idb-keyval';
 
 export default function EditProfilePage() {
   const userId = localStorage.getItem("Id");
@@ -142,31 +143,71 @@ export default function EditProfilePage() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      const refreshToken = localStorage.getItem("refreshToken");
-      if (refreshToken) {
-        await logoutUser(refreshToken);
-      }
-    } catch (error) {
-      console.error("Logout failed", error);
-    } finally {
-      // Make sure these match exactly what you set in LoginForm
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("refreshToken");
-      localStorage.removeItem("username");
-      localStorage.removeItem("email");
-      localStorage.removeItem("id");
-      localStorage.removeItem("display_name");
-      localStorage.removeItem("avatar_url");
-      navigate("/login", { replace: true });
+
+
+// ... inside your component
+
+const handleLogout = async () => {
+  try {
+    const refreshToken = localStorage.getItem("refreshToken");
+    if (refreshToken) {
+      await logoutUser(refreshToken);
     }
-  };
+  } catch (error) {
+    console.error("Logout failed", error);
+  } finally {
+    // --- ADD THIS LINE FIRST ---
+    window.dispatchEvent(new Event("userLoggedOut"));
+    // ----------------------------
+
+    // 1. Clear Local Storage
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("username");
+    localStorage.removeItem("email");
+    localStorage.removeItem("Id");
+    localStorage.removeItem("display_name");
+    localStorage.removeItem("avatar_url");
+
+    // 2. Clear Browser Cache API
+    if ('caches' in window) {
+      try {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(name => caches.delete(name)));
+      } catch (cacheError) {
+        console.error("Failed to clear browser cache", cacheError);
+      }
+    }
+
+    // 3. Clear IndexedDB
+    try {
+      await clear(); 
+      console.log("IndexedDB media cache wiped successfully.");
+    } catch (idbError) {
+      console.error("Failed to clear IndexedDB", idbError);
+    }
+
+    // 4. Redirect
+    navigate("/login", { replace: true });
+  }
+};
+
+
+
 
 
   if (loading) {
     return (
       <div className="edit-profile-page">
+        <button
+          type="button"
+          className="home-button"
+          onClick={() => navigate("/HomePage/")}
+        >
+          <span className="home-button-icon">←</span>
+          <span>Back</span>
+        </button>
+
         <div className="edit-profile-card">Loading profile...</div>
       </div>
     );
@@ -175,6 +216,14 @@ export default function EditProfilePage() {
   if (error && !user) {
     return (
       <div className="edit-profile-page">
+        <button
+          type="button"
+          className="home-button"
+          onClick={() => navigate("/HomePage/")}
+        >
+          Home
+        </button>
+
         <div className="edit-profile-card">{error}</div>
       </div>
     );
@@ -184,6 +233,16 @@ export default function EditProfilePage() {
 
   return (
     <div className="edit-profile-page">
+      <button
+        type="button"
+        className="home-button"
+        onClick={() => navigate("/HomePage")}
+      >
+        <span className="home-button-icon">←</span>
+        <span>Back</span>
+      </button>
+
+
       <div className="edit-profile-card">
         <form onSubmit={handleSubmit}>
           <div className="edit-profile-header">

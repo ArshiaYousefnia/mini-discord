@@ -7,41 +7,90 @@ import EditProfilePage from "./pages/EditProfilePage";
 import HomePage from "./pages/HomePage";
 import CreateGroupPage from "./pages/CreateGroupPage";
 import CreateChannelPage from "./pages/CreateChannelPage";
+import ChannelInvitePage from "./pages/ChannelInvitePage";
+import { NotificationProvider } from "./context/NotificationContext";
 
+function RootRedirect() {
+  const isAuthenticated = Boolean(
+    localStorage.getItem("accessToken")
+  );
 
-function Home() {
-  return <div>Home page</div>;
+  if (isAuthenticated) {
+    return <Navigate to="/HomePage" replace />;
+  }
+
+  return <Navigate to="/login" replace />;
 }
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/login" element={<Login />} />
+    <NotificationProvider>
+      <Routes>
+        <Route path="/" element={<RootRedirect />} />
 
-      <Route
-        path="/users/:userId"
-        element={
-          <ProtectedRoute>
-            <UserProfilePage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/profile/"
-        element={
-          <ProtectedRoute>
-            <EditProfilePage />
-          </ProtectedRoute>
-        }
-      />
-  
-      <Route path="/HomePage/" element={<HomePage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-      <Route path="/groups/create" element={<CreateGroupPage />} />
-      <Route path="/channels/create" element={<CreateChannelPage />} />
+        <Route path="/register" element={<Register />} />
 
-    </Routes>
+        <Route path="/login" element={<Login />} />
+
+        <Route
+          path="/users/:userId"
+          element={
+            <ProtectedRoute>
+              <UserProfilePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <EditProfilePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/HomePage"
+          element={
+            <ProtectedRoute>
+              <HomePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/groups/create"
+          element={
+            <ProtectedRoute>
+              <CreateGroupPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/channels/create"
+          element={
+            <ProtectedRoute>
+              <CreateChannelPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/channels/join/:inviteCode"
+          element={
+            <ProtectedRoute>
+              <ChannelInvitePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="*"
+          element={<Navigate to="/" replace />}
+        />
+      </Routes>
+    </NotificationProvider>
   );
 }
