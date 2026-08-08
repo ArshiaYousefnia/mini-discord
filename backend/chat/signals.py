@@ -1,11 +1,12 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from .models import Message, Notification
+from .models import Message, Notification, ChannelMessage
 from .serializers import NotificationSerializer
 from chat.views.views_realtime_utils import broadcast_notification
 
 
 @receiver(post_save, sender=Message)
+@receiver(post_save, sender=ChannelMessage)
 def notify_on_reply(sender, instance, created, **kwargs):
     """
     When a message is a reply to another message, notify the original sender.
