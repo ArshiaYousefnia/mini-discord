@@ -118,13 +118,9 @@ class RealtimeService {
     return () => this.conversationCallbacks.delete(callback);
   }
 
-  subscribeToUserUpdates(callback: (data: any) => void) {
-    return this.subscribeToUpdates((message) => {
-      if (message.event_type === 'user_updated') {
-        console.log('📨 Raw user_updated payload:', JSON.stringify(message, null, 2));
-        callback(message.data);
-      }
-    });
+  public subscribeToUserUpdates(callback: UserUpdateCallback) {
+    this.userUpdateCallbacks.add(callback);
+    return () => this.userUpdateCallbacks.delete(callback);
   }
 
 

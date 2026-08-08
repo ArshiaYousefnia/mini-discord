@@ -14,7 +14,9 @@ import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import {
   realtimeService,
   type ConversationUpdatePayload,
+  type UserUpdatePayload,
 } from "../services/realtimeService";
+
 
 function getCurrentUsername(): string {
   const rawUser = localStorage.getItem("username");
@@ -203,6 +205,72 @@ export default function HomePage() {
     setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
   }, []);
 
+  const handleUserProfileUpdate = useCallback((payload: UserUpdatePayload) => {
+    const updatedUserId = String(payload.user_id);
+
+    setChatItems((prevChats) =>
+      prevChats.map((chat) => {
+        const isDirectChatWithUpdatedUser =
+          chat.type === "DM" &&
+          chat.other_user_id &&
+          String(chat.other_user_id) === updatedUserId;
+
+        if (!isDirectChatWithUpdatedUser) {
+          return chat;
+        }
+
+        return {
+          ...chat,
+          name: payload.display_name ?? chat.name,
+          avatar: payload.avatar_url ?? chat.avatar,
+        };
+      })
+    );
+
+    setSelectedChat((prev) => {
+      if (!prev) return prev;
+
+      const isDirectChatWithUpdatedUser =
+        prev.type === "DM" &&
+        prev.other_user_id &&
+        String(prev.other_user_id) === updatedUserId;
+
+      if (!isDirectChatWithUpdatedUser) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        name: payload.display_name ?? prev.name,
+        avatar: payload.avatar_url ?? prev.avatar,
+      };
+    });
+
+    setPendingDirectMessageUser((prev) => {
+      if (!prev || String(prev.id) !== updatedUserId) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        display_name: payload.display_name ?? prev.display_name,
+        avatar_url: payload.avatar_url ?? prev.avatar_url,
+      };
+    });
+
+    setProfileUserToOpen((prev) => {
+      if (!prev || String(prev.id) !== updatedUserId) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        display_name: payload.display_name ?? prev.display_name,
+        avatar_url: payload.avatar_url ?? prev.avatar_url,
+      };
+    });
+  }, []);
+
   const handleConversationUpdate = useCallback(
     (payload: ConversationUpdatePayload) => {
       const targetId = String(payload.conversation_id);
@@ -283,11 +351,19 @@ export default function HomePage() {
     const unsubscribeUpdates = realtimeService.subscribeToUpdates(
       handleConversationUpdate
     );
-
     return () => {
       unsubscribeUpdates();
     };
   }, [handleConversationUpdate]);
+
+  useEffect(() => {
+    const unsubscribeUserUpdates =
+      realtimeService.subscribeToUserUpdates(handleUserProfileUpdate);
+
+    return () => {
+      unsubscribeUserUpdates();
+    };
+  }, [handleUserProfileUpdate]);
 
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
