@@ -32,8 +32,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
-        await self.channel_layer.group_discard(self.user_group, self.channel_name)
+        # Check if the room/chat group was initialized
+        if hasattr(self, "group_name"):
+            await self.channel_layer.group_discard(
+                self.group_name, 
+                self.channel_name
+            )
+
+        # Check if the individual user group was initialized
+        if hasattr(self, "user_group"):
+            await self.channel_layer.group_discard(
+                self.user_group, 
+                self.channel_name
+            )
+
 
     async def receive(self, text_data):
         # Optional: handle typing indicators or other client events
