@@ -7,7 +7,8 @@ from rest_framework.views import APIView
 
 from chat.models import Conversation, ConversationMember, Role
 from chat.serializers import GroupCreateSerializer, GroupDetailSerializer, GroupMemberSerializer, GroupUpdateSerializer
-from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update
+from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update, \
+    broadcast_conversation_deleted
 
 
 class GroupCreateView(APIView):
@@ -202,6 +203,9 @@ class GroupDeleteView(APIView):
                 {"detail": "You are not a member of this group."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        # Broadcast deletion to all members before deleting
+        broadcast_conversation_deleted(group)
 
         group.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

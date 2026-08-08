@@ -9,7 +9,8 @@ from rest_framework.views import APIView
 from chat.models import Conversation, ConversationMember, Channel, Role, Message
 from chat.serializers import ChannelCreateSerializer, ChannelDetailSerializer, ChannelUpdateSerializer, \
     ChannelMemberSerializer, ChannelMemberRoleUpdateSerializer, MessageSerializer
-from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update
+from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update, \
+    broadcast_conversation_deleted
 
 
 class ChannelCreateView(APIView):
@@ -470,6 +471,9 @@ class ChannelDeleteView(APIView):
                 {"detail": "You do not have permission to delete this channel."},
                 status=status.HTTP_403_FORBIDDEN
             )
+
+        # Broadcast deletion to all members before deleting
+        broadcast_conversation_deleted(conversation)
 
         conversation.delete()
 

@@ -26,7 +26,6 @@ def broadcast_new_message(message):
     else:
         data = MessageSerializer(message).data
 
-    # Ensure all UUIDs are strings
     data = convert_uuids_to_str(data)
 
     async_to_sync(channel_layer.group_send)(
@@ -129,39 +128,19 @@ def broadcast_unread_update_for_conversation(conversation):
         )
 
 def broadcast_user_profile_update(user):
-    """
-    Broadcast profile updates in two places:
-
-    1. To global user sockets of:
-       - the updated user
-       - every user who shares a DM with the updated user
-
-       This updates sidebars even when the DM is not currently open.
-
-    2. To all conversation sockets the user is a member of.
-
-       This updates currently opened chat views, group member lists,
-       message sender info, etc.
-    """
     channel_layer = get_channel_layer()
 
     data = {
-        "user_id": str(user.id),
-        "display_name": user.display_name,
-        "avatar_url": user.avatar_url,
+        'user_id': str(user.id),
+        'display_name': user.display_name,
+        'avatar_url': user.avatar_url,
     }
 
-    # --------------------------------------------------
-    # 1. Find all conversations the user is a member of
-    # --------------------------------------------------
     member_conversation_ids = list(
         ConversationMember.objects.filter(user=user)
         .values_list("conversation_id", flat=True)
     )
 
-    # --------------------------------------------------
-    # 2. Find only DM conversations involving this user
-    # --------------------------------------------------
     dm_conversation_ids = list(
         Conversation.objects.filter(
             id__in=member_conversation_ids,
@@ -169,9 +148,6 @@ def broadcast_user_profile_update(user):
         ).values_list("id", flat=True)
     )
 
-    # --------------------------------------------------
-    # 3. Find all users who share those DMs with this user
-    # --------------------------------------------------
     dm_peer_user_ids = set(
         ConversationMember.objects.filter(
             conversation_id__in=dm_conversation_ids
@@ -180,12 +156,8 @@ def broadcast_user_profile_update(user):
         .values_list("user_id", flat=True)
     )
 
-    # Include the updated user too, for their own UI
     global_socket_user_ids = {user.id, *dm_peer_user_ids}
 
-    # --------------------------------------------------
-    # 4. Send to global /ws/user/ sockets
-    # --------------------------------------------------
     for target_user_id in global_socket_user_ids:
         async_to_sync(channel_layer.group_send)(
             f"user_{target_user_id}",
@@ -195,9 +167,6 @@ def broadcast_user_profile_update(user):
             },
         )
 
-    # --------------------------------------------------
-    # 5. Send to all active conversation sockets as before
-    # --------------------------------------------------
     for conv_id in member_conversation_ids:
         async_to_sync(channel_layer.group_send)(
             f"conversation_{conv_id}",
@@ -226,3 +195,27 @@ def broadcast_conversation_metadata_update(conversation):
             "data": data
         }
     )
+
+def broadcast_conversation_deleted(conversation):
+    """
+    Notify all members that a conversation has been deleted.
+    They should remove it from their sidebar.
+    """
+    channel_layer = get_channel_layer()
+    member_ids = ConversationMember.objects.filter(
+        conversation=conversation
+    ).values_list('user_id', flat=True)
+
+    data = {
+        'conversation_id': str(conversation.id),
+        'event_type': 'conversation_deleted',
+    }
+
+    for user_id in member_ids:
+        async_to_sync(channel_layer.group_send)(
+            f"user_{user_id}",
+            {
+                "type": "conversation_update",
+                "data": data
+            }
+        )
