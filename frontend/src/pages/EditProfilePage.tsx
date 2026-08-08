@@ -165,7 +165,7 @@ const handleLogout = async () => {
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("username");
     localStorage.removeItem("email");
-    localStorage.removeItem("id");
+    localStorage.removeItem("Id");
     localStorage.removeItem("display_name");
     localStorage.removeItem("avatar_url");
 
@@ -199,6 +199,15 @@ const handleLogout = async () => {
   if (loading) {
     return (
       <div className="edit-profile-page">
+        <button
+          type="button"
+          className="home-button"
+          onClick={() => navigate("/HomePage/")}
+        >
+          <span className="home-button-icon">←</span>
+          <span>Back</span>
+        </button>
+
         <div className="edit-profile-card">Loading profile...</div>
       </div>
     );
@@ -207,6 +216,14 @@ const handleLogout = async () => {
   if (error && !user) {
     return (
       <div className="edit-profile-page">
+        <button
+          type="button"
+          className="home-button"
+          onClick={() => navigate("/HomePage/")}
+        >
+          Home
+        </button>
+
         <div className="edit-profile-card">{error}</div>
       </div>
     );
@@ -216,6 +233,16 @@ const handleLogout = async () => {
 
   return (
     <div className="edit-profile-page">
+      <button
+        type="button"
+        className="home-button"
+        onClick={() => navigate("/HomePage")}
+      >
+        <span className="home-button-icon">←</span>
+        <span>Back</span>
+      </button>
+
+
       <div className="edit-profile-card">
         <form onSubmit={handleSubmit}>
           <div className="edit-profile-header">
