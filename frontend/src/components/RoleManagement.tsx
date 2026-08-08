@@ -41,9 +41,17 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
   const [assignSelection, setAssignSelection] = useState<Record<string, string>>({});
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
 
-  // Filter out the built-in roles so they don't appear in lists, chips, or assignments
+  // Filter out the built-in / default roles so they don't appear in lists,
+  // chips, or assignments — this now also excludes the default "Member"
+  // role (previously only "Channel Owner"/"Channel Member" were excluded,
+  // which never matched the actual default role name returned by the
+  // backend, so "Member" incorrectly showed up as an editable/deletable
+  // custom role).
   const customRoles = roles.filter(
-    (r) => r.name !== "Channel Owner" && r.name !== "Channel Member"
+    (r) =>
+      r.name !== "Channel Owner" &&
+      r.name !== "Channel Member" &&
+      r.name !== "Member"
   );
 
   const loadMembers = async () => {

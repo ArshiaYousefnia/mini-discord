@@ -227,11 +227,29 @@ export default function HomePage() {
 
           const targetChat = prevChats[existingChatIndex];
 
+          // Only "new_message" events should ever increase the unread
+          // count. Previously every non-"member_left" event (including
+          // "message_deleted" and "message_updated") incremented the
+          // unread badge, so deleting an unseen message actually made the
+          // unread count go UP instead of being cleared. "message_deleted"
+          // now decrements it instead, and other event types leave it
+          // untouched (unless the chat is currently open, in which case it
+          // stays at 0).
+          let nextUnreadCount = targetChat.unreadCount ?? 0;
+
+          if (update.event_type === "new_message") {
+            nextUnreadCount = isCurrentlyOpen ? 0 : nextUnreadCount + 1;
+          } else if (update.event_type === "message_deleted") {
+            nextUnreadCount = isCurrentlyOpen
+              ? 0
+              : Math.max(0, nextUnreadCount - 1);
+          } else if (isCurrentlyOpen) {
+            nextUnreadCount = 0;
+          }
+
           const updatedChat: ChatListItem = {
             ...targetChat,
-            unreadCount: isCurrentlyOpen
-              ? 0
-              : (targetChat.unreadCount ?? 0) + 1,
+            unreadCount: nextUnreadCount,
             lastMessage: update.last_message?.content || targetChat.lastMessage,
             lastMessageAt: update.last_message?.created_at || targetChat.lastMessageAt,
           };
