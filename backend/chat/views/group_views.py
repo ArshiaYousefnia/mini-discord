@@ -167,6 +167,17 @@ class GroupUpdateView(APIView):
 
         broadcast_conversation_metadata_update(conversation)
 
+        # Broadcast group info update to all members
+        broadcast_conversation_update(
+            conversation,
+            'group_updated',
+            {
+                'name': conversation.name,
+                'description': conversation.description,
+                'avatar_url': conversation.avatar_url
+            }
+        )
+
         return Response(
             GroupDetailSerializer(conversation).data
         )

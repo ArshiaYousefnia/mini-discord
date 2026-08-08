@@ -10,9 +10,28 @@ export interface MinimalMessage {
 
 export interface ConversationUpdatePayload {
   conversation_id: string;
-  event_type: "new_message" | "member_left" | "message_deleted" | "message_updated";
+  event_type: 
+    | "new_message" 
+    | "member_left" 
+    | "member_joined"
+    | "message_deleted" 
+    | "message_updated"
+    | "channel_updated"
+    | "role_updated"
+    | "unread_updated"
+    | "conversation_deleted"
+    | "group_updated"
+    | "user_updated";
   last_message?: MinimalMessage;
-  user_id?: string; // present on member_left
+  user_id?: string;
+  name?: string;
+  description?: string;
+  avatar_url?: string;
+  avatar?: string;
+  role_ids?: string[];
+  action?: string;
+  unread_count?: number;
+  data?: any;
 }
 
 export interface NotificationPayload {
@@ -25,18 +44,36 @@ export interface NotificationPayload {
   sender_avatar?: string;
 }
 
+export interface UserUpdatePayload {
+  user_id: string;
+  display_name: string;
+  avatar_url: string;
+}
+
+export interface ConversationMetadataPayload {
+  conversation_id: string;
+  name: string;
+  description: string;
+  avatar_url: string;
+}
+
 type ConversationUpdateCallback = (data: ConversationUpdatePayload) => void;
 type NotificationCallback = (data: NotificationPayload) => void;
 export type ConversationMessageCallback = (
   type: "new_message" | "message_updated" | "message_deleted", 
   data: any
 ) => void;
-
+type UserUpdateCallback = (data: UserUpdatePayload) => void;
+type ConversationMetadataCallback = (data: ConversationMetadataPayload) => void;
 
 type SocketEnvelope =
   | { type: "conversation_update"; data: ConversationUpdatePayload }
   | { type: "notification"; data: NotificationPayload }
   | { type: "new_message"; data: any }
+  | { type: "message_updated"; data: any }
+  | { type: "message_deleted"; data: any }
+  | { type: "user_updated"; data: UserUpdatePayload }
+  | { type: "conversation_metadata_updated"; data: ConversationMetadataPayload }
   | { type: string; data?: any };
 
 class RealtimeService {
@@ -46,6 +83,8 @@ class RealtimeService {
   private updateCallbacks: Set<ConversationUpdateCallback> = new Set();
   private notificationCallbacks: Set<NotificationCallback> = new Set();
   private conversationCallbacks: Set<ConversationMessageCallback> = new Set();
+  private userUpdateCallbacks: Set<UserUpdateCallback> = new Set();
+  private conversationMetadataCallbacks: Set<ConversationMetadataCallback> = new Set();
 
   private activeConversationId: string | null = null;
 
@@ -57,10 +96,6 @@ class RealtimeService {
   private userManuallyClosed = false;
   private conversationManuallyClosed = false;
 
-  /**
-   * Incrementing ids prevent stale onclose handlers / delayed reconnect timers
-   * from resurrecting old sockets after a newer one has been created.
-   */
   private userConnectionSeq = 0;
   private conversationConnectionSeq = 0;
 
@@ -83,14 +118,25 @@ class RealtimeService {
     return () => this.conversationCallbacks.delete(callback);
   }
 
+  subscribeToUserUpdates(callback: (data: any) => void) {
+    return this.subscribeToUpdates((message) => {
+      if (message.event_type === 'user_updated') {
+        console.log('📨 Raw user_updated payload:', JSON.stringify(message, null, 2));
+        callback(message.data);
+      }
+    });
+  }
+
+
+  public subscribeToConversationMetadata(callback: ConversationMetadataCallback) {
+    this.conversationMetadataCallbacks.add(callback);
+    return () => this.conversationMetadataCallbacks.delete(callback);
+  }
+
   // =========================
   // Public connection helpers
   // =========================
 
-  /**
-   * Ensure the global user socket exists.
-   * Safe to call multiple times.
-   */
   public connectUserSocket() {
     if (this.isSocketAlive(this.userSocket)) {
       return;
@@ -121,23 +167,14 @@ class RealtimeService {
         this.userSocket = null;
       }
 
-      // Ignore stale closes from an old socket instance
       if (connectionId !== this.userConnectionSeq) return;
-
-      // Don't reconnect on intentional close
       if (this.userManuallyClosed) return;
-
-      // Normal close code should not trigger reconnect
       if (event.code === 1000) return;
 
       this.scheduleUserReconnect(connectionId);
     };
   }
 
-  /**
-   * Ensure the conversation socket is connected to the given conversation.
-   * Safe to call repeatedly.
-   */
   public connectConversationSocket(conversationId: string) {
     if (!conversationId) return;
 
@@ -176,26 +213,15 @@ class RealtimeService {
         this.conversationSocket = null;
       }
 
-      // Ignore stale closes from an old socket instance
       if (connectionId !== this.conversationConnectionSeq) return;
-
-      // If we already switched to another conversation or intentionally closed, do nothing
       if (this.conversationManuallyClosed) return;
-
-      // If the user changed the active conversation, don't reconnect this one
       if (this.activeConversationId !== conversationId) return;
-
-      // Normal close code should not trigger reconnect
       if (event.code === 1000) return;
 
       this.scheduleConversationReconnect(conversationId, connectionId);
     };
   }
 
-  /**
-   * Close only the conversation socket.
-   * Does NOT clear callbacks.
-   */
   public disconnectConversationSocket(manualClose = true) {
     if (manualClose) {
       this.conversationManuallyClosed = true;
@@ -216,9 +242,6 @@ class RealtimeService {
     }
   }
 
-  /**
-   * Close only the user socket.
-   */
   public disconnectUserSocket() {
     this.userManuallyClosed = true;
     this.clearTimer("user");
@@ -235,30 +258,19 @@ class RealtimeService {
     }
   }
 
-  /**
-   * Close everything intentionally.
-   */
   public disconnectAll() {
     this.disconnectConversationSocket(true);
     this.disconnectUserSocket();
   }
 
-  /**
-   * Optional helper if you want to clear all subscribers too.
-   * Usually not needed in app runtime.
-   */
   public clearAllSubscribers() {
     this.updateCallbacks.clear();
     this.notificationCallbacks.clear();
     this.conversationCallbacks.clear();
+    this.userUpdateCallbacks.clear();
+    this.conversationMetadataCallbacks.clear();
   }
 
-  /**
-   * Optional helper for logout:
-   * - closes sockets
-   * - clears timers
-   * - resets internal connection state
-   */
   public reset() {
     this.disconnectAll();
     this.activeConversationId = null;
@@ -275,6 +287,7 @@ class RealtimeService {
   // =========================
 
   private handleUserSocketMessage(event: MessageEvent) {
+    console.log('🔵 RAW user socket message:', event);
     try {
       const envelope = JSON.parse(event.data) as SocketEnvelope;
 
@@ -291,6 +304,13 @@ class RealtimeService {
         }
         return;
       }
+
+      if (envelope.type === "user_updated") {
+        if (envelope.data) {
+          this.userUpdateCallbacks.forEach((cb) => cb(envelope.data));
+        }
+        return;
+      }
     } catch (err) {
       console.error("Error processing user socket message:", err);
     }
@@ -300,19 +320,30 @@ class RealtimeService {
     try {
       const envelope = JSON.parse(event.data) as SocketEnvelope;
 
-      // Check if the type is one of the allowed message events
       if (["new_message", "message_updated", "message_deleted"].includes(envelope.type)) {
         this.conversationCallbacks.forEach((cb) => 
-          // Cast the type to satisfy TypeScript
           cb(envelope.type as "new_message" | "message_updated" | "message_deleted", envelope.data)
         );
+        return;
+      }
+
+      if (envelope.type === "user_updated") {
+        if (envelope.data) {
+          this.userUpdateCallbacks.forEach((cb) => cb(envelope.data));
+        }
+        return;
+      }
+
+      if (envelope.type === "conversation_metadata_updated") {
+        if (envelope.data) {
+          this.conversationMetadataCallbacks.forEach((cb) => cb(envelope.data));
+        }
+        return;
       }
     } catch (err) {
       console.error("Error processing conversation socket message:", err);
     }
   }
-
-
 
   // =========================
   // Reconnect logic
@@ -322,10 +353,7 @@ class RealtimeService {
     this.clearTimer("user");
 
     this.userReconnectTimer = setTimeout(() => {
-      // Don't reconnect if a newer socket was created in the meantime
       if (connectionId !== this.userConnectionSeq) return;
-
-      // Don't reconnect after manual shutdown
       if (this.userManuallyClosed) return;
 
       this.connectUserSocket();
@@ -339,13 +367,8 @@ class RealtimeService {
     this.clearTimer("conversation");
 
     this.conversationReconnectTimer = setTimeout(() => {
-      // Don't reconnect if a newer socket was created in the meantime
       if (connectionId !== this.conversationConnectionSeq) return;
-
-      // Don't reconnect after manual shutdown
       if (this.conversationManuallyClosed) return;
-
-      // Don't reconnect if user switched conversations
       if (this.activeConversationId !== conversationId) return;
 
       this.connectConversationSocket(conversationId);

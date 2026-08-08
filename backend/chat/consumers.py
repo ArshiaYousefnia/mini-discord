@@ -132,3 +132,4 @@ class UserConsumer(AsyncWebsocketConsumer):
             'type': 'user_updated',
             'data': event['data']
         }))
+

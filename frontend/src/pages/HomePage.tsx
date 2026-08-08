@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatView from "../components/ChatView";
@@ -15,7 +15,6 @@ import {
   realtimeService,
   type ConversationUpdatePayload,
 } from "../services/realtimeService";
-
 
 function getCurrentUsername(): string {
   const rawUser = localStorage.getItem("username");
@@ -199,57 +198,96 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
-  // Only subscribe to conversation updates here.
-  // Notification socket + popup handling lives in NotificationProvider.
-  useEffect(() => {
-    const unsubscribeUpdates = realtimeService.subscribeToUpdates(
-      (update: ConversationUpdatePayload) => {
-        const targetId = String(update.conversation_id);
+  const handleGroupExit = useCallback((groupId: string) => {
+    setChatItems((prev) => prev.filter((c) => c.id !== groupId));
+    setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
+  }, []);
 
-        if (update.event_type === "member_left") {
-          handleGroupExit(targetId);
-          return;
+  const handleConversationUpdate = useCallback(
+    (payload: ConversationUpdatePayload) => {
+      const targetId = String(payload.conversation_id);
+
+      if (
+        payload.event_type === "member_left" ||
+        payload.event_type === "conversation_deleted"
+      ) {
+        handleGroupExit(targetId);
+        return;
+      }
+
+      if (payload.event_type === "channel_updated" || payload.event_type === "group_updated") {
+        setChatItems((prev) =>
+          prev.map((item) =>
+            item.id === targetId
+              ? {
+                  ...item,
+                  name: payload.name ?? item.name,
+                  avatar: payload.avatar_url ?? item.avatar,
+                }
+              : item
+          )
+        );
+
+        setSelectedChat((prev) =>
+          prev && prev.id === targetId
+            ? {
+                ...prev,
+                name: payload.name ?? prev.name,
+                avatar: payload.avatar_url ?? prev.avatar,
+              }
+            : prev
+        );
+        return;
+      }
+
+      setChatItems((prevChats) => {
+        const existingChatIndex = prevChats.findIndex(
+          (c) => String(c.id) === targetId
+        );
+
+        if (existingChatIndex === -1) {
+          void loadChats(true);
+          return prevChats;
         }
 
-        setChatItems((prevChats) => {
-          const existingChatIndex = prevChats.findIndex(
-            (c) => String(c.id) === targetId
-          );
+        const isCurrentlyOpen =
+          selectedChatRef.current &&
+          String(selectedChatRef.current.id) === targetId;
 
-          if (existingChatIndex === -1) {
-            void loadChats(true);
-            return prevChats;
-          }
+        const targetChat = prevChats[existingChatIndex];
 
-          const isCurrentlyOpen =
-            selectedChatRef.current &&
-            String(selectedChatRef.current.id) === targetId;
-
-          const targetChat = prevChats[existingChatIndex];
-
-          const updatedChat: ChatListItem = {
-            ...targetChat,
-            unreadCount: isCurrentlyOpen
+        const updatedChat: ChatListItem = {
+          ...targetChat,
+          unreadCount:
+            payload.event_type === "unread_updated"
+              ? payload.unread_count ?? targetChat.unreadCount
+              : isCurrentlyOpen
               ? 0
               : (targetChat.unreadCount ?? 0) + 1,
-            lastMessage: update.last_message?.content || targetChat.lastMessage,
-            lastMessageAt: update.last_message?.created_at || targetChat.lastMessageAt,
-          };
+          lastMessage: payload.last_message?.content || targetChat.lastMessage,
+          lastMessageAt:
+            payload.last_message?.created_at || targetChat.lastMessageAt,
+        };
 
-          const listWithoutTarget = prevChats.filter(
-            (_, idx) => idx !== existingChatIndex
-          );
+        const listWithoutTarget = prevChats.filter(
+          (_, idx) => idx !== existingChatIndex
+        );
 
-          return sortChatsByRecent([updatedChat, ...listWithoutTarget]);
-        });
-      }
+        return sortChatsByRecent([updatedChat, ...listWithoutTarget]);
+      });
+    },
+    [handleGroupExit]
+  );
+
+  useEffect(() => {
+    const unsubscribeUpdates = realtimeService.subscribeToUpdates(
+      handleConversationUpdate
     );
 
     return () => {
       unsubscribeUpdates();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleConversationUpdate]);
 
   const handleSelectChat = (chat: ChatListItem) => {
     const readChat: ChatListItem = {
@@ -277,7 +315,9 @@ export default function HomePage() {
     user: BackendUserProfile | UserProfile
   ) => {
     const existingChat = chatItems.find(
-      (chat) => chat.type === "DM" && String(chat.other_user_id) === String(user.id)
+      (chat) =>
+        chat.type === "DM" &&
+        String(chat.other_user_id) === String(user.id)
     );
 
     setProfileUserToOpen(null);
@@ -302,11 +342,6 @@ export default function HomePage() {
     await loadChats(false, conversationId);
   };
 
-  const handleGroupExit = (groupId: string) => {
-    setChatItems((prev) => prev.filter((c) => c.id !== groupId));
-    setSelectedChat((prev) => (prev && prev.id === groupId ? null : prev));
-  };
-
   const handleChannelJoined = async (channelId: string) => {
     setSearchParams({ chat: channelId });
     await loadChats(false, channelId);
@@ -318,56 +353,56 @@ export default function HomePage() {
       : undefined;
 
   return (
-      <div className="home-page">
-        {(!isMobile ||
-          (!selectedChat && !pendingDirectMessageUser && !profileUserToOpen)) && (
-          <Sidebar
-            chats={chatItems}
-            selectedChatId={selectedChat?.id ?? null}
-            onSelectChat={handleSelectChat}
-            currentUsername={currentUsername}
-            onStartDirectMessage={handleStartDirectMessage}
-            onOpenUserProfile={handleOpenUserProfile}
-            onRefresh={() => loadChats(true)}
-            onlineUsers={onlineUsers ?? {}}
-            onChannelJoined={handleChannelJoined}
-          />
-        )}
+    <div className="home-page">
+      {(!isMobile ||
+        (!selectedChat && !pendingDirectMessageUser && !profileUserToOpen)) && (
+        <Sidebar
+          chats={chatItems}
+          selectedChatId={selectedChat?.id ?? null}
+          onSelectChat={handleSelectChat}
+          currentUsername={currentUsername}
+          onStartDirectMessage={handleStartDirectMessage}
+          onOpenUserProfile={handleOpenUserProfile}
+          onRefresh={() => loadChats(true)}
+          onlineUsers={onlineUsers ?? {}}
+          onChannelJoined={handleChannelJoined}
+        />
+      )}
 
-        {(!isMobile ||
-          selectedChat ||
-          pendingDirectMessageUser ||
-          profileUserToOpen) && (
-          <div className="chat-area">
-            {loading ? (
-              <div className="chat-placeholder">Loading...</div>
-            ) : pageError ? (
-              <div className="chat-placeholder">{pageError}</div>
-            ) : (
-              <ChatView
-                chat={selectedChat}
-                pendingDirectMessageUser={pendingDirectMessageUser}
-                profileUserToOpen={profileUserToOpen}
-                onProfileUserOpened={() => setProfileUserToOpen(null)}
-                onStartDirectMessage={handleStartDirectMessage}
-                onDirectMessageCreated={handleDirectMessageCreated}
-                isMobile={isMobile}
-                onBack={() => {
-                  setSelectedChat(null);
-                  setPendingDirectMessageUser(null);
-                  setProfileUserToOpen(null);
-                }}
-                onGroupExit={handleGroupExit}
-                onGroupJoined={async (groupId) => {
-                  setSearchParams({ chat: groupId });
-                  await loadChats(false, groupId);
-                }}
-                isOtherUserOnline={isOtherUserOnline}
-                onlineUsers={onlineUsers}
-              />
-            )}
-          </div>
-        )}
-      </div>
+      {(!isMobile ||
+        selectedChat ||
+        pendingDirectMessageUser ||
+        profileUserToOpen) && (
+        <div className="chat-area">
+          {loading ? (
+            <div className="chat-placeholder">Loading...</div>
+          ) : pageError ? (
+            <div className="chat-placeholder">{pageError}</div>
+          ) : (
+            <ChatView
+              chat={selectedChat}
+              pendingDirectMessageUser={pendingDirectMessageUser}
+              profileUserToOpen={profileUserToOpen}
+              onProfileUserOpened={() => setProfileUserToOpen(null)}
+              onStartDirectMessage={handleStartDirectMessage}
+              onDirectMessageCreated={handleDirectMessageCreated}
+              isMobile={isMobile}
+              onBack={() => {
+                setSelectedChat(null);
+                setPendingDirectMessageUser(null);
+                setProfileUserToOpen(null);
+              }}
+              onGroupExit={handleGroupExit}
+              onGroupJoined={async (groupId) => {
+                setSearchParams({ chat: groupId });
+                await loadChats(false, groupId);
+              }}
+              isOtherUserOnline={isOtherUserOnline}
+              onlineUsers={onlineUsers}
+            />
+          )}
+        </div>
+      )}
+    </div>
   );
 }
