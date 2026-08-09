@@ -1,5 +1,14 @@
-import { useRef, useState, useEffect } from "react";
-import type { GroupProfile, GroupMembers, ChannelProfile, ChannelPermissions, ChannelMembers } from "../types/chat";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type {
+  GroupProfile,
+  GroupMembers,
+  GroupMember,
+  ChannelProfile,
+  ChannelPermissions,
+  ChannelMembers,
+  ChannelMember,
+} from "../types/chat";
+
 import type { BackendUserProfile, UserProfile } from "../types/user";
 import { formatJoinLink } from "../utils/linkFormat";
 import RoleManagement from "./RoleManagement";
@@ -21,7 +30,7 @@ export type UserProfileUpdates =
 
 function getProfileUpdate(
   updates: UserProfileUpdates | undefined,
-  userId: string,
+  userId: string
 ): UserProfileUpdate | undefined {
   if (!updates) return undefined;
 
@@ -36,10 +45,51 @@ function getProfileUpdate(
 
 function hasOwnProperty(
   value: object,
-  property: PropertyKey,
+  property: PropertyKey
 ): boolean {
   return Object.prototype.hasOwnProperty.call(value, property);
 }
+
+type ResolvedMember<T> = T & {
+  resolvedDisplayName: string;
+  resolvedAvatarUrl: string;
+};
+
+function resolveUpdatedMember<T extends GroupMember | ChannelMember>(
+  member: T,
+  userProfileUpdates?: UserProfileUpdates
+): ResolvedMember<T> {
+  const update = getProfileUpdate(
+    userProfileUpdates,
+    String(member.user_id)
+  );
+
+  const displayName =
+    update?.display_name ||
+    update?.displayName ||
+    member.display_name ||
+    "Unknown User";
+
+  const updateContainsAvatar =
+    !!update &&
+    (hasOwnProperty(update, "avatar_url") ||
+      hasOwnProperty(update, "avatarUrl") ||
+      hasOwnProperty(update, "avatar"));
+
+  const updatedAvatar =
+    update?.avatar_url ?? update?.avatarUrl ?? update?.avatar ?? null;
+
+  const avatarUrl = updateContainsAvatar
+    ? updatedAvatar || "/default-avatar.svg"
+    : member.avatar_url || "/default-avatar.svg";
+
+  return {
+    ...member,
+    resolvedDisplayName: displayName,
+    resolvedAvatarUrl: avatarUrl,
+  };
+}
+
 
 interface ProfileOverlayProps {
   show: boolean;
@@ -58,23 +108,30 @@ interface ProfileOverlayProps {
   currentUserId: string | null;
   onClose: () => void;
   onBackToGroup: () => void;
-  onSaveGroupEdit: (name: string, desc: string, avatar: File | null) => Promise<void>;
-  onSaveChannelEdit?: (name: string, desc: string, avatar: File | null) => Promise<void>;
+  onSaveGroupEdit: (
+    name: string,
+    desc: string,
+    avatar: File | null
+  ) => Promise<void>;
+  onSaveChannelEdit?: (
+    name: string,
+    desc: string,
+    avatar: File | null
+  ) => Promise<void>;
   onUserClick: (userId: string) => void;
   onRemoveMember: (member: any) => void;
   onRemoveChannelMember?: (member: any) => void;
-  onCreateRole?: (name: string) => Promise<void>; 
+  onCreateRole?: (name: string) => Promise<void>;
   onLeaveGroupRequest: () => void;
   onDeleteGroupRequest: () => void;
-  onLeaveChannelRequest?: () => void; 
+  onLeaveChannelRequest?: () => void;
   onDeleteChannelRequest?: () => void;
-  onlineUsers?: Record<string, boolean>; // ADDED: real-time online mapping
-  onRefreshProfile?: () => void; // ADDED: optional callback to refetch user data
+  onlineUsers?: Record<string, boolean>;
+  onRefreshProfile?: () => void;
   onStartDirectMessage?: (
     user: BackendUserProfile | UserProfile
   ) => Promise<void> | void;
-  
-  // Real-time profile state map passed down from parent view
+
   userProfileUpdates?: UserProfileUpdates;
 }
 
@@ -105,7 +162,7 @@ export default function ProfileOverlay({
   channelPermissions,
   channelMembers,
   channelRoles,
-  onlineUsers = {}, // DEFAULT: empty map
+  onlineUsers = {},
   onRefreshProfile,
   onStartDirectMessage,
   userProfileUpdates,
@@ -121,10 +178,12 @@ export default function ProfileOverlay({
   const [isEditingChannel, setIsEditingChannel] = useState(false);
   const [editChannelName, setEditChannelName] = useState("");
   const [editChannelDescription, setEditChannelDescription] = useState("");
-  const [editChannelAvatar, setEditChannelAvatar] = useState<File | null>(null);
+  const [editChannelAvatar, setEditChannelAvatar] = useState<File | null>(
+    null
+  );
   const [editChannelLoading, setEditChannelLoading] = useState(false);
 
-  // Shared avatar-upload validation error (group + channel edit forms)
+  // Shared avatar-upload validation error
   const [avatarError, setAvatarError] = useState("");
 
   // Role Management State
@@ -135,13 +194,96 @@ export default function ProfileOverlay({
   const [inviteCopied, setInviteCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Listen to profile changes to update local user profile if needed
+  const groupAvatarPreview = useMemo(
+    () =>
+      editGroupAvatar
+        ? URL.createObjectURL(editGroupAvatar)
+        : groupProfile?.avatar_url || chatAvatar,
+    [editGroupAvatar, groupProfile?.avatar_url, chatAvatar]
+  );
+
+  const channelAvatarPreview = useMemo(
+    () =>
+      editChannelAvatar
+        ? URL.createObjectURL(editChannelAvatar)
+        : channelProfile?.avatar_url || chatAvatar,
+    [editChannelAvatar, channelProfile?.avatar_url, chatAvatar]
+  );
+
+  const resolvedGroupMembers = useMemo(
+    () =>
+      groupMembers?.map((member) =>
+        resolveUpdatedMember(member, userProfileUpdates)
+      ) ?? null,
+    [groupMembers, userProfileUpdates]
+  );
+
+  const resolvedChannelMembers = useMemo(
+    () =>
+      channelMembers?.map((member) =>
+        resolveUpdatedMember(member, userProfileUpdates)
+      ) ?? null,
+    [channelMembers, userProfileUpdates]
+  );
+
+  // Keep edit fields synchronized if another user updates group/channel
+  // while this overlay is open and the user is not currently editing.
+  useEffect(() => {
+    if (!groupProfile || isEditingGroup) return;
+
+    setEditGroupName(groupProfile.name);
+    setEditGroupDescription(groupProfile.description || "");
+  }, [
+    groupProfile?.name,
+    groupProfile?.description,
+    groupProfile,
+    isEditingGroup,
+  ]);
+
+  useEffect(() => {
+    if (!channelProfile || isEditingChannel) return;
+
+    setEditChannelName(channelProfile.name);
+    setEditChannelDescription(channelProfile.description || "");
+  }, [
+    channelProfile?.name,
+    channelProfile?.description,
+    channelProfile,
+    isEditingChannel,
+  ]);
+
+  // Reset edit modes when switching overlay view.
+  useEffect(() => {
+    if (!show) {
+      setIsEditingGroup(false);
+      setIsEditingChannel(false);
+      setActiveTab("info");
+      setAvatarError("");
+      setInviteCopied(false);
+    }
+  }, [show]);
+
+  useEffect(() => {
+    if (profileViewType !== "channel") {
+      setIsEditingChannel(false);
+      setActiveTab("info");
+    }
+
+    if (profileViewType !== "group") {
+      setIsEditingGroup(false);
+    }
+  }, [profileViewType]);
+
+  // Optional legacy profile update event support.
   useEffect(() => {
     if (!show || !onRefreshProfile) return;
+
     const handleProfileUpdate = () => {
       onRefreshProfile();
     };
+
     window.addEventListener("profileUpdated", handleProfileUpdate);
+
     return () => {
       window.removeEventListener("profileUpdated", handleProfileUpdate);
     };
@@ -149,12 +291,13 @@ export default function ProfileOverlay({
 
   if (!show) return null;
 
-  // Helpers to resolve online status cleanly
-  const isUserOnline = (userId: string | number) => !!onlineUsers[String(userId)];
+  const isUserOnline = (userId: string | number) =>
+    !!onlineUsers[String(userId)];
 
   // --- Group Edit Handlers ---
   const handleStartEdit = () => {
     if (!groupProfile) return;
+
     setEditGroupName(groupProfile.name);
     setEditGroupDescription(groupProfile.description || "");
     setEditGroupAvatar(null);
@@ -163,10 +306,21 @@ export default function ProfileOverlay({
   };
 
   const handleSaveEdit = async () => {
-    if (!editGroupName.trim()) return alert("Group name cannot be empty.");
+    if (!editGroupName.trim()) {
+      alert("Group name cannot be empty.");
+      return;
+    }
+
     setEditGroupLoading(true);
+
     try {
-      await onSaveGroupEdit(editGroupName, editGroupDescription, editGroupAvatar);
+      await onSaveGroupEdit(
+        editGroupName,
+        editGroupDescription,
+        editGroupAvatar
+      );
+
+      setEditGroupAvatar(null);
       setIsEditingGroup(false);
     } catch (error) {
       console.error("Failed to save group edit:", error);
@@ -178,6 +332,7 @@ export default function ProfileOverlay({
   // --- Channel Edit Handlers ---
   const handleStartChannelEdit = () => {
     if (!channelProfile) return;
+
     setEditChannelName(channelProfile.name);
     setEditChannelDescription(channelProfile.description || "");
     setEditChannelAvatar(null);
@@ -186,23 +341,37 @@ export default function ProfileOverlay({
   };
 
   const handleSaveChannelEdit = async () => {
-    if (!editChannelName.trim()) return alert("Channel name cannot be empty.");
+    if (!editChannelName.trim()) {
+      alert("Channel name cannot be empty.");
+      return;
+    }
+
     if (!onSaveChannelEdit) return;
-    
+
     setEditChannelLoading(true);
+
     try {
-      await onSaveChannelEdit(editChannelName, editChannelDescription, editChannelAvatar);
+      await onSaveChannelEdit(
+        editChannelName,
+        editChannelDescription,
+        editChannelAvatar
+      );
+
+      setEditChannelAvatar(null);
       setIsEditingChannel(false);
     } catch (error) {
       console.error("Failed to save channel edit:", error);
     } finally {
-      setEditChannelLoading(false); 
+      setEditChannelLoading(false);
     }
   };
 
   // --- Avatar Validation Handlers ---
-  const handleGroupAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGroupAvatarChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
+
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -215,8 +384,11 @@ export default function ProfileOverlay({
     setEditGroupAvatar(file);
   };
 
-  const handleChannelAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChannelAvatarChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
+
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -232,11 +404,13 @@ export default function ProfileOverlay({
   // --- Role Management Handlers ---
   const handleCreateRole = async () => {
     const trimmedName = newRoleName.trim();
+
     if (!trimmedName || !onCreateRole) return;
 
     const nameExists = (channelRoles || []).some(
       (role: any) =>
-        (role?.name || "").trim().toLowerCase() === trimmedName.toLowerCase()
+        (role?.name || "").trim().toLowerCase() ===
+        trimmedName.toLowerCase()
     );
 
     if (nameExists) {
@@ -245,16 +419,19 @@ export default function ProfileOverlay({
     }
 
     setIsCreatingRole(true);
+
     try {
       await onCreateRole(trimmedName);
-      setNewRoleName(""); // Clear input on success
+      setNewRoleName("");
     } catch (error: any) {
       console.error("Failed to create role:", error);
+
       const backendMessage =
         error?.response?.data?.detail ||
         error?.response?.data?.message ||
         error?.response?.data?.name?.[0] ||
         error?.response?.data?.error;
+
       alert(
         backendMessage ||
           "Failed to create role. Role name must be 50 characters or fewer."
@@ -264,26 +441,34 @@ export default function ProfileOverlay({
     }
   };
 
-  // Support both group and channel invite copying
   const handleCopyInviteLink = () => {
     let linkToCopy = "";
+
     if (profileViewType === "channel" && channelProfile?.invite_link) {
       linkToCopy = formatJoinLink(channelProfile.invite_link);
     } else if (profileViewType === "group" && groupProfile?.invite_token) {
       linkToCopy = `http://groups/join/${groupProfile.invite_token}`;
     }
 
-    if (linkToCopy) {
-      navigator.clipboard.writeText(linkToCopy);
-      setInviteCopied(true);
-      setTimeout(() => setInviteCopied(false), 2000);
-    }
+    if (!linkToCopy) return;
+
+    navigator.clipboard.writeText(linkToCopy);
+    setInviteCopied(true);
+
+    window.setTimeout(() => {
+      setInviteCopied(false);
+    }, 2000);
   };
 
   // --- Real-time User Profile Derivation ---
   let resolvedUserProfile = userProfile;
+
   if (profileViewType === "user" && userProfile) {
-    const update = getProfileUpdate(userProfileUpdates, String(userProfile.id));
+    const update = getProfileUpdate(
+      userProfileUpdates,
+      String(userProfile.id)
+    );
+
     if (update) {
       const updateContainsAvatar =
         hasOwnProperty(update, "avatar_url") ||
@@ -296,11 +481,13 @@ export default function ProfileOverlay({
       resolvedUserProfile = {
         ...userProfile,
         display_name:
-          update.display_name || update.displayName || userProfile.display_name,
+          update.display_name ||
+          update.displayName ||
+          userProfile.display_name,
         username: update.username || userProfile.username,
         bio: update.bio !== undefined ? update.bio : userProfile.bio,
         avatar_url: updateContainsAvatar
-          ? (updatedAvatar ?? "")
+          ? updatedAvatar ?? ""
           : userProfile.avatar_url,
       };
     }
@@ -309,28 +496,49 @@ export default function ProfileOverlay({
   return (
     <div className="group-profile-overlay slideInRight">
       <div className="group-profile-header">
-        {profileViewType === "user" && profileSource === "GROUP_PROFILE" && (groupProfile || channelProfile) ? (
-          <button className="back-to-group-btn back-button" onClick={onBackToGroup} type="button">
+        {profileViewType === "user" &&
+        profileSource === "GROUP_PROFILE" &&
+        (groupProfile || channelProfile) ? (
+          <button
+            className="back-to-group-btn back-button"
+            onClick={onBackToGroup}
+            type="button"
+          >
             ← Back to {groupProfile ? "Group" : "Members"}
           </button>
         ) : (
-          <button className="back-button" onClick={onClose} type="button">← Close</button>
+          <button className="back-button" onClick={onClose} type="button">
+            ← Close
+          </button>
         )}
 
-        
         <h3>
-          {profileViewType === "group" ? "Group Profile" : profileViewType === "channel" ? "Channel Profile" : "User Profile"}
+          {profileViewType === "group"
+            ? "Group Profile"
+            : profileViewType === "channel"
+              ? "Channel Profile"
+              : "User Profile"}
         </h3>
-        
-        {/* Group Edit Button */}
-        {profileViewType === "group" && !isEditingGroup && groupProfile && (
-          <button className="edit-group-btn" onClick={handleStartEdit}>Edit</button>
-        )}
 
-        {/* Channel Edit Button - Only show if on 'info' tab */}
-        {profileViewType === "channel" && !isEditingChannel && activeTab === "info" && channelPermissions?.can_edit_channel_info && (
-          <button className="edit-group-btn" onClick={handleStartChannelEdit}>Edit</button>
-        )}
+        {profileViewType === "group" &&
+          !isEditingGroup &&
+          groupProfile && (
+            <button className="edit-group-btn" onClick={handleStartEdit}>
+              Edit
+            </button>
+          )}
+
+        {profileViewType === "channel" &&
+          !isEditingChannel &&
+          activeTab === "info" &&
+          channelPermissions?.can_edit_channel_info && (
+            <button
+              className="edit-group-btn"
+              onClick={handleStartChannelEdit}
+            >
+              Edit
+            </button>
+          )}
       </div>
 
       <div className="group-profile-content">
@@ -338,19 +546,24 @@ export default function ProfileOverlay({
           <div className="chat-placeholder">Loading profile...</div>
         ) : profileViewType === "channel" && channelProfile ? (
           <div className="group-profile-card">
-            
-            {/* Tabs for Channel Owner */}
             {isCurrentUserOwner && (
               <div className="profile-tabs">
-                <button 
-                  className={`profile-tab-btn ${activeTab === "info" ? "active" : ""}`}
+                <button
+                  className={`profile-tab-btn ${
+                    activeTab === "info" ? "active" : ""
+                  }`}
                   onClick={() => setActiveTab("info")}
+                  type="button"
                 >
                   Info
                 </button>
-                <button 
-                  className={`profile-tab-btn ${activeTab === "roles" ? "active" : ""}`}
+
+                <button
+                  className={`profile-tab-btn ${
+                    activeTab === "roles" ? "active" : ""
+                  }`}
                   onClick={() => setActiveTab("roles")}
+                  type="button"
                 >
                   Roles
                 </button>
@@ -362,63 +575,166 @@ export default function ProfileOverlay({
                 <div className="edit-group-form">
                   <div className="edit-avatar-section">
                     <img
-                      src={editChannelAvatar ? URL.createObjectURL(editChannelAvatar) : (channelProfile.avatar_url || chatAvatar)}
+                      src={channelAvatarPreview}
                       alt="Channel Avatar"
                       className="group-profile-avatar-large"
                     />
+
                     <input
-                      type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }}
+                      type="file"
+                      accept="image/*"
+                      ref={fileInputRef}
+                      style={{ display: "none" }}
                       onChange={handleChannelAvatarChange}
                     />
-                    <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>Change Avatar</button>
+
+                    <button
+                      className="change-avatar-btn"
+                      onClick={() => fileInputRef.current?.click()}
+                      type="button"
+                    >
+                      Change Avatar
+                    </button>
+
                     {avatarError && (
-                      <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{avatarError}</div>
+                      <div
+                        style={{
+                          color: "#ef4444",
+                          fontSize: 12,
+                          marginTop: 4,
+                        }}
+                      >
+                        {avatarError}
+                      </div>
                     )}
                   </div>
+
                   <div className="edit-field">
-                    <label>Channel Name <span style={{ color: "red" }}>*</span></label>
-                    <input type="text" value={editChannelName} onChange={(e) => setEditChannelName(e.target.value)} className="edit-input" />
+                    <label>
+                      Channel Name <span style={{ color: "red" }}>*</span>
+                    </label>
+
+                    <input
+                      type="text"
+                      value={editChannelName}
+                      onChange={(e) =>
+                        setEditChannelName(e.target.value)
+                      }
+                      className="edit-input"
+                    />
                   </div>
+
                   <div className="edit-field">
                     <label>Description</label>
-                    <textarea value={editChannelDescription} onChange={(e) => setEditChannelDescription(e.target.value)} className="edit-textarea" maxLength={300} />
+
+                    <textarea
+                      value={editChannelDescription}
+                      onChange={(e) =>
+                        setEditChannelDescription(e.target.value)
+                      }
+                      className="edit-textarea"
+                      maxLength={300}
+                    />
                   </div>
+
                   <div className="edit-actions">
-                    <button className="cancel-edit-btn" onClick={() => setIsEditingChannel(false)} disabled={editChannelLoading}>Cancel</button>
-                    <button className="save-edit-btn" onClick={handleSaveChannelEdit} disabled={editChannelLoading || !editChannelName.trim()}>
+                    <button
+                      className="cancel-edit-btn"
+                      onClick={() => setIsEditingChannel(false)}
+                      disabled={editChannelLoading}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      className="save-edit-btn"
+                      onClick={handleSaveChannelEdit}
+                      disabled={
+                        editChannelLoading || !editChannelName.trim()
+                      }
+                      type="button"
+                    >
                       {editChannelLoading ? "Saving..." : "Save Changes"}
                     </button>
                   </div>
                 </div>
               ) : (
                 <>
-                  <img src={channelProfile.avatar_url || chatAvatar} alt={channelProfile.name} className="group-profile-avatar-large" />
-                  
+                  <img
+                    src={channelProfile.avatar_url || chatAvatar}
+                    alt={channelProfile.name}
+                    className="group-profile-avatar-large"
+                  />
+
                   <div style={{ textAlign: "center", marginBottom: "16px" }}>
-                    <h2 className="group-profile-name" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", margin: "0" }}>
+                    <h2
+                      className="group-profile-name"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                        margin: "0",
+                      }}
+                    >
                       {channelProfile.name}
+
                       {channelProfile.is_private ? (
-                        <span style={{ fontSize: "10px", backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            backgroundColor: "#374151",
+                            color: "#d1d5db",
+                            padding: "2px 8px",
+                            borderRadius: "9999px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            fontWeight: 600,
+                          }}
+                        >
                           Private
                         </span>
                       ) : (
-                        <span style={{ fontSize: "10px", backgroundColor: "rgba(20, 83, 45, 0.5)", color: "#4ade80", padding: "2px 8px", borderRadius: "9999px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            backgroundColor: "rgba(20, 83, 45, 0.5)",
+                            color: "#4ade80",
+                            padding: "2px 8px",
+                            borderRadius: "9999px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            fontWeight: 600,
+                          }}
+                        >
                           Public
                         </span>
                       )}
                     </h2>
-                    
-                    {!channelProfile.is_private && channelProfile.public_id && (
-                      <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "4px", marginBottom: "0" }}>
-                        @{channelProfile.public_id}
-                      </p>
-                    )}
+
+                    {!channelProfile.is_private &&
+                      channelProfile.public_id && (
+                        <p
+                          style={{
+                            fontSize: "14px",
+                            color: "#9ca3af",
+                            marginTop: "4px",
+                            marginBottom: "0",
+                          }}
+                        >
+                          @{channelProfile.public_id}
+                        </p>
+                      )}
                   </div>
 
                   {channelProfile.description && (
                     <div
                       className="group-profile-description"
-                      style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
                     >
                       {channelProfile.description}
                     </div>
@@ -426,88 +742,181 @@ export default function ProfileOverlay({
 
                   <div className="group-profile-meta">
                     <p>Created by: {channelProfile.owner_display_name}</p>
-                    <p>Created at: {new Date(channelProfile.created_at).toLocaleDateString()}</p>
+                    <p>
+                      Created at:{" "}
+                      {new Date(
+                        channelProfile.created_at
+                      ).toLocaleDateString()}
+                    </p>
                   </div>
 
-                  {channelProfile.invite_link && channelPermissions?.can_edit_channel_info && (
-                    <div className="invite-link-section">
-                      <h4>Invite Link</h4>
-                      <div className="invite-input-wrapper">
-                        <input type="text" readOnly value={formatJoinLink(channelProfile.invite_link)} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
-                        <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
+                  {channelProfile.invite_link &&
+                    channelPermissions?.can_edit_channel_info && (
+                      <div className="invite-link-section">
+                        <h4>Invite Link</h4>
+
+                        <div className="invite-input-wrapper">
+                          <input
+                            type="text"
+                            readOnly
+                            value={formatJoinLink(
+                              channelProfile.invite_link
+                            )}
+                            className="invite-input"
+                            onClick={(e) =>
+                              (
+                                e.target as HTMLInputElement
+                              ).select()
+                            }
+                          />
+
+                          <button
+                            onClick={handleCopyInviteLink}
+                            className={`copy-btn ${
+                              inviteCopied ? "copied" : ""
+                            }`}
+                            type="button"
+                          >
+                            {inviteCopied ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {channelMembers && channelMembers.length > 0 && (
-                    <div className="group-members-section">
-                      <h4>Members</h4>
-                      <div className="members-list">
-                        {channelMembers.map((member) => {
-                          const mUpdate = getProfileUpdate(userProfileUpdates, String(member.user_id));
-                          const displayName = mUpdate?.display_name || mUpdate?.displayName || member.display_name;
-                          const mUpdateContainsAvatar = mUpdate && (hasOwnProperty(mUpdate, "avatar_url") || hasOwnProperty(mUpdate, "avatarUrl") || hasOwnProperty(mUpdate, "avatar"));
-                          const updatedAvatar = mUpdate?.avatar_url ?? mUpdate?.avatarUrl ?? mUpdate?.avatar ?? null;
-                          const avatarUrl = mUpdateContainsAvatar ? (updatedAvatar || "/default-avatar.svg") : (member.avatar_url || "/default-avatar.svg");
+                  {resolvedChannelMembers &&
+                    resolvedChannelMembers.length > 0 && (
+                      <div className="group-members-section">
+                        <h4>Members</h4>
 
-                          return (
-                            <div 
-                              key={member.user_id} 
-                              className="member-row group" 
-                              onClick={() => onUserClick && onUserClick(member.user_id)}
+                        <div className="members-list">
+                          {resolvedChannelMembers.map((member) => (
+                            <div
+                              key={member.user_id}
+                              className="member-row group"
+                              onClick={() =>
+                                onUserClick(String(member.user_id))
+                              }
                             >
                               <div className="member-avatar-wrapper">
-                                <img src={avatarUrl} alt={displayName} />
-                                {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
+                                <img
+                                  src={member.resolvedAvatarUrl}
+                                  alt={member.resolvedDisplayName}
+                                />
+
+                                {isUserOnline(member.user_id) && (
+                                  <span className="status-indicator online" />
+                                )}
                               </div>
-                              <span className="member-name flex-1">{displayName}</span>
-                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginRight: 8 }}>
-                                {(member.roles && member.roles.length > 0 ? member.roles : ["Member"]).map((roleName) => (
+
+                              <span className="member-name flex-1">
+                                {member.resolvedDisplayName}
+                              </span>
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 4,
+                                  flexWrap: "wrap",
+                                  marginRight: 8,
+                                }}
+                              >
+                                {(member.roles && member.roles.length > 0
+                                  ? member.roles
+                                  : ["Member"]
+                                ).map((roleName) => (
                                   <span
                                     key={roleName}
                                     className="badge"
-                                    style={{ backgroundColor: "#374151", color: "#d1d5db", padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}
+                                    style={{
+                                      backgroundColor: "#374151",
+                                      color: "#d1d5db",
+                                      padding: "2px 8px",
+                                      borderRadius: "12px",
+                                      fontSize: "0.75rem",
+                                    }}
                                   >
                                     {roleName}
                                   </span>
                                 ))}
                               </div>
-                              
-                              {/* Channel Remove Member Button */}
-                              {channelPermissions?.can_manage_members && String(member.user_id) !== String(currentUserId) && onRemoveChannelMember && (
-                                <button 
-                                  onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    onRemoveChannelMember(member); 
-                                  }} 
-                                  className="remove-member-btn"
-                                >
-                                  Remove
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Danger Zone for Channel */}
-                  <div className="group-danger-zone" style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
+                              {channelPermissions?.can_manage_members &&
+                                String(member.user_id) !==
+                                  String(currentUserId) &&
+                                onRemoveChannelMember && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onRemoveChannelMember(member);
+                                    }}
+                                    className="remove-member-btn"
+                                    type="button"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                  <div
+                    className="group-danger-zone"
+                    style={{
+                      marginTop: 24,
+                      paddingTop: 16,
+                      borderTop: "1px solid rgba(255,255,255,0.1)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
                     {!isCurrentUserOwner && onLeaveChannelRequest && (
-                      <button type="button" onClick={onLeaveChannelRequest} className="leave-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Leave Channel</button>
+                      <button
+                        type="button"
+                        onClick={onLeaveChannelRequest}
+                        className="leave-group-btn"
+                        style={{
+                          padding: "10px 16px",
+                          borderRadius: 8,
+                          border: "1px solid #dc2626",
+                          background: "transparent",
+                          color: "#dc2626",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Leave Channel
+                      </button>
                     )}
-                    {channelPermissions?.can_delete_channel && onDeleteChannelRequest && (
-                      <button type="button" onClick={onDeleteChannelRequest} className="delete-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontWeight: 600 }}>Delete Channel</button>
-                    )}
+
+                    {channelPermissions?.can_delete_channel &&
+                      onDeleteChannelRequest && (
+                        <button
+                          type="button"
+                          onClick={onDeleteChannelRequest}
+                          className="delete-group-btn"
+                          style={{
+                            padding: "10px 16px",
+                            borderRadius: 8,
+                            border: "none",
+                            background: "#dc2626",
+                            color: "#fff",
+                            cursor: "pointer",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Delete Channel
+                        </button>
+                      )}
                   </div>
                 </>
               )
             ) : (
-              /* --- ROLES VIEW --- */
               <div className="roles-management-section">
                 <h3 style={{ marginTop: 0 }}>Channel Roles</h3>
-                
+
                 <div className="create-role-wrapper">
                   <input
                     type="text"
@@ -518,19 +927,21 @@ export default function ProfileOverlay({
                     disabled={isCreatingRole}
                     maxLength={50}
                   />
-                  <button 
-                    onClick={handleCreateRole} 
+
+                  <button
+                    onClick={handleCreateRole}
                     className="create-role-btn"
                     disabled={isCreatingRole || !newRoleName.trim()}
+                    type="button"
                   >
                     {isCreatingRole ? "Creating..." : "Create"}
                   </button>
                 </div>
 
-                <RoleManagement 
-                  channelId={channelProfile.id} 
-                  roles={channelRoles || []} 
-                  isOwner={isCurrentUserOwner} 
+                <RoleManagement
+                  channelId={channelProfile.id}
+                  roles={channelRoles || []}
+                  isOwner={isCurrentUserOwner}
                 />
               </div>
             )}
@@ -541,43 +952,109 @@ export default function ProfileOverlay({
               <div className="edit-group-form">
                 <div className="edit-avatar-section">
                   <img
-                    src={editGroupAvatar ? URL.createObjectURL(editGroupAvatar) : (groupProfile.avatar_url || chatAvatar)}
+                    src={groupAvatarPreview}
                     alt="Group Avatar"
                     className="group-profile-avatar-large"
                   />
+
                   <input
-                    type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }}
+                    type="file"
+                    accept="image/*"
+                    ref={fileInputRef}
+                    style={{ display: "none" }}
                     onChange={handleGroupAvatarChange}
                   />
-                  <button className="change-avatar-btn" onClick={() => fileInputRef.current?.click()}>Change Avatar</button>
+
+                  <button
+                    className="change-avatar-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    type="button"
+                  >
+                    Change Avatar
+                  </button>
+
                   {avatarError && (
-                    <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{avatarError}</div>
+                    <div
+                      style={{
+                        color: "#ef4444",
+                        fontSize: 12,
+                        marginTop: 4,
+                      }}
+                    >
+                      {avatarError}
+                    </div>
                   )}
                 </div>
+
                 <div className="edit-field">
-                  <label>Group Name <span style={{ color: "red" }}>*</span></label>
-                  <input type="text" value={editGroupName} onChange={(e) => setEditGroupName(e.target.value)} className="edit-input" />
+                  <label>
+                    Group Name <span style={{ color: "red" }}>*</span>
+                  </label>
+
+                  <input
+                    type="text"
+                    value={editGroupName}
+                    onChange={(e) => setEditGroupName(e.target.value)}
+                    className="edit-input"
+                  />
                 </div>
+
                 <div className="edit-field">
                   <label>Description</label>
-                  <textarea value={editGroupDescription} onChange={(e) => setEditGroupDescription(e.target.value)} className="edit-textarea" maxLength={300} />
+
+                  <textarea
+                    value={editGroupDescription}
+                    onChange={(e) =>
+                      setEditGroupDescription(e.target.value)
+                    }
+                    className="edit-textarea"
+                    maxLength={300}
+                  />
                 </div>
+
                 <div className="edit-actions">
-                  <button className="cancel-edit-btn" onClick={() => setIsEditingGroup(false)} disabled={editGroupLoading}>Cancel</button>
-                  <button className="save-edit-btn" onClick={handleSaveEdit} disabled={editGroupLoading || !editGroupName.trim()}>
+                  <button
+                    className="cancel-edit-btn"
+                    onClick={() => setIsEditingGroup(false)}
+                    disabled={editGroupLoading}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    className="save-edit-btn"
+                    onClick={handleSaveEdit}
+                    disabled={editGroupLoading || !editGroupName.trim()}
+                    type="button"
+                  >
                     {editGroupLoading ? "Saving..." : "Save Changes"}
                   </button>
                 </div>
               </div>
             ) : (
               <>
-                <img src={groupProfile.avatar_url || chatAvatar} alt={groupProfile.name} className="group-profile-avatar-large" />
-                <h2 className="group-profile-name">{groupProfile.name}</h2>
-                <div className="group-profile-member-count">{Number(groupProfile.member_count)} Members</div>
+                <img
+                  src={groupProfile.avatar_url || chatAvatar}
+                  alt={groupProfile.name}
+                  className="group-profile-avatar-large"
+                />
+
+                <h2 className="group-profile-name">
+                  {groupProfile.name}
+                </h2>
+
+                <div className="group-profile-member-count">
+                  {Number(groupProfile.member_count)} Members
+                </div>
+
                 {groupProfile.description && (
                   <div
                     className="group-profile-description"
-                    style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
                   >
                     {groupProfile.description}
                   </div>
@@ -585,53 +1062,142 @@ export default function ProfileOverlay({
 
                 <div className="group-profile-meta">
                   <p>Created by: {groupProfile.owner_display_name}</p>
-                  <p>Created at: {new Date(groupProfile.created_at).toLocaleDateString()}</p>
+                  <p>
+                    Created at:{" "}
+                    {new Date(groupProfile.created_at).toLocaleDateString()}
+                  </p>
                 </div>
 
                 {groupProfile.invite_token && (
                   <div className="invite-link-section">
                     <h4>Invite Link</h4>
+
                     <div className="invite-input-wrapper">
-                      <input type="text" readOnly value={`http://groups/join/${groupProfile.invite_token}`} className="invite-input" onClick={(e) => (e.target as HTMLInputElement).select()} />
-                      <button onClick={handleCopyInviteLink} className={`copy-btn ${inviteCopied ? "copied" : ""}`}>{inviteCopied ? "Copied!" : "Copy"}</button>
+                      <input
+                        type="text"
+                        readOnly
+                        value={`http://groups/join/${groupProfile.invite_token}`}
+                        className="invite-input"
+                        onClick={(e) =>
+                          (e.target as HTMLInputElement).select()
+                        }
+                      />
+
+                      <button
+                        onClick={handleCopyInviteLink}
+                        className={`copy-btn ${
+                          inviteCopied ? "copied" : ""
+                        }`}
+                        type="button"
+                      >
+                        {inviteCopied ? "Copied!" : "Copy"}
+                      </button>
                     </div>
                   </div>
                 )}
 
-                {groupMembers && groupMembers.length > 0 && (
-                  <div className="group-members-section">
-                    <h4>Members</h4>
-                    <div className="members-list">
-                      {groupMembers.map((member) => {
-                        const mUpdate = getProfileUpdate(userProfileUpdates, String(member.user_id));
-                        const displayName = mUpdate?.display_name || mUpdate?.displayName || member.display_name;
-                        const mUpdateContainsAvatar = mUpdate && (hasOwnProperty(mUpdate, "avatar_url") || hasOwnProperty(mUpdate, "avatarUrl") || hasOwnProperty(mUpdate, "avatar"));
-                        const updatedAvatar = mUpdate?.avatar_url ?? mUpdate?.avatarUrl ?? mUpdate?.avatar ?? null;
-                        const avatarUrl = mUpdateContainsAvatar ? (updatedAvatar || "/default-avatar.svg") : (member.avatar_url || "/default-avatar.svg");
+                {resolvedGroupMembers &&
+                  resolvedGroupMembers.length > 0 && (
+                    <div className="group-members-section">
+                      <h4>Members</h4>
 
-                        return (
-                          <div key={member.user_id} className="member-row group" onClick={() => onUserClick(member.user_id)}>
+                      <div className="members-list">
+                        {resolvedGroupMembers.map((member) => (
+                          <div
+                            key={member.user_id}
+                            className="member-row group"
+                            onClick={() =>
+                              onUserClick(String(member.user_id))
+                            }
+                          >
                             <div className="member-avatar-wrapper">
-                              <img src={avatarUrl} alt={displayName} />
-                              {isUserOnline(member.user_id) && <span className="status-indicator online"></span>}
-                            </div>
-                            <span className="member-name flex-1">{displayName}</span>
-                            {String(member.user_id) === String(groupProfile.owner_id) && <span className="badge owner-badge mr-2">Owner</span>}
-                            {isCurrentUserOwner && String(member.user_id) !== String(currentUserId) && (
-                              <button onClick={(e) => { e.stopPropagation(); onRemoveMember(member); }} className="remove-member-btn">Remove</button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                              <img
+                                src={member.resolvedAvatarUrl}
+                                alt={member.resolvedDisplayName}
+                              />
 
-                <div className="group-danger-zone" style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
-                  {!isCurrentUserOwner && (
-                    <button type="button" onClick={onLeaveGroupRequest} className="leave-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Leave Group</button>
+                              {isUserOnline(member.user_id) && (
+                                <span className="status-indicator online" />
+                              )}
+                            </div>
+
+                            <span className="member-name flex-1">
+                              {member.resolvedDisplayName}
+                            </span>
+
+                            {String(member.user_id) ===
+                              String(groupProfile.owner_id) && (
+                              <span className="badge owner-badge mr-2">
+                                Owner
+                              </span>
+                            )}
+
+                            {isCurrentUserOwner &&
+                              String(member.user_id) !==
+                                String(currentUserId) && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRemoveMember(member);
+                                  }}
+                                  className="remove-member-btn"
+                                  type="button"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                  <button type="button" onClick={onDeleteGroupRequest} className="delete-group-btn" style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontWeight: 600 }}>Delete Group</button>
+
+                <div
+                  className="group-danger-zone"
+                  style={{
+                    marginTop: 24,
+                    paddingTop: 16,
+                    borderTop: "1px solid rgba(255,255,255,0.1)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  {!isCurrentUserOwner && (
+                    <button
+                      type="button"
+                      onClick={onLeaveGroupRequest}
+                      className="leave-group-btn"
+                      style={{
+                        padding: "10px 16px",
+                        borderRadius: 8,
+                        border: "1px solid #dc2626",
+                        background: "transparent",
+                        color: "#dc2626",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Leave Group
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={onDeleteGroupRequest}
+                    className="delete-group-btn"
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#dc2626",
+                      color: "#fff",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Delete Group
+                  </button>
                 </div>
               </>
             )}
@@ -644,9 +1210,13 @@ export default function ProfileOverlay({
               className="group-profile-avatar-large"
             />
 
-            <h2 className="group-profile-name">{resolvedUserProfile.display_name}</h2>
+            <h2 className="group-profile-name">
+              {resolvedUserProfile.display_name}
+            </h2>
 
-            <p className="group-profile-meta">@{resolvedUserProfile.username}</p>
+            <p className="group-profile-meta">
+              @{resolvedUserProfile.username}
+            </p>
 
             {resolvedUserProfile.bio && (
               <div className="group-profile-description">
@@ -657,20 +1227,23 @@ export default function ProfileOverlay({
             <div
               className="group-profile-meta"
               style={{
-                color: isUserOnline(resolvedUserProfile.id) ? "#4ade80" : "#9ca3af",
+                color: isUserOnline(resolvedUserProfile.id)
+                  ? "#4ade80"
+                  : "#9ca3af",
                 marginTop: "8px",
               }}
             >
               {isUserOnline(resolvedUserProfile.id) ? "Online" : "Offline"}
             </div>
 
-            {/* Do not show a DM button on the current user's own profile. */}
             {String(resolvedUserProfile.id) !== String(currentUserId) &&
               onStartDirectMessage && (
                 <button
                   type="button"
                   className="start-direct-message-btn"
-                  onClick={() => void onStartDirectMessage(resolvedUserProfile!)}
+                  onClick={() =>
+                    void onStartDirectMessage(resolvedUserProfile!)
+                  }
                 >
                   Message
                 </button>

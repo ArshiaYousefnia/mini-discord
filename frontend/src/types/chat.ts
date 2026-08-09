@@ -191,3 +191,43 @@ export type Topic = {
   created_at: string;
   updated_at: string;
 };
+
+
+export type ScheduledAttachment = {
+  id: string;
+  file_url: string | null;
+  original_filename: string;
+  size: number;
+  created_at: string;
+};
+
+export type ScheduledMessageTopic = {
+  id: string;
+  name: string;
+  creator: string;
+};
+
+export type ScheduledMessage = {
+  id: string;
+  conversation: string;
+  conversation_name?: string | null;
+  content: string | null;
+  reply_to?: string | null;
+  scheduled_at: string;
+  sent: boolean;
+  failed: boolean;
+  failure_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+  attachments: ScheduledAttachment[];
+  topic?: ScheduledMessageTopic | null;
+};
+
+export type CreateScheduledMessagePayload = {
+  conversation_id: string;
+  content?: string;
+  scheduled_at: string; // ISO 8601 string
+  reply_to?: string | null;
+  topic_id?: string | null;
+  files?: File[];
+};
