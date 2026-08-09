@@ -1438,3 +1438,26 @@
 }
 
 
+
+
+/* ===== FIX: Allow profile card to grow with content ===== */
+.group-profile-card {
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.group-profile-description {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.group-profile-content {
+  overflow-y: auto !important;
+  align-items: flex-start !important;
+}
+
+.group-profile-overlay {
+  overflow: hidden !important;
+}
