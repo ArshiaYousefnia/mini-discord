@@ -272,21 +272,39 @@ class MessageViewSet(
     def perform_create(self, serializer):
         conversation_id = self.kwargs.get("conversation_pk")
         conversation = get_object_or_404(Conversation, id=conversation_id)
-        # Membership check (keep existing logic)
+
+        # Membership check
         if not ConversationMember.objects.filter(
                 conversation=conversation, user=self.request.user
         ).exists():
             raise PermissionDenied("You are not a member of this conversation.")
 
-        # Channel permission check (unchanged)
         topic = None
+        content = serializer.validated_data.get('content')
+        uploaded_files = serializer.validated_data.get('uploaded_files', [])
+
+        # Channel permission checks (separate for text vs media)
         if conversation.type == Conversation.Type.CHANNEL:
             member = ConversationMember.objects.get(
                 conversation=conversation,
                 user=self.request.user
             )
-            if not member.roles.filter(can_send_messages=True).exists():
-                raise PermissionDenied("You do not have permission to send messages in this channel.")
+
+            # Get permissions
+            can_send_messages = member.roles.filter(can_send_messages=True).exists()
+            can_send_media = member.roles.filter(can_send_media=True).exists()
+
+            # Text message permission
+            if content and content.strip():
+                if not can_send_messages:
+                    raise PermissionDenied("You do not have permission to send text messages.")
+
+            # Media permission
+            if uploaded_files:
+                if not can_send_media:
+                    raise PermissionDenied("You do not have permission to send media files.")
+
+            # Topic handling (unchanged)
             topic_id = self.request.data.get('topic_id')
             if topic_id:
                 topic = get_object_or_404(Topic, id=topic_id, conversation=conversation)
@@ -296,7 +314,7 @@ class MessageViewSet(
             message = ChannelMessage.objects.create(
                 conversation=conversation,
                 sender=self.request.user,
-                content=serializer.validated_data.get('content'),
+                content=content,
                 reply_to=serializer.validated_data.get('reply_to'),
                 topic=topic,
             )
@@ -306,7 +324,6 @@ class MessageViewSet(
             )
 
         # Handle uploaded files (create Attachments)
-        uploaded_files = serializer.validated_data.get('uploaded_files', [])
         for file in uploaded_files:
             Attachment.objects.create(
                 message=message,
