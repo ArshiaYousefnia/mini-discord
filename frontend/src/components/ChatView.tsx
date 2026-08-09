@@ -105,6 +105,25 @@ const sortMessagesByDate = (messages: Message[]): Message[] =>
 const isSameId = (left: unknown, right: unknown) =>
   String(left) === String(right);
 
+const AVATAR_STORAGE_KEY = "mini_discord_avatar_cache";
+
+function loadAvatarCache(): Record<string, string> {
+  try {
+    const stored = localStorage.getItem(AVATAR_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveAvatarCache(cache: Record<string, string>) {
+  try {
+    localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn("Failed to save avatar cache", e);
+  }
+}
+
 export default function ChatView({
   chat,
   isMobile,
@@ -168,6 +187,83 @@ export default function ChatView({
 
   const [showSearch, setShowSearch] = useState(false);
   const [showScheduledMessages, setShowScheduledMessages] = useState(false);
+
+  const [avatarCache, setAvatarCache] = useState<Record<string, string>>(() =>
+    loadAvatarCache()
+  );
+
+  const updateAvatarCache = useCallback(() => {
+    const newCache = { ...avatarCache };
+
+    groupMembers?.forEach((member) => {
+      const id = String(member.user_id);
+      const update = userProfileUpdates[id];
+      const avatar = update?.avatar_url || member.avatar_url;
+      if (avatar && avatar !== "/default-avatar.svg") {
+        newCache[id] = avatar;
+      }
+    });
+
+    channelMembers?.forEach((member) => {
+      const id = String(member.user_id);
+      const update = userProfileUpdates[id];
+      const avatar = update?.avatar_url || member.avatar_url;
+      if (avatar && avatar !== "/default-avatar.svg") {
+        newCache[id] = avatar;
+      }
+    });
+
+    Object.entries(userProfileUpdates).forEach(([id, update]) => {
+      if (update?.avatar_url && update.avatar_url !== "/default-avatar.svg") {
+        newCache[id] = update.avatar_url;
+      }
+    });
+
+    const changed = JSON.stringify(newCache) !== JSON.stringify(avatarCache);
+    if (changed) {
+      setAvatarCache(newCache);
+      saveAvatarCache(newCache);
+    }
+  }, [groupMembers, channelMembers, userProfileUpdates, avatarCache]);
+
+  useEffect(() => {
+    updateAvatarCache();
+  }, [updateAvatarCache]);
+
+  useEffect(() => {
+    const fetchMissingAvatars = async () => {
+      const missingUserIds = messages
+        .map((msg) => String(msg.sender))
+        .filter((id) => !avatarCache[id] || avatarCache[id] === "/default-avatar.svg");
+
+      const uniqueIds = [...new Set(missingUserIds)];
+      if (uniqueIds.length === 0) return;
+
+      for (const userId of uniqueIds) {
+        try {
+          const profile = await getUserProfile(userId);
+          if (profile?.avatar_url && profile.avatar_url !== "/default-avatar.svg") {
+            setAvatarCache((prev) => {
+              const newCache = { ...prev, [userId]: profile.avatar_url };
+              saveAvatarCache(newCache);
+              return newCache;
+            });
+          }
+        } catch (e) {
+          console.warn(`Failed to fetch avatar for user ${userId}`, e);
+        }
+      }
+    };
+
+    fetchMissingAvatars();
+  }, [messages, avatarCache]);
+
+  const getAvatar = useCallback(
+    (userId: string): string => {
+      return avatarCache[userId] || "/default-avatar.svg";
+    },
+    [avatarCache]
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
@@ -273,28 +369,6 @@ export default function ChatView({
     onlineUsers,
     pendingDirectMessageUser,
   ]);
-
-  const senderAvatarById = useMemo(() => {
-    const avatarMap: Record<string, string> = {};
-
-    groupMembers?.forEach((member) => {
-      const memberId = String(member.user_id);
-      const update = userProfileUpdates[memberId];
-
-      avatarMap[memberId] =
-        update?.avatar_url || member.avatar_url || "";
-    });
-
-    channelMembers?.forEach((member) => {
-      const memberId = String(member.user_id);
-      const update = userProfileUpdates[memberId];
-
-      avatarMap[memberId] =
-        update?.avatar_url || member.avatar_url || "";
-    });
-
-    return avatarMap;
-  }, [groupMembers, channelMembers, userProfileUpdates]);
 
   const displayedMessages = useMemo(() => {
     if (chatType !== "CHANNEL") return messages;
@@ -1144,6 +1218,15 @@ export default function ChatView({
 
       if (mountedRef.current) {
         setUserProfile(profile);
+        
+        // 🆕 ذخیره آواتار در کش و localStorage هنگام مشاهده پروفایل
+        if (profile?.avatar_url && profile.avatar_url !== "/default-avatar.svg") {
+          setAvatarCache((prev) => {
+            const newCache = { ...prev, [String(profile.id)]: profile.avatar_url };
+            saveAvatarCache(newCache);
+            return newCache;
+          });
+        }
       }
     } catch (profileError) {
       console.error("Failed to load user profile:", profileError);
@@ -1727,7 +1810,7 @@ export default function ChatView({
                 }
                 canDeleteOthers={canDeleteOthersMessages}
                 isGroupChat={chatType === "GROUP"}
-                senderAvatarUrl={senderAvatarById[String(message.sender)]}
+                senderAvatarUrl={getAvatar(String(message.sender))}
                 canReply={
                   chatType === "CHANNEL"
                     ? (channelPermissions?.can_send_messages ?? false)
