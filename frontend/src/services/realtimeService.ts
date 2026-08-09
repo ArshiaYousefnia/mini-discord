@@ -21,7 +21,8 @@ export interface ConversationUpdatePayload {
     | "unread_updated"
     | "conversation_deleted"
     | "group_updated"
-    | "user_updated";
+    | "user_updated"
+    | "member_removed";
   last_message?: MinimalMessage;
   user_id?: string;
   name?: string;

@@ -458,7 +458,7 @@ export default function HomePage() {
       );
 
       if (
-        payload.event_type === "member_left" ||
+        payload.event_type === "member_removed" ||
         payload.event_type === "conversation_deleted"
       ) {
         handleGroupExit(conversationId);

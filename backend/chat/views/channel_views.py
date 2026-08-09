@@ -10,7 +10,7 @@ from chat.models import Conversation, ConversationMember, Channel, Role, Message
 from chat.serializers import ChannelCreateSerializer, ChannelDetailSerializer, ChannelUpdateSerializer, \
     ChannelMemberSerializer, ChannelMemberRoleUpdateSerializer, MessageSerializer
 from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update, \
-    broadcast_conversation_deleted
+    broadcast_conversation_deleted, broadcast_user_conversation_removed
 
 
 class ChannelCreateView(APIView):
@@ -352,6 +352,9 @@ class ChannelRemoveMemberView(APIView):
             )
             target_membership.delete()
 
+            # Tell the removed user to remove the channel from sidebar
+            broadcast_user_conversation_removed(user_id, conversation)
+            
             # After removing member
             broadcast_conversation_update(
                 conversation,

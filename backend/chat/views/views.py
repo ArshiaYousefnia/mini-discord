@@ -40,7 +40,7 @@ from chat.models import Conversation, ConversationMember, Message, Role, Topic, 
     Notification
 
 from chat.serializers import ConversationListSerializer
-from chat.views.views_realtime_utils import broadcast_unread_update_for_conversation, convert_uuids_to_str
+from chat.views.views_realtime_utils import broadcast_unread_update_for_conversation, broadcast_user_conversation_removed, convert_uuids_to_str
 
 User = get_user_model()
 
@@ -210,6 +210,9 @@ class ConversationViewSet(mixins.ListModelMixin,
 
         membership.delete()
 
+        # Tell the removed user to remove the channel from sidebar
+        broadcast_user_conversation_removed(target_user_id, conversation)
+        
         # Broadcast member left
         broadcast_conversation_update(
             conversation,
