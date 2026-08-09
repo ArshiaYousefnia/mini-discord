@@ -60,8 +60,10 @@ import ConfirmModal from "./ConfirmModal";
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
 import MessageSearchPanel from "./MessageSearchPanel";
+import ScheduledMessagesPanel from "./ScheduledMessagesPanel";
 import ProfileOverlay from "./ProfileOverlay";
 import TopicsPanel from "./TopicsPanel";
+import { createScheduledMessage } from "../services/scheduledMessageService";
 
 interface Props {
   chat: ChatListItem | null;
@@ -165,6 +167,7 @@ export default function ChatView({
   const [deleteChannelLoading, setDeleteChannelLoading] = useState(false);
 
   const [showSearch, setShowSearch] = useState(false);
+  const [showScheduledMessages, setShowScheduledMessages] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(false);
@@ -792,6 +795,7 @@ export default function ChatView({
     setShowDeleteGroupConfirm(false);
     setShowDeleteChannelConfirm(false);
     setShowSearch(false);
+    setShowScheduledMessages(false);
 
     setGroupProfile(null);
     setGroupMembers(null);
@@ -1014,6 +1018,27 @@ export default function ChatView({
     }
   };
 
+  const handleScheduleMessage = async (
+    text: string,
+    scheduledAt: Date,
+    files: File[] = []
+  ) => {
+    if (!chat) {
+      throw new Error("Select a conversation before scheduling a message.");
+    }
+
+    await createScheduledMessage({
+      conversation_id: chat.id,
+      content: text,
+      scheduled_at: scheduledAt.toISOString(),
+      reply_to: activeReplyTo?.id || null,
+      topic_id: chatType === "CHANNEL" ? activeTopicId ?? undefined : undefined,
+      files,
+    });
+
+    setActiveReplyTo(null);
+  };
+
   const handleEditMessage = async (
     messageId: string,
     newText: string
@@ -1139,6 +1164,8 @@ export default function ChatView({
   }, [profileUserToOpen]);
 
   const handleHeaderClick = async () => {
+    setShowScheduledMessages(false);
+
     if (!chat && pendingDirectMessageUser) {
       await handleUserClick(
         String(pendingDirectMessageUser.id),
@@ -1582,6 +1609,7 @@ export default function ChatView({
           if (!chat) return;
 
           setShowProfile(false);
+          setShowScheduledMessages(false);
           setShowSearch((previousValue) => !previousValue);
         }}
         isOtherUserOnline={activeOtherUserOnline}
@@ -1592,6 +1620,13 @@ export default function ChatView({
           conversationId={chat.id}
           onClose={() => setShowSearch(false)}
           onResultClick={scrollToMessage}
+        />
+      )}
+
+      {showScheduledMessages && chat && (
+        <ScheduledMessagesPanel
+          conversationId={chat.id}
+          onClose={() => setShowScheduledMessages(false)}
         />
       )}
 
@@ -1725,6 +1760,15 @@ export default function ChatView({
           activeReplyTo={activeReplyTo}
           onCancelReply={() => setActiveReplyTo(null)}
           onSendMessage={handleSendMessage}
+          onScheduleMessage={chat ? handleScheduleMessage : undefined}
+          onOpenScheduledMessages={
+            chat
+              ? () => {
+                  setShowSearch(false);
+                  setShowScheduledMessages((previousValue) => !previousValue);
+                }
+              : undefined
+          }
           disabled={loading || sendingMessage}
           canSendMessages={
             chatType === "CHANNEL"
