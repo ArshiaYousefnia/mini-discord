@@ -71,6 +71,11 @@ function isUnauthorizedError(error: unknown): boolean {
 }
 
 
+function isSameId(left: unknown, right: unknown): boolean {
+  return String(left) === String(right);
+}
+
+
 export default function HomePage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -108,10 +113,11 @@ export default function HomePage() {
     >
   >({});
 
-
   const selectedChatRef = useRef<ChatListItem | null>(null);
-  
-  // Track whether we have seeded the initial status map from REST.
+
+  /*
+   * Track whether we have seeded the initial status map from REST.
+   */
   const hasSeededOnlineStatus = useRef(false);
 
   useEffect(() => {
@@ -191,7 +197,7 @@ export default function HomePage() {
             ...prev,
             ...initialStatuses,
           }));
-          
+
           hasSeededOnlineStatus.current = true;
         }
 
@@ -213,7 +219,7 @@ export default function HomePage() {
          */
         if (idToSelect) {
           const chatToSelect = sortedChats.find(
-            (chat) => String(chat.id) === String(idToSelect)
+            (chat) => isSameId(chat.id, idToSelect)
           );
 
           if (chatToSelect) {
@@ -227,7 +233,7 @@ export default function HomePage() {
             }
 
             sortedChats = sortedChats.map((chat) =>
-              chat.id === idToSelect ? readChat : chat
+              isSameId(chat.id, idToSelect) ? readChat : chat
             );
 
             if (!targetConversationId && chatIdFromUrl) {
@@ -252,14 +258,14 @@ export default function HomePage() {
 
         if (activeChat) {
           const updatedActiveChat = sortedChats.find(
-            (chat) => chat.id === activeChat.id
+            (chat) => isSameId(chat.id, activeChat.id)
           );
 
           if (!updatedActiveChat) {
             setSelectedChat(null);
 
             if (
-              searchParams.get("chat") === activeChat.id
+              isSameId(searchParams.get("chat"), activeChat.id)
             ) {
               const nextParams = new URLSearchParams(
                 searchParams
@@ -332,14 +338,57 @@ export default function HomePage() {
     (conversationId: string) => {
       setChatItems((previous) =>
         previous.filter(
-          (chat) => chat.id !== conversationId
+          (chat) => !isSameId(chat.id, conversationId)
         )
       );
 
       setSelectedChat((previous) =>
-        previous && previous.id === conversationId
+        previous && isSameId(previous.id, conversationId)
           ? null
           : previous
+      );
+
+      if (isSameId(searchParams.get("chat"), conversationId)) {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete("chat");
+
+        setSearchParams(nextParams, {
+          replace: true,
+        });
+      }
+    },
+    [searchParams, setSearchParams]
+  );
+
+
+  /*
+   * Apply group/channel metadata changes to sidebar and selected chat.
+   */
+  const applyConversationMetadataUpdate = useCallback(
+    (payload: ConversationUpdatePayload) => {
+      const conversationId = String(payload.conversation_id);
+
+      setChatItems((previousChats) =>
+        previousChats.map((chat) =>
+          isSameId(chat.id, conversationId)
+            ? {
+                ...chat,
+                name: payload.name ?? chat.name,
+                avatar: payload.avatar_url ?? chat.avatar,
+              }
+            : chat
+        )
+      );
+
+      setSelectedChat((previousChat) =>
+        previousChat && isSameId(previousChat.id, conversationId)
+          ? {
+              ...previousChat,
+              name: payload.name ?? previousChat.name,
+              avatar:
+                payload.avatar_url ?? previousChat.avatar,
+            }
+          : previousChat
       );
     },
     []
@@ -372,7 +421,7 @@ export default function HomePage() {
           const isMatchingDM =
             chat.type === "DM" &&
             chat.other_user_id &&
-            String(chat.other_user_id) === updatedUserId;
+            isSameId(chat.other_user_id, updatedUserId);
 
           if (!isMatchingDM) {
             return chat;
@@ -394,7 +443,7 @@ export default function HomePage() {
         const isMatchingDM =
           previousChat.type === "DM" &&
           previousChat.other_user_id &&
-          String(previousChat.other_user_id) === updatedUserId;
+          isSameId(previousChat.other_user_id, updatedUserId);
 
         if (!isMatchingDM) {
           return previousChat;
@@ -410,7 +459,7 @@ export default function HomePage() {
       setPendingDirectMessageUser((previousUser) => {
         if (
           !previousUser ||
-          String(previousUser.id) !== updatedUserId
+          !isSameId(previousUser.id, updatedUserId)
         ) {
           return previousUser;
         }
@@ -429,7 +478,7 @@ export default function HomePage() {
       setProfileUserToOpen((previousUser) => {
         if (
           !previousUser ||
-          String(previousUser.id) !== updatedUserId
+          !isSameId(previousUser.id, updatedUserId)
         ) {
           return previousUser;
         }
@@ -448,6 +497,7 @@ export default function HomePage() {
     []
   );
 
+
   /*
    * Handle conversation-level updates.
    */
@@ -457,6 +507,10 @@ export default function HomePage() {
         payload.conversation_id
       );
 
+      /*
+       * The removed user gets member_removed directly.
+       * Everyone gets conversation_deleted.
+       */
       if (
         payload.event_type === "member_removed" ||
         payload.event_type === "conversation_deleted"
@@ -465,45 +519,42 @@ export default function HomePage() {
         return;
       }
 
+      /*
+       * Group/channel metadata updates.
+       *
+       * group_updated/channel_updated usually come from the user socket.
+       * conversation_metadata_updated usually comes from the active
+       * conversation socket, depending on your realtimeService routing.
+       */
       if (
         payload.event_type === "channel_updated" ||
-        payload.event_type === "group_updated"
+        payload.event_type === "group_updated" ||
+        payload.event_type === "conversation_metadata_updated"
       ) {
-        setChatItems((previousChats) =>
-          previousChats.map((chat) =>
-            chat.id === conversationId
-              ? {
-                  ...chat,
-                  name:
-                    payload.name ?? chat.name,
-                  avatar:
-                    payload.avatar_url ?? chat.avatar,
-                }
-              : chat
-          )
-        );
+        applyConversationMetadataUpdate(payload);
+        return;
+      }
 
-        setSelectedChat((previousChat) =>
-          previousChat &&
-          previousChat.id === conversationId
-            ? {
-                ...previousChat,
-                name:
-                  payload.name ??
-                  previousChat.name,
-                avatar:
-                  payload.avatar_url ??
-                  previousChat.avatar,
-              }
-            : previousChat
-        );
-
+      /*
+       * Member/role changes do not necessarily change the sidebar visually,
+       * but refreshing in the background keeps member counts / previews /
+       * permissions-related mapped values fresh if your API returns them.
+       *
+       * ChatView should still refresh its own groupMembers/channelMembers
+       * state when these events arrive.
+       */
+      if (
+        payload.event_type === "member_joined" ||
+        payload.event_type === "member_left" ||
+        payload.event_type === "role_updated"
+      ) {
+        void loadChats(true);
         return;
       }
 
       setChatItems((previousChats) => {
         const index = previousChats.findIndex(
-          (chat) => String(chat.id) === conversationId
+          (chat) => isSameId(chat.id, conversationId)
         );
 
         if (index === -1) {
@@ -514,7 +565,7 @@ export default function HomePage() {
         const targetChat = previousChats[index];
 
         const isCurrentlyOpen =
-          selectedChatRef.current?.id === conversationId;
+          isSameId(selectedChatRef.current?.id, conversationId);
 
         const updatedChat: ChatListItem = {
           ...targetChat,
@@ -523,8 +574,8 @@ export default function HomePage() {
               ? payload.unread_count ??
                 targetChat.unreadCount
               : isCurrentlyOpen
-              ? 0
-              : targetChat.unreadCount + 1,
+                ? 0
+                : targetChat.unreadCount + 1,
           lastMessage:
             payload.last_message?.content ??
             targetChat.lastMessage,
@@ -543,7 +594,11 @@ export default function HomePage() {
         ]);
       });
     },
-    [handleGroupExit, loadChats]
+    [
+      applyConversationMetadataUpdate,
+      handleGroupExit,
+      loadChats,
+    ]
   );
 
 
@@ -558,6 +613,7 @@ export default function HomePage() {
       unsubscribe();
     };
   }, [handleConversationUpdate]);
+
 
   /*
    * Subscribe to top-level user profile updates.
@@ -585,7 +641,7 @@ export default function HomePage() {
 
       setChatItems((previousChats) =>
         previousChats.map((item) =>
-          item.id === chat.id
+          isSameId(item.id, chat.id)
             ? {
                 ...item,
                 unreadCount: 0,
@@ -603,8 +659,7 @@ export default function HomePage() {
       const existingChat = chatItems.find(
         (chat) =>
           chat.type === "DM" &&
-          String(chat.other_user_id) ===
-            String(user.id)
+          isSameId(chat.other_user_id, user.id)
       );
 
       setProfileUserToOpen(null);
@@ -701,24 +756,24 @@ export default function HomePage() {
               {pageError}
             </div>
           ) : (
-          <ChatView
-            chat={selectedChat}
-            pendingDirectMessageUser={pendingDirectMessageUser}
-            profileUserToOpen={profileUserToOpen}
-            onProfileUserOpened={() => setProfileUserToOpen(null)}
-            onStartDirectMessage={handleStartDirectMessage}
-            onDirectMessageCreated={handleDirectMessageCreated}
-            isMobile={isMobile}
-            onBack={handleBack}
-            onGroupExit={handleGroupExit}
-            onGroupJoined={async (groupId) => {
-              setSearchParams({ chat: groupId });
-              await loadChats(false, groupId);
-            }}
-            isOtherUserOnline={isOtherUserOnline}
-            onlineUsers={onlineUsers}
-            userProfileUpdates={userProfileUpdates}
-          />
+            <ChatView
+              chat={selectedChat}
+              pendingDirectMessageUser={pendingDirectMessageUser}
+              profileUserToOpen={profileUserToOpen}
+              onProfileUserOpened={() => setProfileUserToOpen(null)}
+              onStartDirectMessage={handleStartDirectMessage}
+              onDirectMessageCreated={handleDirectMessageCreated}
+              isMobile={isMobile}
+              onBack={handleBack}
+              onGroupExit={handleGroupExit}
+              onGroupJoined={async (groupId) => {
+                setSearchParams({ chat: groupId });
+                await loadChats(false, groupId);
+              }}
+              isOtherUserOnline={isOtherUserOnline}
+              onlineUsers={onlineUsers}
+              userProfileUpdates={userProfileUpdates}
+            />
           )}
         </div>
       )}

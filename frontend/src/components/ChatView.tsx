@@ -81,8 +81,7 @@ interface Props {
   ) => Promise<void> | void;
 
   onDirectMessageCreated?: (conversationId: string) => Promise<void>;
-  
-  // Prop added for handling realtime user profile updates
+
   userProfileUpdates?: Record<
     string,
     {
@@ -172,11 +171,6 @@ export default function ChatView({
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
   const highlightTimeoutRef = useRef<number | null>(null);
 
-  /**
-   * Refs are deliberately used in WebSocket callbacks so those callbacks
-   * always know the current conversation/profile state without making
-   * the socket effect re-run for unrelated UI changes.
-   */
   const mountedRef = useRef(true);
   const currentChatIdRef = useRef<string | null>(null);
   const currentChatRef = useRef<ChatListItem | null>(null);
@@ -283,11 +277,21 @@ export default function ChatView({
     groupMembers?.forEach((member) => {
       const memberId = String(member.user_id);
       const update = userProfileUpdates[memberId];
-      avatarMap[memberId] = update?.avatar_url || member.avatar_url || "";
+
+      avatarMap[memberId] =
+        update?.avatar_url || member.avatar_url || "";
+    });
+
+    channelMembers?.forEach((member) => {
+      const memberId = String(member.user_id);
+      const update = userProfileUpdates[memberId];
+
+      avatarMap[memberId] =
+        update?.avatar_url || member.avatar_url || "";
     });
 
     return avatarMap;
-  }, [groupMembers, userProfileUpdates]);
+  }, [groupMembers, channelMembers, userProfileUpdates]);
 
   const displayedMessages = useMemo(() => {
     if (chatType !== "CHANNEL") return messages;
@@ -297,9 +301,6 @@ export default function ChatView({
     );
   }, [activeTopicId, chatType, messages]);
 
-  /**
-   * Keep refs synchronized with current React state/props.
-   */
   useEffect(() => {
     mountedRef.current = true;
 
@@ -334,101 +335,251 @@ export default function ChatView({
   }, [chat?.avatar, chat?.id, chat?.name]);
 
   /**
-   * Dynamic local messages sync on user profile update.
-   * Modifies messages sender info inline without REST request.
+   * Keep local message/member/profile state synchronized with realtime
+   * user profile updates sent from HomePage.
    */
-    useEffect(() => {
-      if (Object.keys(userProfileUpdates).length === 0) return;
+  useEffect(() => {
+    if (Object.keys(userProfileUpdates).length === 0) return;
 
-      setMessages((prevMessages) =>
-        prevMessages.map((message) => {
-          const senderId = String(message.sender);
-          const update = userProfileUpdates[senderId];
+    setMessages((prevMessages) =>
+      prevMessages.map((message) => {
+        const senderId = String(message.sender);
+        const update = userProfileUpdates[senderId];
 
-          if (!update) return message;
+        if (!update) return message;
 
-          return {
-            ...message,
-            sender_display_name:
-              update.display_name ?? message.sender_display_name,
-              sender_username:  message.sender_username,
-          };
-        })
-      );
-    }, [userProfileUpdates]);
+        return {
+          ...message,
+          sender_display_name:
+            update.display_name ?? message.sender_display_name,
+          sender_username: message.sender_username,
+        };
+      })
+    );
 
+    setGroupMembers((previousMembers) =>
+      previousMembers
+        ? previousMembers.map((member) => {
+            const update = userProfileUpdates[String(member.user_id)];
 
+            if (!update) return member;
 
-  const refreshCurrentProfile = useCallback(async () => {
-    const activeChat = currentChatRef.current;
+            return {
+              ...member,
+              display_name: update.display_name ?? member.display_name,
+              avatar_url: update.avatar_url ?? member.avatar_url,
+            };
+          })
+        : previousMembers
+    );
 
-    if (!activeChat || !showProfileRef.current) return;
+    setChannelMembers((previousMembers) =>
+      previousMembers
+        ? previousMembers.map((member) => {
+            const update = userProfileUpdates[String(member.user_id)];
 
-    const activeChatType = activeChat.type.toUpperCase();
+            if (!update) return member;
 
-    try {
-      if (activeChatType === "GROUP") {
+            return {
+              ...member,
+              display_name: update.display_name ?? member.display_name,
+              avatar_url: update.avatar_url ?? member.avatar_url,
+            };
+          })
+        : previousMembers
+    );
+
+    setUserProfile((previousProfile) => {
+      if (!previousProfile) return previousProfile;
+
+      const update = userProfileUpdates[String(previousProfile.id)];
+
+      if (!update) return previousProfile;
+
+      return {
+        ...previousProfile,
+        display_name: update.display_name ?? previousProfile.display_name,
+        avatar_url: update.avatar_url ?? previousProfile.avatar_url,
+      };
+    });
+  }, [userProfileUpdates]);
+
+  const refreshGroupContext = useCallback(
+    async (conversationId: string) => {
+      try {
         const [profileData, membersData] = await Promise.all([
-          getGroupProfile(activeChat.id),
-          getGroupMembers(activeChat.id),
+          getGroupProfile(conversationId),
+          getGroupMembers(conversationId),
         ]);
 
         if (!mountedRef.current) return;
-        if (!isSameId(currentChatIdRef.current, activeChat.id)) return;
+        if (!isSameId(currentChatIdRef.current, conversationId)) return;
 
         setGroupProfile(profileData);
         setGroupMembers(membersData);
-        return;
-      }
 
-      if (activeChatType === "CHANNEL") {
-        const [profileData, permissionsData] = await Promise.all([
-          getChannelProfile(activeChat.id),
-          getPermissions(activeChat.id),
-        ]);
+        setLocalChatInfo({
+          name: profileData.name,
+          avatar:
+            profileData.avatar_url ||
+            currentChatRef.current?.avatar ||
+            "",
+        });
+      } catch (refreshError) {
+        console.error("Failed to refresh group context:", refreshError);
+      }
+    },
+    []
+  );
+
+  const refreshChannelContext = useCallback(
+    async (conversationId: string) => {
+      try {
+        const [profileData, permissionsData, topicsData] =
+          await Promise.all([
+            getChannelProfile(conversationId),
+            getPermissions(conversationId),
+            getTopics(conversationId),
+          ]);
 
         if (!mountedRef.current) return;
-        if (!isSameId(currentChatIdRef.current, activeChat.id)) return;
+        if (!isSameId(currentChatIdRef.current, conversationId)) return;
 
         setChannelProfile(profileData);
         setChannelPermissions(permissionsData);
+        setTopics(topicsData);
+
+        setLocalChatInfo({
+          name: profileData.name,
+          avatar:
+            profileData.avatar_url ||
+            currentChatRef.current?.avatar ||
+            "",
+        });
 
         if (
           permissionsData.is_owner ||
           permissionsData.can_manage_members
         ) {
-          const membersData = await getChannelMembers(activeChat.id);
+          const membersData = await getChannelMembers(conversationId);
 
           if (
             mountedRef.current &&
-            isSameId(currentChatIdRef.current, activeChat.id)
+            isSameId(currentChatIdRef.current, conversationId)
           ) {
             setChannelMembers(membersData);
           }
+        } else {
+          setChannelMembers(null);
         }
 
         if (permissionsData.is_owner) {
-          const rolesData = await getChannelRoles(activeChat.id);
+          const rolesData = await getChannelRoles(conversationId);
 
           if (
             mountedRef.current &&
-            isSameId(currentChatIdRef.current, activeChat.id)
+            isSameId(currentChatIdRef.current, conversationId)
           ) {
             setChannelRoles(rolesData);
           }
+        } else {
+          setChannelRoles(null);
         }
+      } catch (refreshError) {
+        console.error("Failed to refresh channel context:", refreshError);
       }
-    } catch (refreshError) {
-      console.error(
-        "Failed to refresh currently opened profile after realtime update:",
-        refreshError
-      );
+    },
+    []
+  );
+
+  const refreshActiveConversationContext = useCallback(async () => {
+    const activeChat = currentChatRef.current;
+
+    if (!activeChat) return;
+
+    const activeChatType = activeChat.type.toUpperCase();
+
+    if (activeChatType === "GROUP") {
+      await refreshGroupContext(activeChat.id);
+      return;
     }
-  }, []);
+
+    if (activeChatType === "CHANNEL") {
+      await refreshChannelContext(activeChat.id);
+    }
+  }, [refreshGroupContext, refreshChannelContext]);
+
+  const refreshCurrentProfile = useCallback(async () => {
+    await refreshActiveConversationContext();
+  }, [refreshActiveConversationContext]);
 
   useEffect(() => {
     refreshProfileRef.current = refreshCurrentProfile;
   }, [refreshCurrentProfile]);
+
+  const applyConversationMetadataUpdate = useCallback(
+    (payload: {
+      conversation_id?: string;
+      name?: string;
+      description?: string;
+      avatar_url?: string;
+      avatar?: string;
+    }) => {
+      const activeChat = currentChatRef.current;
+
+      if (!activeChat) return;
+
+      if (
+        payload.conversation_id &&
+        !isSameId(payload.conversation_id, activeChat.id)
+      ) {
+        return;
+      }
+
+      setLocalChatInfo((previousInfo) => ({
+        name: payload.name ?? previousInfo?.name ?? activeChat.name,
+        avatar:
+          payload.avatar_url ??
+          payload.avatar ??
+          previousInfo?.avatar ??
+          activeChat.avatar ??
+          "",
+      }));
+
+      const activeChatType = activeChat.type.toUpperCase();
+
+      if (activeChatType === "GROUP") {
+        setGroupProfile((previousProfile) =>
+          previousProfile
+            ? {
+                ...previousProfile,
+                name: payload.name ?? previousProfile.name,
+                description:
+                  payload.description ?? previousProfile.description,
+                avatar_url:
+                  payload.avatar_url ?? previousProfile.avatar_url,
+              }
+            : previousProfile
+        );
+      }
+
+      if (activeChatType === "CHANNEL") {
+        setChannelProfile((previousProfile) =>
+          previousProfile
+            ? {
+                ...previousProfile,
+                name: payload.name ?? previousProfile.name,
+                description:
+                  payload.description ?? previousProfile.description,
+                avatar_url:
+                  payload.avatar_url ?? previousProfile.avatar_url,
+              }
+            : previousProfile
+        );
+      }
+    },
+    []
+  );
 
   /**
    * Conversation WebSocket lifecycle.
@@ -442,9 +593,17 @@ export default function ChatView({
 
     const unsubscribeNewMessage =
       realtimeService.subscribeToConversationMessages(
-        (type: string, incomingMessage: Message) => {
-          console.log("WS Conversation Event:", type, incomingMessage);
+        (type: string, payload: any) => {
+          console.log("WS Conversation Event:", type, payload);
+
           if (cancelled || !mountedRef.current) return;
+
+          if (type === "conversation_metadata_updated") {
+            applyConversationMetadataUpdate(payload);
+            return;
+          }
+
+          const incomingMessage = payload as Message;
 
           if (
             incomingMessage.conversation !== undefined &&
@@ -478,7 +637,11 @@ export default function ChatView({
                 );
               }
             );
-          } else if (type === "message_updated") {
+
+            return;
+          }
+
+          if (type === "message_updated") {
             setMessages((previousMessages) =>
               previousMessages.map((message) =>
                 isSameId(message.id, incomingMessage.id)
@@ -486,10 +649,14 @@ export default function ChatView({
                   : message
               )
             );
-          } else if (type === "message_deleted") {
+
+            return;
+          }
+
+          if (type === "message_deleted") {
             setMessages((previousMessages) =>
               previousMessages.filter(
-                (message) => !isSameId(message.id, incomingMessage.id) 
+                (message) => !isSameId(message.id, incomingMessage.id)
               )
             );
           }
@@ -500,9 +667,22 @@ export default function ChatView({
       (update: ConversationUpdatePayload) => {
         if (cancelled || !mountedRef.current) return;
 
-        if (
-          !isSameId(update.conversation_id, currentChatIdRef.current)
-        ) {
+        if (!isSameId(update.conversation_id, currentChatIdRef.current)) {
+          return;
+        }
+
+        const activeChat = currentChatRef.current;
+        const activeChatType = activeChat?.type.toUpperCase();
+
+        if (!activeChat) return;
+
+        if (update.event_type === "conversation_deleted") {
+          onGroupExit?.(String(update.conversation_id));
+          return;
+        }
+
+        if (update.event_type === "member_removed") {
+          onGroupExit?.(String(update.conversation_id));
           return;
         }
 
@@ -517,33 +697,42 @@ export default function ChatView({
                 : message
             )
           );
+
           return;
         }
 
-        if (update.event_type === "member_left") {
-          const activeChat = currentChatRef.current;
+        if (
+          update.event_type === "group_updated" ||
+          update.event_type === "channel_updated" ||
+          update.event_type === "conversation_metadata_updated"
+        ) {
+          applyConversationMetadataUpdate(update);
 
-          if (activeChat && activeChat.type.toUpperCase() === "GROUP") {
-            void getGroupMembers(activeChat.id)
-              .then((membersData) => {
-                if (
-                  mountedRef.current &&
-                  isSameId(currentChatIdRef.current, activeChat.id)
-                ) {
-                  setGroupMembers(membersData);
-                }
-              })
-              .catch((membersRefreshError) => {
-                console.error(
-                  "Failed to refresh group members after member_left event:",
-                  membersRefreshError
-                );
-              });
+          if (activeChatType === "GROUP") {
+            void refreshGroupContext(activeChat.id);
           }
 
-          if (showProfileRef.current) {
-            void refreshProfileRef.current?.();
+          if (activeChatType === "CHANNEL") {
+            void refreshChannelContext(activeChat.id);
           }
+
+          return;
+        }
+
+        if (
+          update.event_type === "member_joined" ||
+          update.event_type === "member_left" ||
+          update.event_type === "role_updated"
+        ) {
+          if (activeChatType === "GROUP") {
+            void refreshGroupContext(activeChat.id);
+          }
+
+          if (activeChatType === "CHANNEL") {
+            void refreshChannelContext(activeChat.id);
+          }
+
+          return;
         }
       }
     );
@@ -558,7 +747,13 @@ export default function ChatView({
 
       realtimeService.disconnectConversationSocket();
     };
-  }, [chat?.id]);
+  }, [
+    chat?.id,
+    onGroupExit,
+    applyConversationMetadataUpdate,
+    refreshGroupContext,
+    refreshChannelContext,
+  ]);
 
   /**
    * Reset UI and load message history only when conversation identity changes.
@@ -969,26 +1164,13 @@ export default function ChatView({
     if (chatType === "GROUP") {
       setShowProfile(true);
       setProfileViewType("group");
+      setProfileLoading(true);
 
-      if (!groupProfile || !isSameId(groupProfile.id, chat.id)) {
-        setProfileLoading(true);
-
-        try {
-          const [profileData, membersData] = await Promise.all([
-            getGroupProfile(chat.id),
-            getGroupMembers(chat.id),
-          ]);
-
-          if (!mountedRef.current) return;
-
-          setGroupProfile(profileData);
-          setGroupMembers(membersData);
-        } catch (groupError) {
-          console.error("Failed to load group details:", groupError);
-        } finally {
-          if (mountedRef.current) {
-            setProfileLoading(false);
-          }
+      try {
+        await refreshGroupContext(chat.id);
+      } finally {
+        if (mountedRef.current) {
+          setProfileLoading(false);
         }
       }
 
@@ -998,49 +1180,13 @@ export default function ChatView({
     if (chatType === "CHANNEL") {
       setShowProfile(true);
       setProfileViewType("channel");
+      setProfileLoading(true);
 
-      if (
-        !channelProfile ||
-        !isSameId(channelProfile.id, chat.id) ||
-        !channelPermissions
-      ) {
-        setProfileLoading(true);
-
-        try {
-          const [profileData, permissionsData] = await Promise.all([
-            getChannelProfile(chat.id),
-            getPermissions(chat.id),
-          ]);
-
-          if (!mountedRef.current) return;
-
-          setChannelProfile(profileData);
-          setChannelPermissions(permissionsData);
-
-          if (
-            permissionsData.is_owner ||
-            permissionsData.can_manage_members
-          ) {
-            const membersData = await getChannelMembers(chat.id);
-
-            if (mountedRef.current) {
-              setChannelMembers(membersData);
-            }
-          }
-
-          if (permissionsData.is_owner) {
-            const rolesData = await getChannelRoles(chat.id);
-
-            if (mountedRef.current) {
-              setChannelRoles(rolesData);
-            }
-          }
-        } catch (channelError) {
-          console.error("Failed to load channel details:", channelError);
-        } finally {
-          if (mountedRef.current) {
-            setProfileLoading(false);
-          }
+      try {
+        await refreshChannelContext(chat.id);
+      } finally {
+        if (mountedRef.current) {
+          setProfileLoading(false);
         }
       }
     }
@@ -1494,7 +1640,6 @@ export default function ChatView({
           setShowProfile(false);
           await onStartDirectMessage?.(user);
         }}
-        // Pass updates map to child
         userProfileUpdates={userProfileUpdates}
       />
 
@@ -1560,7 +1705,6 @@ export default function ChatView({
                   void handleUserClick(userId, "CHAT")
                 }
                 onGroupJoined={onGroupJoined}
-                // Pass updates map to child
                 userProfileUpdates={userProfileUpdates}
               />
             ))}
