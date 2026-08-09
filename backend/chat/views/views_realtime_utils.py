@@ -4,9 +4,11 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.db.models import Q
 
-from chat.models import Conversation, ConversationMember, Message
-from chat.serializers import ChannelMessageSerializer, MessageSerializer
+from chat.models import Conversation, ConversationMember, Message, Notification
+from chat.serializers import ChannelMessageSerializer, MessageSerializer, NotificationSerializer
 
+from chat.serializers import RoleSerializer
+from chat.models import Role
 
 def convert_uuids_to_str(obj):
     if isinstance(obj, dict):
@@ -44,6 +46,32 @@ def broadcast_notification(user_id, notification_data):
             "data": notification_data,
         }
     )
+
+def broadcast_member_joined_notification(conversation, joiner_user):
+    """
+    Send a notification to all existing members (excluding the joiner) that a new user has joined.
+    Creates a Notification record and broadcasts it via WebSocket.
+    """
+    existing_members = ConversationMember.objects.filter(
+        conversation=conversation
+    ).exclude(user=joiner_user).select_related('user')
+
+    conversation_type_display = conversation.get_type_display().lower()
+    preview = f"{joiner_user.display_name} joined the {conversation_type_display}."
+
+    for member in existing_members:
+        # Create notification record
+        notification = Notification.objects.create(
+            recipient=member.user,
+            sender=joiner_user,
+            type=Notification.Type.MEMBER_JOINED,
+            message_preview=preview,
+            conversation_id=conversation.id,
+        )
+        # Serialize and broadcast
+        serializer = NotificationSerializer(notification)
+        broadcast_notification(member.user.id, serializer.data)
+
 
 def broadcast_conversation_update(conversation, event_type, data):
     """
@@ -233,4 +261,81 @@ def broadcast_user_conversation_removed(user_id, conversation):
                 "user_id": str(user_id),
             },
         },
+    )
+
+def broadcast_user_permissions(user, conversation):
+    """
+    Recalculate and broadcast the user's aggregated permissions for a conversation.
+    This is sent only to the user's personal group.
+    """
+    channel_layer = get_channel_layer()
+
+    # Get all roles for this user in this conversation
+    try:
+        member = ConversationMember.objects.prefetch_related('roles').get(
+            conversation=conversation, user=user
+        )
+        roles = member.roles.all()
+    except ConversationMember.DoesNotExist:
+        # User is not a member – send empty permissions (or handle as needed)
+        return
+
+    # Compute union of permissions (same logic as ChannelMyPermissionsView)
+    permissions = {
+        "is_owner": conversation.owner == user,
+        "can_send_messages": any(r.can_send_messages for r in roles),
+        "can_send_media": any(r.can_send_media for r in roles),
+        "can_delete_messages": any(r.can_delete_messages for r in roles),
+        "can_manage_members": any(r.can_manage_members for r in roles),
+        "can_manage_roles": any(r.can_manage_roles for r in roles),
+        "can_view_invite_link": any(r.can_view_invite_link for r in roles),
+        "can_edit_channel_info": any(r.can_edit_channel_info for r in roles),
+        "can_delete_channel": any(r.can_delete_channel for r in roles),
+        "can_create_topic": any(r.can_create_topic for r in roles),
+        "can_manage_others_topics": any(r.can_manage_others_topics for r in roles),
+    }
+
+    data = {
+        "conversation_id": str(conversation.id),
+        "event_type": "permissions_updated",
+        "permissions": permissions,
+    }
+
+    async_to_sync(channel_layer.group_send)(
+        f"user_{user.id}",
+        {
+            "type": "conversation_update",
+            "data": data
+        }
+    )
+
+
+def broadcast_role_metadata_update(role):
+    """
+    Broadcast updated role metadata (id, name, permissions) to all members
+    of the conversation. Used when a role is edited or created.
+    """
+    channel_layer = get_channel_layer()
+    data = RoleSerializer(role).data
+    async_to_sync(channel_layer.group_send)(
+        f"conversation_{role.conversation_id}",
+        {
+            "type": "role_updated",
+            "data": data
+        }
+    )
+
+
+def broadcast_role_deleted(role):
+    """
+    Broadcast role deletion to all members of the conversation.
+    """
+    channel_layer = get_channel_layer()
+    data = {"id": str(role.id), "event_type": "role_deleted"}
+    async_to_sync(channel_layer.group_send)(
+        f"conversation_{role.conversation_id}",
+        {
+            "type": "role_updated",
+            "data": data
+        }
     )
