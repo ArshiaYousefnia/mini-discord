@@ -219,3 +219,18 @@ def broadcast_conversation_deleted(conversation):
                 "data": data
             }
         )
+
+def broadcast_user_conversation_removed(user_id, conversation):
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+        f"user_{user_id}",
+        {
+            "type": "conversation_update",
+            "data": {
+                "conversation_id": str(conversation.id),
+                "event_type": "member_removed",
+                "user_id": str(user_id),
+            },
+        },
+    )
