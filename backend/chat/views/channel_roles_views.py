@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
@@ -5,8 +6,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from chat.models import Conversation, Role
+from chat.models import Conversation, Role, ConversationMember
 from chat.serializers import RoleSerializer
+from chat.views.views_realtime_utils import broadcast_role_metadata_update, broadcast_role_deleted, \
+    broadcast_user_permissions
 
 
 class ChannelRolesView(APIView):
@@ -28,6 +31,7 @@ class ChannelRolesView(APIView):
 
         serializer = RoleSerializer(roles, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
     def post(self, request, conversation_id):
         conversation = get_object_or_404(
             Conversation,
@@ -63,6 +67,10 @@ class ChannelRolesView(APIView):
 
         role = Role.objects.create(conversation=conversation, name=clean_name)
         serializer = RoleSerializer(role)
+
+        broadcast_role_metadata_update(role)
+
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -108,7 +116,20 @@ class ChannelRoleDetailView(APIView):
 
         serializer = RoleSerializer(role, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        updated_role = serializer.save()
+
+        # Broadcast role metadata to all members
+        broadcast_role_metadata_update(updated_role)
+
+        # Broadcast permissions update to all users who have this role
+        users_with_role = ConversationMember.objects.filter(
+            roles=updated_role
+        ).values_list('user', flat=True).distinct()
+        conversation = updated_role.conversation
+        for user_id in users_with_role:
+            user = get_user_model().objects.get(id=user_id)
+            broadcast_user_permissions(user, conversation)
+
         return Response(serializer.data)
 
     def delete(self, request, conversation_id, role_id):
@@ -118,6 +139,20 @@ class ChannelRoleDetailView(APIView):
                 {"detail": "Cannot delete the Channel Owner role."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Get users with this role before deletion
+        users_with_role = ConversationMember.objects.filter(
+            roles=role
+        ).values_list('user', flat=True).distinct()
+        conversation = role.conversation
+
+        # Broadcast role deletion to all members
+        broadcast_role_deleted(role)
+
+        # Broadcast permissions update to users who had this role
+        for user_id in users_with_role:
+            user = get_user_model().objects.get(id=user_id)
+            broadcast_user_permissions(user, conversation)
 
         role.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
