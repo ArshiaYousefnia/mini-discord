@@ -11,8 +11,7 @@ from chat.serializers import MessageSerializer
 from chat.channels_serializers import ChannelCreateSerializer, ChannelDetailSerializer, ChannelUpdateSerializer, \
     ChannelMemberSerializer, ChannelMemberRoleUpdateSerializer
 from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update, \
-    broadcast_conversation_deleted, broadcast_user_conversation_removed, broadcast_unread_update_for_conversation, \
-    broadcast_member_joined_notification, broadcast_user_permissions, broadcast_role_metadata_update
+    broadcast_conversation_deleted, broadcast_user_conversation_removed
 
 
 class ChannelCreateView(APIView):
@@ -135,13 +134,6 @@ class ChannelJoinView(APIView):
         member = ConversationMember.objects.create(conversation=conversation, user=user)
         member.roles.add(role)
 
-        latest_message = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
-        if latest_message:
-            member.last_read_message = latest_message
-            member.save(update_fields=['last_read_message'])
-
-        broadcast_unread_update_for_conversation(conversation)
-
         # After adding member
         broadcast_conversation_update(
             conversation,
@@ -217,21 +209,6 @@ class ChannelPublicIdView(APIView):
 
         member = ConversationMember.objects.create(conversation=conversation, user=user)
         member.roles.add(role)
-
-        latest_message = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
-        if latest_message:
-            member.last_read_message = latest_message
-            member.save(update_fields=['last_read_message'])
-
-        broadcast_unread_update_for_conversation(conversation)
-
-        broadcast_conversation_update(
-            conversation,
-            'member_joined',
-            {'user_id': str(user.id)}
-        )
-
-        broadcast_member_joined_notification(conversation, user)
 
         serializer = ChannelDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -463,12 +440,6 @@ class ChannelMemberRoleUpdateView(APIView):
                 'action': 'add'
             }
         )
-
-        # Broadcast permissions update to the target user
-        broadcast_user_permissions(target_membership.user, conversation)
-
-        # Also broadcast role_updated to all members (optional)
-        broadcast_role_metadata_update(role)
 
         return Response(
             {"detail": "Role updated successfully."},

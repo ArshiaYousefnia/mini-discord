@@ -46,32 +46,6 @@ def broadcast_notification(user_id, notification_data):
         }
     )
 
-def broadcast_member_joined_notification(conversation, joiner_user):
-    """
-    Send a notification to all existing members (excluding the joiner) that a new user has joined.
-    Creates a Notification record and broadcasts it via WebSocket.
-    """
-    existing_members = ConversationMember.objects.filter(
-        conversation=conversation
-    ).exclude(user=joiner_user).select_related('user')
-
-    conversation_type_display = conversation.get_type_display().lower()
-    preview = f"{joiner_user.display_name} joined the {conversation_type_display}."
-
-    for member in existing_members:
-        # Create notification record
-        notification = Notification.objects.create(
-            recipient=member.user,
-            sender=joiner_user,
-            type=Notification.Type.MEMBER_JOINED,
-            message_preview=preview,
-            conversation_id=conversation.id,
-        )
-        # Serialize and broadcast
-        serializer = NotificationSerializer(notification)
-        broadcast_notification(member.user.id, serializer.data)
-
-
 def broadcast_conversation_update(conversation, event_type, data):
     """
     Send a conversation update event to all members of the conversation.

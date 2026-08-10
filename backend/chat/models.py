@@ -238,8 +238,6 @@ class Notification(models.Model):
         DM = 'DM', 'Direct Message'
         REPLY = 'REPLY', 'Reply'
         GROUP_ADDED = 'GROUP_ADDED', 'Added to group'
-        MEMBER_JOINED = 'MEMBER_JOINED', 'Member joined'
-
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     recipient = models.ForeignKey(

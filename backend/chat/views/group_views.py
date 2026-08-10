@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from chat.models import Conversation, ConversationMember, Role
 from chat.serializers import GroupCreateSerializer, GroupDetailSerializer, GroupMemberSerializer, GroupUpdateSerializer
 from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update, \
-    broadcast_conversation_deleted, broadcast_unread_update_for_conversation, broadcast_member_joined_notification
+    broadcast_conversation_deleted
 
 
 class GroupCreateView(APIView):
@@ -68,13 +68,6 @@ class GroupJoinView(APIView):
         member = ConversationMember.objects.create(conversation=conversation, user=user)
         member.roles.add(role)
 
-        latest_message = conversation.messages.filter(is_deleted=False).order_by('-created_at').first()
-        if latest_message:
-            member.last_read_message = latest_message
-            member.save(update_fields=['last_read_message'])
-
-        broadcast_unread_update_for_conversation(conversation)
-
         serializer = GroupDetailSerializer(conversation, context={'request': request})
 
         # After adding member
@@ -83,8 +76,6 @@ class GroupJoinView(APIView):
             'member_joined',
             {'user_id': str(user.id)}
         )
-
-        broadcast_member_joined_notification(conversation, user)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
