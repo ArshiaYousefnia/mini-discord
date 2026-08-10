@@ -12,18 +12,6 @@ services:
       - postgres
       - redis
       - minio-init
-    environment:
-      - DJANGO_SETTINGS_MODULE=mini_discord.settings
-      - DB_HOST=postgres
-      - DB_NAME=${DB_NAME:-django_db}
-      - DB_USER=${DB_USER:-django_user}
-      - DB_PASSWORD=${DB_PASSWORD:-django_password}
-      - DB_PORT=5432
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - MINIO_ENDPOINT=http://minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
 
   frontend:
     image: ${HARBOR_HOST:-registry.hamdocker.ir}/${HARBOR_PROJECT:-ayousefnia}/frontend:${FRONTEND_TAG:-latest}
