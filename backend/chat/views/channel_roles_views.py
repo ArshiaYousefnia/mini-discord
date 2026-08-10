@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Conversation, Role, ConversationMember
-from chat.serializers import RoleSerializer
+from chat.channels_serializers import RoleSerializer
 from chat.views.views_realtime_utils import broadcast_role_metadata_update, broadcast_role_deleted, \
     broadcast_user_permissions
 
