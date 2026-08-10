@@ -1,11 +1,9 @@
 import os
-from django.db import transaction
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
-from .models import Conversation, ConversationMember, Message, Role, Channel, Topic, Attachment, Notification, \
-    ScheduledAttachment, ScheduledMessage
+from .models import Conversation, ConversationMember, Message, Role, Attachment, Notification
 
-from django.urls import reverse
+import mimetypes
+
 
 ALLOWED_FILE_EXTENSIONS = {
     'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',  # images
@@ -57,16 +55,66 @@ class GroupDetailSerializer(serializers.ModelSerializer):
         return obj.members.count()
 
 
+
 class MinimalMessageSerializer(serializers.ModelSerializer):
     sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
     attachments_count = serializers.SerializerMethodField()
+    preview = serializers.SerializerMethodField()
+    preview_icon = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ['id', 'content', 'sender_display_name', 'created_at', 'attachments_count']
+        fields = [
+            'id', 'content', 'sender_display_name', 'created_at',
+            'attachments_count', 'preview', 'preview_icon'
+        ]
 
     def get_attachments_count(self, obj):
         return obj.attachments.count()
+
+    def _get_attachment_type(self, obj):
+        """Determine the type of the first attachment."""
+        attachments = obj.attachments.all()
+        if not attachments:
+            return None
+
+        for att in attachments:
+            if att.file:
+                mime_type, _ = mimetypes.guess_type(att.original_filename)
+                if mime_type:
+                    if mime_type.startswith('video/'):
+                        return 'video'
+                    if mime_type.startswith('image/'):
+                        return 'photo'
+                    if mime_type.startswith('audio/'):
+                        return 'audio'
+        return 'file'
+
+    def get_preview(self, obj):
+        content = obj.content
+        if content and content.strip():
+            return content
+
+        att_type = self._get_attachment_type(obj)
+        if not att_type:
+            return "No content"
+
+        labels = {
+            'video': 'Video',
+            'photo': 'Photo',
+            'audio': 'Audio',
+            'file': 'File'
+        }
+        return labels.get(att_type, 'File')
+
+    def get_preview_icon(self, obj):
+        """Return an icon name for the client to display."""
+        content = obj.content
+        if content and content.strip():
+            return 'text'
+
+        att_type = self._get_attachment_type(obj)
+        return att_type or 'file'  # default to 'file' if unknown
 
 
 class AttachmentSerializer(serializers.ModelSerializer):
@@ -316,247 +364,6 @@ class GroupUpdateSerializer(serializers.ModelSerializer):
         return validate_avatar_file(value)
 
 
-class ChannelCreateSerializer(serializers.ModelSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=False, allow_blank=True, max_length=500)
-    avatar = serializers.FileField(required=False)
-    is_private = serializers.BooleanField(default=True)
-    public_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-
-    class Meta:
-        model = Conversation
-        fields = ['name', 'description', 'avatar', 'is_private', 'public_id']
-
-    def validate_name(self, value):
-        if not value.strip():
-            raise serializers.ValidationError("Channel name cannot be empty.")
-        return value.strip()
-
-    def validate_avatar(self, value):
-        return validate_avatar_file(value)
-
-    def validate(self, data):
-        is_private = data.get('is_private', True)
-        public_id = data.get('public_id', None)
-
-        if not is_private:
-            if not public_id or not public_id.strip():
-                raise serializers.ValidationError({
-                    'public_id': "Public ID is required for public channels."
-                })
-
-            clean_public_id = public_id.strip()
-
-            # ۱. بررسی تکراری نبودن در کانال‌ها (Case-Insensitive)
-            if Channel.objects.filter(public_id__iexact=clean_public_id).exists():
-                raise serializers.ValidationError({
-                    'public_id': "This public ID is already taken by another channel."
-                })
-
-            # ۲. بررسی تکراری نبودن در یوزرنیم کاربران (Case-Insensitive)
-            User = get_user_model()
-            if User.objects.filter(username__iexact=clean_public_id).exists():
-                raise serializers.ValidationError({
-                    'public_id': "This public ID is already taken by a user."
-                })
-        else:
-            data['public_id'] = None
-
-        return data
-
-    @transaction.atomic
-    def create(self, validated_data):
-        user = self.context['request'].user
-        is_private = validated_data.pop('is_private', True)
-        public_id = validated_data.pop('public_id', None)
-
-        # Create the base conversation
-        conversation = Conversation.objects.create(
-            type=Conversation.Type.CHANNEL,
-            name=validated_data.get('name'),
-            description=validated_data.get('description', ''),
-            avatar=validated_data.get('avatar', None),
-            owner=user,
-        )
-
-        # Create the channel profile
-        Channel.objects.create(
-            conversation=conversation,
-            is_private=is_private,
-            public_id=public_id.strip() if public_id else None,
-            # invite_code is auto-generated by default=uuid.uuid4
-        )
-
-        # Create "Channel Owner" role
-        role = Role.objects.create(
-            conversation=conversation,
-            name='Channel Owner',
-            can_send_messages=True,
-            can_send_media=True,
-            can_delete_messages=True,
-            can_manage_members=True,
-            can_manage_roles=True,
-            can_view_invite_link=True,
-            can_edit_channel_info=True,
-            can_delete_channel=True,
-            can_create_topic=True,
-            can_manage_others_topics=True,
-        )
-
-        # Add creator as member with that role
-        member = ConversationMember.objects.create(conversation=conversation, user=user)
-        member.roles.add(role)
-
-        return conversation
-
-
-class ChannelDetailSerializer(serializers.ModelSerializer):
-    owner_id = serializers.UUIDField(source="owner.id", read_only=True)
-    owner_display_name = serializers.CharField(source="owner.display_name", read_only=True)
-    avatar_url = serializers.SerializerMethodField()
-    invite_link = serializers.SerializerMethodField()
-
-    is_private = serializers.BooleanField(source='channel.is_private', read_only=True)
-    public_id = serializers.CharField(source='channel.public_id', read_only=True)
-
-    class Meta:
-        model = Conversation
-        fields = [
-            "id",
-            "name",
-            "description",
-            "avatar",
-            "avatar_url",
-            "owner_id",
-            "owner_display_name",
-            "created_at",
-            "invite_link",
-            "is_private",  # اضافه شد
-            "public_id",  # اضافه شد
-        ]
-
-    def get_avatar_url(self, obj):
-        return obj.avatar_url
-
-    def get_invite_link(self, obj):
-        request = self.context.get('request')
-        if not request or not hasattr(obj, 'channel'):
-            return None
-
-        user = request.user
-
-        has_permission = (obj.owner == user)
-
-        if not has_permission:
-            member = obj.members.filter(user=user).prefetch_related('roles').first()
-            if member and member.roles.filter(can_view_invite_link=True).exists():
-                has_permission = True
-
-        if has_permission:
-            invite_code = obj.channel.invite_code
-            path = reverse('channel-join', kwargs={'invite_code': invite_code})
-            return request.build_absolute_uri(path)
-
-        return None
-
-
-class ChannelUpdateSerializer(serializers.ModelSerializer):
-    avatar = serializers.FileField(required=False, allow_null=True)
-    description = serializers.CharField(required=False, allow_blank=True, max_length=500)
-    class Meta:
-        model = Conversation
-        fields = ['name', 'description', 'avatar']
-
-    def validate_name(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError("Channel name cannot be empty.")
-        return value.strip()
-
-    def validate_avatar(self, value):
-        return validate_avatar_file(value)
-
-
-class ChannelMemberSerializer(serializers.ModelSerializer):
-    user_id = serializers.UUIDField(source='user.id', read_only=True)
-    username = serializers.CharField(source='user.username', read_only=True)
-    display_name = serializers.CharField(source='user.display_name', read_only=True)
-    avatar_url = serializers.CharField(source='user.avatar_url', read_only=True, default=None)
-    roles = serializers.SerializerMethodField()
-    # Added this line to expose the user's current database online status
-    is_online = serializers.BooleanField(source='user.is_online', read_only=True)
-
-    class Meta:
-        model = ConversationMember
-        fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'roles', 'is_online']
-
-    def get_roles(self, obj):
-        role_names = [role.name for role in obj.roles.all()]
-        return role_names if role_names else ["Member"]
-
-
-class ChannelMemberRoleUpdateSerializer(serializers.Serializer):
-    role_id = serializers.UUIDField(required=True)
-
-
-class RoleSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Role
-        fields = [
-            'id', 'name',
-            'can_send_messages', 'can_send_media', 'can_delete_messages',
-            'can_manage_members', 'can_manage_roles',
-            'can_view_invite_link', 'can_edit_channel_info', 'can_delete_channel',
-            'can_create_topic', 'can_manage_others_topics',
-        ]
-        read_only_fields = ['id']
-
-
-class ChannelMessageSerializer(MessageSerializer):
-    topic_id = serializers.SerializerMethodField()
-    topic_name = serializers.SerializerMethodField()
-
-    class Meta(MessageSerializer.Meta):
-        fields = MessageSerializer.Meta.fields + ['topic_id', 'topic_name']
-
-    def get_topic_id(self, obj):
-        return str(obj.topic.id) if obj.topic else None
-
-    def get_topic_name(self, obj):
-        return obj.topic.name if obj.topic else None
-
-
-class TopicCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Topic
-        fields = ['name']
-
-    def validate_name(self, value):
-        if not value.strip():
-            raise serializers.ValidationError("Topic name cannot be empty.")
-        return value.strip()
-
-
-class TopicUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Topic
-        fields = ['name']
-
-    def validate_name(self, value):
-        if not value.strip():
-            raise serializers.ValidationError("Topic name cannot be empty.")
-        return value.strip()
-
-
-class TopicSerializer(serializers.ModelSerializer):
-    creator_display_name = serializers.CharField(source='creator.display_name', read_only=True)
-    creator_id = serializers.UUIDField(source='creator.id', read_only=True)
-
-    class Meta:
-        model = Topic
-        fields = ['id', 'name', 'creator_id', 'creator_display_name', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'creator_id', 'creator_display_name', 'created_at', 'updated_at']
-
-
 class NotificationSerializer(serializers.ModelSerializer):
     sender_display_name = serializers.CharField(source='sender.display_name', read_only=True)
     sender_avatar = serializers.SerializerMethodField()
@@ -571,118 +378,3 @@ class NotificationSerializer(serializers.ModelSerializer):
 
     def get_sender_avatar(self, obj):
         return obj.sender.avatar_url if obj.sender else None
-
-
-class ScheduledAttachmentSerializer(serializers.ModelSerializer):
-    file_url = serializers.SerializerMethodField()
-
-    class Meta:
-        model = ScheduledAttachment
-        fields = ['id', 'file_url', 'original_filename', 'size', 'created_at']
-        read_only_fields = ['id', 'created_at']
-
-    def get_file_url(self, obj):
-        if obj.file:
-            return obj.file.url
-        return None
-
-
-class ScheduledMessageSerializer(serializers.ModelSerializer):
-    attachments = ScheduledAttachmentSerializer(many=True, read_only=True)
-    uploaded_files = serializers.ListField(
-        child=serializers.FileField(
-            max_length=None,
-            allow_empty_file=False,
-            use_url=False
-        ),
-        write_only=True,
-        required=False,
-    )
-    conversation_name = serializers.CharField(source='conversation.name', read_only=True)
-    topic_id = serializers.UUIDField(write_only=True, required=False)
-    topic = serializers.SerializerMethodField()
-    failed = serializers.BooleanField(read_only=True)
-    failure_reason = serializers.CharField(read_only=True)
-
-    class Meta:
-        model = ScheduledMessage
-        fields = [
-            'id', 'conversation', 'conversation_name', 'content', 'reply_to',
-            'scheduled_at', 'sent', 'failed', 'failure_reason',
-            'created_at', 'updated_at',
-            'attachments', 'uploaded_files', 'topic_id', 'topic'
-        ]
-        read_only_fields = [
-            'id', 'conversation', 'sender', 'sent', 'failed',
-            'failure_reason', 'created_at', 'updated_at', 'conversation_name', 'topic'
-        ]
-
-    def get_topic(self, obj):
-        if obj.topic:
-            return {
-                'id': str(obj.topic.id),
-                'name': obj.topic.name,
-                'creator': obj.topic.creator.display_name
-            }
-        return None
-
-    def validate_scheduled_at(self, value):
-        from django.utils import timezone
-        if value <= timezone.now():
-            raise serializers.ValidationError("Scheduled time must be in the future.")
-        return value
-
-    def validate_content(self, value):
-        if value and len(value) > 2000:
-            raise serializers.ValidationError("Message must be 2000 characters or fewer.")
-        return value
-
-    def validate(self, data):
-        if not data.get('content') and not data.get('uploaded_files'):
-            raise serializers.ValidationError("Either content or at least one file is required.")
-        if data.get('content') and not data.get('content').strip():
-            raise serializers.ValidationError("Message cannot be empty.")
-
-        # Get conversation from context
-        conversation = self.context.get('conversation')
-        topic_id = data.get('topic_id')
-
-        if conversation:
-            if conversation.type == Conversation.Type.CHANNEL:
-                if topic_id:
-                    from .models import Topic
-                    try:
-                        topic = Topic.objects.get(id=topic_id, conversation=conversation)
-                        data['topic'] = topic
-                    except Topic.DoesNotExist:
-                        raise serializers.ValidationError({
-                            'topic_id': "Topic not found in this channel."
-                        })
-            else:
-                # Groups and DMs should not have topic_id
-                if topic_id:
-                    raise serializers.ValidationError({
-                        'topic_id': "Topics are only available in channels."
-                    })
-        else:
-            # If no conversation in context, we can't validate the topic
-            # This is a fallback - it shouldn't happen in normal usage
-            if topic_id:
-                # Still validate that it's a valid UUID, but can't check conversation type
-                pass
-
-        return data
-
-    def create(self, validated_data):
-        uploaded_files = validated_data.pop('uploaded_files', [])
-        instance = super().create(validated_data)
-
-        for file in uploaded_files:
-            ScheduledAttachment.objects.create(
-                scheduled_message=instance,
-                file=file,
-                original_filename=file.name,
-                size=file.size,
-            )
-
-        return instance

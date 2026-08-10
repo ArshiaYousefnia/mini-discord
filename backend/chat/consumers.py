@@ -89,6 +89,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "data": payload
         }))
 
+    async def role_updated(self, event):
+        await self.send(text_data=json.dumps({
+            "type": "conversation_update",
+            "data": event["data"],
+        }))
+
     @database_sync_to_async
     def is_member(self):
         return ConversationMember.objects.filter(
