@@ -18,17 +18,15 @@ from chat.views import (
     broadcast_new_message,
     broadcast_notification,
     broadcast_conversation_update,
-    broadcast_message_deleted,
-    broadcast_message_updated
 )
 
 from chat.serializers import (
     MessageSerializer,
     ConversationSerializer,
     ConversationMarkReadSerializer,
-    MinimalMessageSerializer,
-    ChannelMessageSerializer
+    MinimalMessageSerializer
 )
+from chat.channels_serializers import ChannelMessageSerializer
 
 from django.contrib.auth import get_user_model
 
@@ -494,13 +492,14 @@ class ConversationListView(ListAPIView):
             )
         ).distinct()
 
-        # Prefetch the latest message
+        # Prefetch the latest message with attachments
         queryset = queryset.prefetch_related(
             Prefetch(
                 'messages',
                 queryset=Message.objects
-                    .filter(is_deleted=False)
-                    .order_by('-created_at')[:1],  # <--- correct place to slice
+                .filter(is_deleted=False)
+                .order_by('-created_at')[:1]
+                .prefetch_related('attachments'),  # <-- add this
                 to_attr='_last_message_prefetched'
             )
         )
