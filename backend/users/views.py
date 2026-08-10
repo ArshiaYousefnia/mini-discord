@@ -1,5 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
+
+from chat.views.views_realtime_utils import broadcast_user_profile_update
 from .serializers import UserProfileSerializer, UserProfileUpdateSerializer
 from django.contrib.auth import authenticate
 from rest_framework.views import APIView
@@ -11,7 +13,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import NotFound
 from django.contrib.auth import get_user_model
 from chat.models import Channel
-from chat.serializers import ChannelDetailSerializer
+from chat.channels_serializers import ChannelDetailSerializer
 
 from .serializers import UserSearchSerializer
 
@@ -114,6 +116,11 @@ class UserProfileUpdateView(generics.RetrieveUpdateAPIView):        #needed in o
     def get_queryset(self):
         # ensure users can only update themselves
         return User.objects.filter(id=self.request.user.id)
+
+    def perform_update(self, serializer):
+        user = serializer.save()
+        # Broadcast user profile update to all conversations the user is in
+        broadcast_user_profile_update(user)
     
 
 

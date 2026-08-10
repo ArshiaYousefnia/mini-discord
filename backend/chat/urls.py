@@ -1,19 +1,21 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
+from chat.views.channel_topics_views import TopicListCreateView, TopicDetailView
+from chat.views.channel_roles_views import ChannelRolesView, ChannelRoleDetailView
 
+from chat.views.channel_views import ChannelCreateView, ChannelProfileView, ChannelJoinView, ChannelPublicIdView, \
+    ChannelUpdateView, ChannelMembersListView, ChannelRemoveMemberView, ChannelMemberRoleUpdateView, ChannelDeleteView, \
+    ChannelMyPermissionsView, ChannelPreviewView
+from chat.views.group_views import GroupCreateView, GroupJoinView, GroupProfileView, GroupMembersView, GroupUpdateView, \
+    GroupDeleteView
 
-from .views import ChannelPreviewView, ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelDeleteView, \
-    ChannelPublicIdView, ChannelJoinView, GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, \
-    ConversationViewSet, AttachmentDownloadView
-from .views import ChannelMemberRoleUpdateView, ChannelMembersListView, ChannelDeleteView, ChannelPublicIdView, \
-    ChannelJoinView, GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
-    ChannelRolesView, ChannelRoleDetailView, TopicListCreateView, TopicDetailView
-
-from .views import ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet
-from .views import ChannelMemberRoleRemoveView,ChannelMyPermissionsView,ChannelUpdateView,ChannelPublicIdView,ChannelJoinView,GroupDeleteView, GroupUpdateView, GroupMembersView, SendDirectMessageView, ConversationViewSet, \
-    MessageViewSet, ConversationListView, \
-    ChannelRemoveMemberView,ConversationMarkReadView, GroupCreateView, GroupJoinView, GroupProfileView, ChannelCreateView,ChannelProfileView
+from chat.views.notification_views import NotificationListView, NotificationMarkReadView, NotificationMarkAllReadView, \
+    UnreadNotificationCountView
+from chat.views.message_schedule_views import ScheduledMessageCreateView, ScheduledMessageListView, ScheduledMessageDeleteView, \
+    ScheduledMessageCancelAllView, ScheduledMessageRetryView
+from chat.views.views import SendDirectMessageView, ConversationViewSet, MessageViewSet, ConversationListView, \
+    ConversationMarkReadView, ChannelMemberRoleRemoveView, AttachmentDownloadView
 
 router = DefaultRouter()
 router.register(r'dm', SendDirectMessageView, basename='direct-message')
@@ -198,4 +200,29 @@ urlpatterns = [
         ChannelMemberRoleRemoveView.as_view(),
         name='channel-member-role-remove'
     ),
+    path('notifications/', NotificationListView.as_view(), name='notification-list'),
+    path('notifications/<uuid:id>/read/', NotificationMarkReadView.as_view(), name='notification-mark-read'),
+    path('notifications/mark-all-read/', NotificationMarkAllReadView.as_view(), name='notification-mark-all-read'),
+    path('notifications/unread-count/', UnreadNotificationCountView.as_view(), name='notification-unread-count'),
+    path(
+        'conversations/<uuid:conversation_id>/schedule/',
+        ScheduledMessageCreateView.as_view(),
+        name='schedule-message'
+    ),
+    path(
+        'scheduled-messages/',
+        ScheduledMessageListView.as_view(),
+        name='scheduled-messages-list'
+    ),
+    path(
+        'scheduled-messages/<uuid:id>/',
+        ScheduledMessageDeleteView.as_view(),
+        name='scheduled-message-delete'
+    ),
+    path(
+    'conversations/<uuid:conversation_id>/schedule/cancel-all/',
+    ScheduledMessageCancelAllView.as_view(),
+    name='schedule-cancel-all'
+    ),
+    path('scheduled-messages/<uuid:id>/retry/', ScheduledMessageRetryView.as_view(), name='scheduled-message-retry'),
 ]

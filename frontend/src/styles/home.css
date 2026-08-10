@@ -1347,3 +1347,117 @@
   border-radius: 50%;
   box-shadow: 0 0 4px rgba(0,0,0,0.3);
 }
+
+.start-direct-message-btn {
+  width: 100%;
+  margin-top: 24px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+
+.start-direct-message-btn:hover {
+  background: #1d4ed8;
+}
+
+.start-direct-message-btn:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* Role Card Container */
+.role-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column; /* Stacks header and edit form vertically */
+}
+
+/* Header: Role Name and Buttons */
+.role-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%; /* Ensures the buttons are pushed to the right edge */
+}
+
+.role-card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.role-name {
+  font-weight: 600;
+}
+
+/* Hide/Show Delete Button on Hover */
+.role-card .remove-member-btn {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.role-card:hover .remove-member-btn {
+  opacity: 1;
+}
+
+.role-card .remove-member-btn:hover {
+  background-color: #ef4444;
+  color: white;
+}
+
+/* Edit Form Layout */
+.role-edit-form {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05); /* Optional: visual separator */
+  padding-top: 10px;
+}
+
+.role-edit-name-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.role-permission-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+
+
+
+/* ===== FIX: Allow profile card to grow with content ===== */
+.group-profile-card {
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.group-profile-description {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.group-profile-content {
+  overflow-y: auto !important;
+  align-items: flex-start !important;
+}
+
+.group-profile-overlay {
+  overflow: hidden !important;
+}
