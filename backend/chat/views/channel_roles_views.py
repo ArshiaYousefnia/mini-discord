@@ -69,7 +69,7 @@ class ChannelRolesView(APIView):
         serializer = RoleSerializer(role)
 
         broadcast_role_metadata_update(role)
-        
+
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -120,7 +120,6 @@ class ChannelRoleDetailView(APIView):
 
         # Broadcast role metadata to all members
         broadcast_role_metadata_update(updated_role)
-        
 
         # Broadcast permissions update to all users who have this role
         users_with_role = ConversationMember.objects.filter(
