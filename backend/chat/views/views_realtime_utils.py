@@ -297,7 +297,7 @@ def broadcast_user_permissions(user, conversation):
 
     data = {
         "conversation_id": str(conversation.id),
-        "event_type": "permissions_updated",
+        "event_type": "role_updated",
         "permissions": permissions,
     }
 

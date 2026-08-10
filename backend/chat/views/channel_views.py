@@ -148,8 +148,6 @@ class ChannelJoinView(APIView):
             {'user_id': str(user.id)}
         )
 
-        broadcast_member_joined_notification(conversation, user)
-
         serializer = ChannelDetailSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
