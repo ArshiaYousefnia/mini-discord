@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { Message } from "../types/chat";
+import ScheduleMessageModal from "./ScheduleMessageModal";
 import "../styles/chat.css";
 
 type Props = {
@@ -9,8 +10,20 @@ type Props = {
   placeholder?: string;
   onCancelReply: () => void;
   // Updated signature to support file arrays
-  onSendMessage: (text: string, files?: File[]) => Promise<void>; 
+  onSendMessage: (text: string, files?: File[]) => Promise<void>;
+  // New: schedule a message for future delivery. Omit to hide the feature
+  // (e.g. for a not-yet-created pending DM conversation).
+  onScheduleMessage?: (
+    text: string,
+    scheduledAt: Date,
+    files?: File[]
+  ) => Promise<void>;
+  // New: open the panel listing this conversation's pending scheduled
+  // messages. Omit to hide the button.
+  onOpenScheduledMessages?: () => void;
 };
+
+const MAX_MESSAGE_LENGTH = 2000;
 
 export default function MessageInput({
   activeReplyTo,
@@ -19,11 +32,15 @@ export default function MessageInput({
   placeholder = "Type a message...",
   onCancelReply,
   onSendMessage,
+  onScheduleMessage,
+  onOpenScheduledMessages,
 }: Props) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,7 +69,7 @@ export default function MessageInput({
       const newFiles = Array.from(event.target.files);
       setSelectedFiles((prev) => [...prev, ...newFiles]);
     }
-    
+
     // Clear the input value so the exact same file can be added again if removed
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -63,13 +80,24 @@ export default function MessageInput({
     setSelectedFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
   };
 
+  const resetComposer = () => {
+    setText("");
+    setSelectedFiles([]);
+    onCancelReply();
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  };
+
   const handleSubmit = async (event?: React.FormEvent) => {
     if (event) event.preventDefault();
 
     const trimmedText = text.trim();
     const hasContent = trimmedText.length > 0 || selectedFiles.length > 0;
+    const isOverLimit = text.length > MAX_MESSAGE_LENGTH;
 
-    if (!hasContent || isInputDisabled) {
+    if (!hasContent || isInputDisabled || isOverLimit) {
       return;
     }
 
@@ -78,22 +106,44 @@ export default function MessageInput({
     try {
       // Pass the selected files along with the text
       await onSendMessage(
-        trimmedText, 
+        trimmedText,
         selectedFiles.length > 0 ? selectedFiles : undefined
       );
-      
-      // Reset state on success
-      setText("");
-      setSelectedFiles([]);
-      onCancelReply();
 
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-      }
+      resetComposer();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to send message");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleScheduleConfirm = async (scheduledAt: Date) => {
+    if (!onScheduleMessage) return;
+
+    const trimmedText = text.trim();
+    const hasContent = trimmedText.length > 0 || selectedFiles.length > 0;
+    const isOverLimit = text.length > MAX_MESSAGE_LENGTH;
+
+    if (!hasContent || isOverLimit) return;
+
+    setScheduling(true);
+
+    try {
+      await onScheduleMessage(
+        trimmedText,
+        scheduledAt,
+        selectedFiles.length > 0 ? selectedFiles : undefined
+      );
+
+      setShowScheduleModal(false);
+      resetComposer();
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : "Failed to schedule message"
+      );
+    } finally {
+      setScheduling(false);
     }
   };
 
@@ -105,6 +155,7 @@ export default function MessageInput({
   };
 
   const hasContent = text.trim().length > 0 || selectedFiles.length > 0;
+  const isOverLimit = text.length > MAX_MESSAGE_LENGTH;
 
   return (
     <div className="chat-input-area" style={{ display: "flex", flexDirection: "column" }}>
@@ -137,20 +188,20 @@ export default function MessageInput({
 
       {/* Pending Attachments Preview Bar */}
       {selectedFiles.length > 0 && (
-        <div 
-          className="pending-attachments-bar" 
-          style={{ 
-            display: "flex", 
-            gap: "8px", 
-            padding: "8px 12px", 
+        <div
+          className="pending-attachments-bar"
+          style={{
+            display: "flex",
+            gap: "8px",
+            padding: "8px 12px",
             flexWrap: "wrap",
             backgroundColor: "rgba(255, 255, 255, 0.05)",
             borderBottom: "1px solid rgba(255, 255, 255, 0.1)"
           }}
         >
           {selectedFiles.map((file, index) => (
-            <div 
-              key={`${file.name}-${index}`} 
+            <div
+              key={`${file.name}-${index}`}
               className="pending-attachment-pill"
               style={{
                 display: "flex",
@@ -188,8 +239,24 @@ export default function MessageInput({
         </div>
       )}
 
+      {isOverLimit && (
+        <div
+          className="message-length-warning"
+          style={{
+            padding: "6px 12px",
+            fontSize: "12px",
+            fontWeight: 600,
+            color: "#ef4444",
+            backgroundColor: "rgba(239, 68, 68, 0.08)",
+            borderBottom: "1px solid rgba(239, 68, 68, 0.2)",
+          }}
+        >
+          🚫 Message exceeds {MAX_MESSAGE_LENGTH} character limit ({text.length}/{MAX_MESSAGE_LENGTH})
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="chat-input-form" style={{ display: "flex", alignItems: "center" }}>
-        
+
         {/* Attachment Button */}
         <button
           type="button"
@@ -222,6 +289,19 @@ export default function MessageInput({
           onChange={handleFileSelect}
         />
 
+        {/* View Scheduled Messages Button */}
+        {onOpenScheduledMessages && (
+          <button
+            type="button"
+            className="chat-view-scheduled-btn"
+            onClick={onOpenScheduledMessages}
+            aria-label="View scheduled messages"
+            title="View scheduled messages"
+          >
+            📅
+          </button>
+        )}
+
         <textarea
           ref={textareaRef}
           className="chat-textarea"
@@ -229,21 +309,41 @@ export default function MessageInput({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleKeyDown}
-          maxLength={2000}
           disabled={isInputDisabled}
           rows={1}
           style={{ flexGrow: 1 }}
         />
 
+        {/* Schedule Button */}
+        {onScheduleMessage && (
+          <button
+            type="button"
+            className="chat-schedule-btn"
+            disabled={!hasContent || isInputDisabled || isOverLimit}
+            onClick={() => setShowScheduleModal(true)}
+            aria-label="Schedule message"
+            title="Schedule message"
+          >
+            🕒
+          </button>
+        )}
+
         <button
           type="submit"
           className="chat-send-btn"
-          disabled={!hasContent || isInputDisabled}
+          disabled={!hasContent || isInputDisabled || isOverLimit}
           aria-label="Send message"
         >
-          {loading ? "..." : "➤"}
+          {loading ? "..." : isOverLimit ? "🚫" : "➤"}
         </button>
       </form>
+
+      <ScheduleMessageModal
+        isOpen={showScheduleModal}
+        submitting={scheduling}
+        onCancel={() => setShowScheduleModal(false)}
+        onConfirm={handleScheduleConfirm}
+      />
     </div>
   );
 }

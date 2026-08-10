@@ -23,6 +23,14 @@ export default function CreateGroupPage() {
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
+
+    if (file && !file.type.startsWith("image/")) {
+      setError("Please select a valid image file (JPG, PNG, GIF).");
+      e.target.value = "";
+      return;
+    }
+
+    if (error) setError("");
     setAvatar(file);
   };
 
@@ -139,20 +147,13 @@ export default function CreateGroupPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={5}
+              maxLength={300}
             />
           </div>
 
           {error && <div className="create-group-error">{error}</div>}
 
           <div className="create-group-actions">
-            <button
-              type="button"
-              className="create-group-secondary-btn"
-              onClick={() => navigate("/")}
-            >
-              Cancel
-            </button>
-
             <button
               type="submit"
               className="create-group-primary-btn"
