@@ -12,6 +12,19 @@ services:
       - postgres
       - redis
       - minio-init
+    environment:
+      - DJANGO_SETTINGS_MODULE=mini_discord.settings
+      - DB_HOST=postgres
+      - DB_NAME=${DB_NAME:-django_db}
+      - DB_USER=${DB_USER:-django_user}
+      - DB_PASSWORD=${DB_PASSWORD:-django_password}
+      - DB_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+
   frontend:
     image: ${HARBOR_HOST:-registry.hamdocker.ir}/${HARBOR_PROJECT:-ayousefnia}/frontend:${FRONTEND_TAG:-latest}
     container_name: react-frontend
@@ -32,7 +45,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
     ports:
-      - "5432:5432"      # optional – remove if you don't need external access
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-django_user} -d ${DB_NAME:-django_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:alpine
@@ -41,7 +59,12 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"      # optional
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   minio:
     image: minio/minio:latest
@@ -54,8 +77,13 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"      # S3 API
-      - "9001:9001"      # web console
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   avatar-fetch:
     image: curlimages/curl:latest
@@ -96,11 +124,12 @@ services:
     restart: "no"
 
   celery_worker:
-    build: ./backend
+    image: ${HARBOR_HOST:-registry.hamdocker.ir}/${HARBOR_PROJECT:-ayousefnia}/backend:${BACKEND_TAG:-latest}
+    container_name: celery-worker
+    restart: unless-stopped
     command: celery -A mini_discord worker --loglevel=info
     volumes:
-      - ./backend:/app
-      - /app/.venv  # optional: keep venv isolated
+      - ./.env:/app/.env
     environment:
       - DJANGO_SETTINGS_MODULE=mini_discord.settings
       - DB_HOST=postgres
@@ -120,11 +149,12 @@ services:
         condition: service_healthy
 
   celery_beat:
-    build: ./backend
+    image: ${HARBOR_HOST:-registry.hamdocker.ir}/${HARBOR_PROJECT:-ayousefnia}/backend:${BACKEND_TAG:-latest}
+    container_name: celery-beat
+    restart: unless-stopped
     command: celery -A mini_discord beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
-      - ./backend:/app
-      - /app/.venv
+      - ./.env:/app/.env
     environment:
       - DJANGO_SETTINGS_MODULE=mini_discord.settings
       - DB_HOST=postgres
