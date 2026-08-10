@@ -546,13 +546,14 @@ export default function HomePage() {
       if (
         payload.event_type === "member_joined" ||
         payload.event_type === "member_left" ||
-        payload.event_type === "role_updated"
+        payload.event_type === "role_updated" ||
+        payload.event_type === "permissions_updated"
       ) {
         void loadChats(true);
         return;
       }
 
-      setChatItems((previousChats) => {
+          setChatItems((previousChats) => {
         const index = previousChats.findIndex(
           (chat) => isSameId(chat.id, conversationId)
         );
@@ -563,25 +564,25 @@ export default function HomePage() {
         }
 
         const targetChat = previousChats[index];
+        const isEmptied = payload.last_message === null;
 
-        const isCurrentlyOpen =
-          isSameId(selectedChatRef.current?.id, conversationId);
+        // Check if the chat is currently open
+        const isCurrentlySelected =
+          selectedChatRef.current &&
+          isSameId(selectedChatRef.current.id, conversationId);
 
         const updatedChat: ChatListItem = {
           ...targetChat,
-          unreadCount:
-            payload.event_type === "unread_updated"
-              ? payload.unread_count ??
-                targetChat.unreadCount
-              : isCurrentlyOpen
-                ? 0
-                : targetChat.unreadCount + 1,
-          lastMessage:
-            payload.last_message?.content ??
-            targetChat.lastMessage,
-          lastMessageAt:
-            payload.last_message?.created_at ??
-            targetChat.lastMessageAt,
+          // Update unread count from payload, or force to 0 if it's currently open
+          unreadCount: isCurrentlySelected
+            ? 0
+            : (payload.unread_count ?? targetChat.unreadCount),
+          lastMessage: isEmptied
+            ? "No messages yet"
+            : (payload.last_message?.content ?? targetChat.lastMessage),
+          lastMessageAt: isEmptied
+            ? ""
+            : (payload.last_message?.created_at ?? targetChat.lastMessageAt),
         };
 
         const chatsWithoutTarget = previousChats.filter(
@@ -593,6 +594,7 @@ export default function HomePage() {
           ...chatsWithoutTarget,
         ]);
       });
+
     },
     [
       applyConversationMetadataUpdate,
