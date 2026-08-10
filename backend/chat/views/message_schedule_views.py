@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Conversation, ConversationMember, ScheduledMessage
-from chat.serializers import ScheduledMessageSerializer
+from chat.scheduled_messages_serializers import ScheduledMessageSerializer
 
 
 class ScheduledMessageCreateView(CreateAPIView):

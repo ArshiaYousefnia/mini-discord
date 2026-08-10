@@ -7,8 +7,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Conversation, ConversationMember, Channel, Role, Message
-from chat.serializers import ChannelCreateSerializer, ChannelDetailSerializer, ChannelUpdateSerializer, \
-    ChannelMemberSerializer, ChannelMemberRoleUpdateSerializer, MessageSerializer
+from chat.serializers import MessageSerializer
+from chat.channels_serializers import ChannelCreateSerializer, ChannelDetailSerializer, ChannelUpdateSerializer, \
+    ChannelMemberSerializer, ChannelMemberRoleUpdateSerializer
 from chat.views.views_realtime_utils import broadcast_conversation_update, broadcast_conversation_metadata_update, \
     broadcast_conversation_deleted, broadcast_user_conversation_removed, broadcast_unread_update_for_conversation, \
     broadcast_member_joined_notification, broadcast_user_permissions, broadcast_role_metadata_update

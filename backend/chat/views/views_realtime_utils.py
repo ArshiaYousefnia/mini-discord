@@ -5,10 +5,9 @@ from channels.layers import get_channel_layer
 from django.db.models import Q
 
 from chat.models import Conversation, ConversationMember, Message, Notification
-from chat.serializers import ChannelMessageSerializer, MessageSerializer, NotificationSerializer
+from chat.serializers import MessageSerializer, NotificationSerializer
 
-from chat.serializers import RoleSerializer
-from chat.models import Role
+from chat.channels_serializers import RoleSerializer, ChannelMessageSerializer
 
 def convert_uuids_to_str(obj):
     if isinstance(obj, dict):
