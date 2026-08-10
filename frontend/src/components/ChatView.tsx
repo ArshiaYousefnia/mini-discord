@@ -124,6 +124,8 @@ function saveAvatarCache(cache: Record<string, string>) {
   }
 }
 
+
+
 export default function ChatView({
   chat,
   isMobile,
@@ -1427,6 +1429,18 @@ export default function ChatView({
     }
   };
 
+  const handleRefreshChannelRoles = useCallback(async () => {
+    if (!chat) return;
+
+    try {
+      const rolesData = await getChannelRoles(chat.id);
+      setChannelRoles(rolesData);
+    } catch (error) {
+      console.error("Failed to refresh channel roles:", error);
+    }
+  }, [chat]);
+
+
   const handleLeaveGroup = async () => {
     if (!chat) return;
 
@@ -1744,6 +1758,7 @@ export default function ChatView({
         onRemoveMember={setMemberToRemove}
         onRemoveChannelMember={handleRemoveChannelMember}
         onCreateRole={handleCreateRole}
+        onRefreshChannelRoles={handleRefreshChannelRoles}
         onLeaveGroupRequest={() => setShowLeaveConfirm(true)}
         onDeleteGroupRequest={() => setShowDeleteGroupConfirm(true)}
         onLeaveChannelRequest={() => setShowLeaveChannelConfirm(true)}
