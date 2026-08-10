@@ -402,6 +402,8 @@ class MessageViewSet(
             {'last_message': last_message_data}
         )
 
+        broadcast_unread_update_for_conversation(conversation)
+
         return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):
