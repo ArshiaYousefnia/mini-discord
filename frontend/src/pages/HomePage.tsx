@@ -546,7 +546,8 @@ export default function HomePage() {
       if (
         payload.event_type === "member_joined" ||
         payload.event_type === "member_left" ||
-        payload.event_type === "role_updated"
+        payload.event_type === "role_updated" ||
+        payload.event_type === "permissions_updated"
       ) {
         void loadChats(true);
         return;
