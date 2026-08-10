@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Conversation, ConversationMember, Topic
-from chat.serializers import TopicSerializer, TopicCreateSerializer, TopicUpdateSerializer
+from chat.channels_serializers import TopicCreateSerializer, TopicUpdateSerializer, TopicSerializer
 
 
 class TopicListCreateView(APIView):
