@@ -13,6 +13,7 @@ interface RoleManagementProps {
   channelId: string;
   roles: ChannelRole[];
   isOwner: boolean;
+  onRolesChanged?: () => void;
 }
 
 type RoleEditState = RolePermissions & {
@@ -21,7 +22,6 @@ type RoleEditState = RolePermissions & {
 
 const PERMISSION_LABELS: { key: keyof RolePermissions; label: string }[] = [
   { key: "can_send_messages", label: "Send Messages" },
-  { key: "can_send_media", label: "Send Media" },
   { key: "can_delete_messages", label: "Delete Others' Messages" },
   { key: "can_manage_members", label: "Manage Members" },
   { key: "can_manage_roles", label: "Manage Roles" },
@@ -32,7 +32,7 @@ const PERMISSION_LABELS: { key: keyof RolePermissions; label: string }[] = [
   { key: "can_manage_others_topics", label: "Manage Others' Topics" },
 ];
 
-export default function RoleManagement({ channelId, roles, isOwner }: RoleManagementProps) {
+export default function RoleManagement({ channelId, roles, isOwner, onRolesChanged }: RoleManagementProps) {
   const [members, setMembers] = useState<ChannelMembers>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
@@ -127,33 +127,36 @@ export default function RoleManagement({ channelId, roles, isOwner }: RoleManage
   };
 
   const handleSaveRole = async (roleId: string) => {
-    const role = customRoles.find((r) => r.id === roleId);
-    if (!role) return;
+      const role = customRoles.find((r) => r.id === roleId);
+      if (!role) return;
 
-    const edits = roleEdits[roleId];
-    if (!edits) return;
+      const edits = roleEdits[roleId];
+      if (!edits) return;
 
-    if (!edits.name.trim()) {
-      alert("Role name cannot be empty.");
-      return;
-    }
+      if (!edits.name.trim()) {
+        alert("Role name cannot be empty.");
+        return;
+      }
 
-    try {
-      setSavingRoleId(roleId);
+      try {
+        setSavingRoleId(roleId);
 
-      await updateChannelRole(channelId, roleId, {
-        ...edits,
-        name: edits.name.trim(),
-      });
+        await updateChannelRole(channelId, roleId, {
+          ...edits,
+          name: edits.name.trim(),
+        });
 
-      setExpandedRoleId(null);
-    } catch (err) {
-      console.error("Failed to update role:", err);
-      alert("Failed to update role.");
-    } finally {
-      setSavingRoleId(null);
-    }
-  };
+        setExpandedRoleId(null);
+        await loadMembers();       
+        onRolesChanged?.();
+      } catch (err) {
+        console.error("Failed to update role:", err);
+        alert("Failed to update role.");
+      } finally {
+        setSavingRoleId(null);
+      }
+    };
+
 
   const handleDeleteRole = async (role: ChannelRole) => {
     if (!window.confirm(`Delete the "${role.name}" role? Members with this role will lose it.`)) return;
