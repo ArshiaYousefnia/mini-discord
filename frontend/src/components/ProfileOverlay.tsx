@@ -133,6 +133,8 @@ interface ProfileOverlayProps {
   ) => Promise<void> | void;
 
   userProfileUpdates?: UserProfileUpdates;
+  onRefreshChannelRoles?: () => Promise<void> | void;
+
 }
 
 export default function ProfileOverlay({
@@ -166,6 +168,7 @@ export default function ProfileOverlay({
   onRefreshProfile,
   onStartDirectMessage,
   userProfileUpdates,
+  onRefreshChannelRoles,
 }: ProfileOverlayProps) {
   // Group Edit State
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -942,6 +945,7 @@ export default function ProfileOverlay({
                   channelId={channelProfile.id}
                   roles={channelRoles || []}
                   isOwner={isCurrentUserOwner}
+                  onRolesChanged={onRefreshChannelRoles}
                 />
               </div>
             )}
