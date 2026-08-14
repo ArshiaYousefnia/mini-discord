@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+
 import { realtimeService } from "../services/realtimeService";
 
 export type NotificationType = "dm" | "reply" | "group_add";
@@ -39,55 +40,86 @@ export function NotificationProvider({
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const unreadCount = useMemo(
-    () => notifications.filter((notification) => notification.unread).length,
+    () =>
+      notifications.filter((notification) => notification.unread).length,
     [notifications]
   );
 
+  /*
+   * Connect the user socket:
+   * - immediately, if a token already exists
+   * - after login or registration, when auth:changed is dispatched
+   */
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
+    const handleAuthChanged = () => {
+      const token = localStorage.getItem("accessToken");
 
-    if (!token) {
-      return;
-    }
+      if (token) {
+        realtimeService.connectUserSocket();
+      }
+    };
 
-    // مهم: subscription به‌تنهایی socket را باز نمی‌کند
-    realtimeService.connectUserSocket();
+    handleAuthChanged();
 
+    window.addEventListener("auth:changed", handleAuthChanged);
+
+    return () => {
+      window.removeEventListener("auth:changed", handleAuthChanged);
+    };
+  }, []);
+
+  /*
+   * Subscribe to realtime notification events.
+   *
+   * Subscribing does not open the socket. The effect above is responsible
+   * for establishing the socket connection.
+   */
+  useEffect(() => {
     const unsubscribe = realtimeService.subscribeToNotifications(
       (payload: any) => {
         const item: AppNotification = {
           id: payload.id ?? crypto.randomUUID(),
-          type: (payload.notification_type ??
+
+          type: (
+            payload.notification_type ??
             payload.type ??
-            "dm") as NotificationType,
+            "dm"
+          ) as NotificationType,
+
           senderName:
             payload.sender_display_name ??
             payload.senderDisplayName ??
             payload.sender_name ??
             payload.senderName ??
             "Someone",
+
           preview:
             payload.message_preview ??
             payload.preview ??
             "",
+
           unread: true,
+
           createdAt:
             payload.created_at ??
             payload.createdAt ??
             new Date().toISOString(),
+
           conversationId:
             payload.conversation_id ??
             payload.conversationId,
+
           groupId:
             payload.group_id ??
             payload.groupId,
         };
 
-
-
         setNotifications((previous) => {
-          // جلوگیری از ثبت دوباره یک notification
-          if (previous.some((notification) => notification.id === item.id)) {
+          const alreadyExists = previous.some(
+            (notification) => notification.id === item.id
+          );
+
+          if (alreadyExists) {
             return previous;
           }
 
@@ -101,12 +133,8 @@ export function NotificationProvider({
     return () => {
       unsubscribe();
 
-      // در حالت عادی اینجا disconnect نکنید؛
-      // چون HomePage هم از همین user socket استفاده می‌کند.
-      //
-      // اگر NotificationProvider واقعاً در کل طول عمر اپ فقط یک‌بار mount
-      // می‌شود، می‌توانید در آینده این را اضافه کنید:
-      // realtimeService.disconnectUserSocket();
+      // Do not disconnect here if other pages/components also use
+      // the same global user socket.
     };
   }, []);
 
@@ -123,7 +151,10 @@ export function NotificationProvider({
     setNotifications((previous) =>
       previous.map((notification) =>
         notification.id === id
-          ? { ...notification, unread: false }
+          ? {
+              ...notification,
+              unread: false,
+            }
           : notification
       )
     );
@@ -168,7 +199,6 @@ async function showBrowserNotification(item: AppNotification) {
     tag: item.id,
   });
 }
-
 
 export function useNotifications() {
   const context = useContext(NotificationContext);
