@@ -152,7 +152,8 @@ class RealtimeService {
   // =========================
 
   public connectUserSocket() {
-    if (this.isSocketAlive(this.userSocket)) {
+    console.log("Attempting to connect user socket...");
+    if (this.userSocket && this.isSocketAlive(this.userSocket)) {
       return;
     }
 
@@ -186,6 +187,13 @@ class RealtimeService {
       if (event.code === 1000) return;
 
       this.scheduleUserReconnect(connectionId);
+    };
+
+      this.userSocket.onopen = () => {
+      console.log("User socket connected successfully!");
+    };
+    this.userSocket.onerror = (err) => {
+      console.error("User socket error:", err);
     };
   }
 
