@@ -3,7 +3,7 @@ import ChatItem from "./ChatItem";
 import type { ChatListItem } from "../types/chat";
 import type { BackendUserProfile } from "../types/user";
 import { searchGlobal, type GlobalSearchResult, type ChannelSearchResult } from "../services/userService";
-import { joinChannelByPublicId, getChannelMembers } from "../services/channelService";
+import { joinChannelByPublicId } from "../services/channelService";
 import { useNavigate } from "react-router-dom";
 
 type Props = {
@@ -12,16 +12,20 @@ type Props = {
   onSelectChat: (chat: ChatListItem) => void;
   currentUsername: string;
   onStartDirectMessage: (user: BackendUserProfile) => Promise<void>;
-  onRefresh?: () => void;
+  onRefresh?: () => void; // Kept for manual triggers, but polling removed
   onlineUsers?: Record<string, boolean>;
   onChannelJoined?: (channelId: string) => void;
   onOpenUserProfile: (user: BackendUserProfile) => void;
 };
 
+/**
+ * Normalizes the logged-in username for comparison logic.
+ */
 function getLoggedInUsername(): string {
   try {
     const raw = localStorage.getItem("username");
     if (!raw) return "";
+
     try {
       const parsed = JSON.parse(raw);
       if (typeof parsed === "object" && parsed?.username) {
@@ -52,19 +56,22 @@ export default function Sidebar({
 }: Props) {
   const navigate = useNavigate();
 
+  // Profile State
   const [displayName, setDisplayName] = useState<string>("My Profile");
   const [avatarUrl, setAvatarUrl] = useState<string>("https://i.pravatar.cc/150?img=12");
   const [loggedInUsername, setLoggedInUsername] = useState("");
 
+  // Search State
   const [search, setSearch] = useState("");
   const [searchingGlobal, setSearchingGlobal] = useState(false);
   const [globalResults, setGlobalResults] = useState<GlobalSearchResult[]>([]);
   const [searchError, setSearchError] = useState("");
-
+  
+  // Action State
   const [joiningChannelId, setJoiningChannelId] = useState<string | null>(null);
   const [membershipStatus, setMembershipStatus] = useState<Record<string, 'member'>>({});
-  const [channelMemberCounts, setChannelMemberCounts] = useState<Record<string, number>>({});
 
+  // Sync profile data and username from local storage/props
   useEffect(() => {
     const savedName = localStorage.getItem("display_name");
     const savedAvatar = localStorage.getItem("avatar_url");
@@ -80,8 +87,10 @@ export default function Sidebar({
   const goToCreateGroup = () => navigate("/groups/create");
   const goToCreateChannel = () => navigate("/channels/create");
 
+  // Determine if search should trigger a global API call (prefixed with @)
   const isGlobalSearchQuery = search.trim().startsWith("@");
 
+  // Filter existing conversations based on search text
   const filteredChats = useMemo(() => {
     if (isGlobalSearchQuery) return chats;
     const query = search.toLowerCase();
@@ -93,19 +102,6 @@ export default function Sidebar({
     setGlobalResults([]);
     setSearchError("");
     setMembershipStatus({});
-    setChannelMemberCounts({});
-  };
-
-  const fetchMemberCounts = async (channels: ChannelSearchResult[]) => {
-    const counts: Record<string, number> = {};
-    for (const channel of channels) {
-      try {
-        const members = await getChannelMembers(channel.id);
-        counts[channel.id] = members.length;
-      } catch {
-      }
-    }
-    setChannelMemberCounts(counts);
   };
 
   const handleGlobalSearch = async () => {
@@ -117,17 +113,12 @@ export default function Sidebar({
       setSearchError("");
       setGlobalResults([]);
       setMembershipStatus({});
-      setChannelMemberCounts({});
 
       const results = await searchGlobal(queryVal);
       if (!results.length) {
         setSearchError("No results found");
       } else {
         setGlobalResults(results);
-        const channels = results.filter(r => r.kind === "channel").map(r => r.data as ChannelSearchResult);
-        if (channels.length) {
-          await fetchMemberCounts(channels);
-        }
       }
     } catch {
       setSearchError("No results found");
@@ -146,11 +137,14 @@ export default function Sidebar({
     try {
       setJoiningChannelId(channel.id);
       await joinChannelByPublicId(channel.public_id);
+      
+      // Successfully joined
       clearSearch();
       onChannelJoined?.(channel.id);
       onRefresh?.();
     } catch (err: any) {
       if (err?.response?.status === 400) {
+        // User is already a member
         setMembershipStatus((prev) => ({ ...prev, [channel.id]: 'member' }));
       } else {
         alert("Failed to join channel.");
@@ -188,7 +182,6 @@ export default function Sidebar({
               if (searchError) setSearchError("");
               if (globalResults.length) setGlobalResults([]);
               setMembershipStatus({});
-              setChannelMemberCounts({});
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && isGlobalSearchQuery) {
@@ -294,7 +287,6 @@ export default function Sidebar({
               // Channel result
               const channel = result.data;
               const isMember = membershipStatus[channel.id] === 'member';
-              const memberCount = channelMemberCounts[channel.id];
 
               return (
                 <div className="search-profile-card" key={`channel-${channel.id}`}>
@@ -306,15 +298,8 @@ export default function Sidebar({
                   <div className="search-profile-details">
                     <div className="search-profile-name">{channel.name}</div>
                     <div className="search-profile-username">@{channel.public_id}</div>
-                    {/* Show description if available */}
                     {channel.description && (
                       <div className="search-profile-bio">{channel.description}</div>
-                    )}
-                    {/* Show member count if available */}
-                    {memberCount !== undefined && (
-                      <div className="search-profile-bio" style={{ color: "#8b949e" }}>
-                        👥 {memberCount} member{memberCount !== 1 ? "s" : ""}
-                      </div>
                     )}
 
                     {isMember ? (

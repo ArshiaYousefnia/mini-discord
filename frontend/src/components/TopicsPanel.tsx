@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Topic } from "../types/chat";
 
+
 interface TopicsPanelProps {
   topics: Topic[];
   activeTopicId: string | null;
@@ -68,7 +69,7 @@ export default function TopicsPanel({
       alert(err instanceof Error ? err.message : "Failed to delete topic");
     }
   };
-
+  
   return (
     <div
       className="topics-panel"
