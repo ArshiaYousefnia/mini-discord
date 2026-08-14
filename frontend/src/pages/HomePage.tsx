@@ -553,7 +553,20 @@ export default function HomePage() {
         return;
       }
 
-          setChatItems((previousChats) => {
+      //Handle Topic Events (New Logic)
+      // We want the sidebar to reflect that a topic was added/changed 
+      // just like a message would.
+      if (
+        payload.event_type === "topic_created" ||
+        payload.event_type === "topic_updated" ||
+        payload.event_type === "topic_deleted"
+      ) {
+        // Option A: Simple background refresh of the chat list
+        void loadChats(true);
+        return;
+      }
+
+        setChatItems((previousChats) => {
         const index = previousChats.findIndex(
           (chat) => isSameId(chat.id, conversationId)
         );

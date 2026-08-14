@@ -161,6 +161,7 @@ def broadcast_user_profile_update(user):
         'user_id': str(user.id),
         'display_name': user.display_name,
         'avatar_url': user.avatar_url,
+        'is_online': user.is_online,
     }
 
     member_conversation_ids = list(

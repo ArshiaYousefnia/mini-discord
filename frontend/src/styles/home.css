@@ -47,6 +47,14 @@
   background: var(--md-sys-color-text-tertiary);
 }
 
+.topics-panel-wrapper {
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--chat-background, #fff);
+}
+
 /* ==========================================
    SIDEBAR
    ========================================== */
