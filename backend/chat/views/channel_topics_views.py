@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from chat.models import Conversation, ConversationMember, Topic
 from chat.channels_serializers import TopicCreateSerializer, TopicUpdateSerializer, TopicSerializer
+from chat.views import broadcast_conversation_update
 
 
 class TopicListCreateView(APIView):
@@ -38,6 +39,14 @@ class TopicListCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         topic = serializer.save(conversation=conversation, creator=request.user)
         output = TopicSerializer(topic)
+
+        # Broadcast topic creation to the channel conversation group
+        broadcast_conversation_update(
+            conversation,
+            'topic_created',
+            {'topic': output.data}
+        )
+
         return Response(output.data, status=status.HTTP_201_CREATED)
 
 
@@ -84,6 +93,12 @@ class TopicDetailView(APIView):
 
         if not (is_owner or is_creator or can_manage):
             raise PermissionDenied("You do not have permission to delete this topic.")
+
+        broadcast_conversation_update(
+            topic.conversation,
+            'topic_deleted',
+            {'topic_id': str(topic.id)}
+        )
 
         topic.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
