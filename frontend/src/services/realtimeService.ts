@@ -24,7 +24,10 @@ export interface ConversationUpdatePayload {
     | "user_updated"
     | "member_removed"
     | "conversation_metadata_updated"
-    | "permissions_updated";
+    | "permissions_updated"
+    | "topic_created"
+    | "topic_deleted"
+    | "topic_updated";
   last_message?: MinimalMessage;
   user_id?: string;
   name?: string;
