@@ -228,6 +228,37 @@ export default function ChatView({
     }
   }, [groupMembers, channelMembers, userProfileUpdates, avatarCache]);
 
+
+  useEffect(() => {
+    const unsubscribe = realtimeService.subscribeToUpdates((payload) => {
+      if (String(payload.conversation_id) !== String(chat?.id)) return;
+
+      if (payload.event_type === "topic_created" && payload.data?.topic) {
+        setTopics((prev) => [payload.data.topic, ...prev]);
+        return;
+      }
+
+      if (payload.event_type === "topic_deleted" && payload.data?.topic_id) {
+        setTopics((prev) =>
+          prev.filter((t) => String(t.id) !== String(payload.data.topic_id))
+        );
+        return;
+      }
+
+      if (payload.event_type === "topic_updated" && payload.data?.topic) {
+        setTopics((prev) =>
+          prev.map((t) =>
+            String(t.id) === String(payload.data.topic.id)
+              ? payload.data.topic
+              : t
+          )
+        );
+      }
+    });
+
+    return () => unsubscribe();
+  }, [chat?.id]);
+
   useEffect(() => {
     updateAvatarCache();
   }, [updateAvatarCache]);
@@ -783,7 +814,10 @@ export default function ChatView({
         if (
           update.event_type === "group_updated" ||
           update.event_type === "channel_updated" ||
-          update.event_type === "conversation_metadata_updated"
+          update.event_type === "conversation_metadata_updated" ||
+          update.event_type === "topic_updated" ||
+          update.event_type === "topic_created" ||
+          update.event_type === "topic_deleted"
         ) {
           applyConversationMetadataUpdate(update);
 
