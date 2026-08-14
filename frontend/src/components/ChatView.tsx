@@ -1777,25 +1777,27 @@ export default function ChatView({
       />
 
       <div className="chat-view-body">
-        {chatType === "CHANNEL" && channelPermissions && (
-          <TopicsPanel
-            topics={topics}
-            activeTopicId={activeTopicId}
-            onSelectTopic={setActiveTopicId}
-            canCreateTopic={!!channelPermissions.can_create_topic}
-            canManageOthersTopics={
-              !!(
-                channelPermissions.can_manage_others_topics ||
-                channelPermissions.is_owner
-              )
-            }
-            currentUserId={currentUserId}
-            onCreateTopic={handleCreateTopic}
-            onRenameTopic={handleRenameTopic}
-            onDeleteTopic={handleDeleteTopic}
-          />
+      {chatType === "CHANNEL" && channelPermissions && (
+          <div className="topics-panel-wrapper">
+            <TopicsPanel
+              topics={topics}
+              activeTopicId={activeTopicId}
+              onSelectTopic={setActiveTopicId}
+              canCreateTopic={!!channelPermissions.can_create_topic}
+              canManageOthersTopics={
+                !!(
+                  channelPermissions.can_manage_others_topics ||
+                  channelPermissions.is_owner
+                )
+              }
+              currentUserId={currentUserId}
+              onCreateTopic={handleCreateTopic}
+              onRenameTopic={handleRenameTopic}
+              onDeleteTopic={handleDeleteTopic}
+            />
+          </div>
         )}
-
+      
         {loading && (
           <div className="chat-placeholder">Loading messages...</div>
         )}
